@@ -1464,15 +1464,25 @@ func (c *conn) closeV2(db uintptr) error {
 	return nil
 }
 
+// ResetSession is called prior to executing a query on the connection if the
+// connection has been used before. If the driver returns ErrBadConn the
+// connection is discarded.
 func (c *conn) ResetSession(ctx context.Context) error {
-	if c.db == 0 {
+	if !c.usable() {
 		return driver.ErrBadConn
 	}
+
 	return nil
 }
 
+// IsValid is called prior to placing the connection into the connection pool.
+// The connection will be discarded if false is returned.
 func (c *conn) IsValid() bool {
-	return c.db != 0
+	return c.usable()
+}
+
+func (c *conn) usable() bool {
+	return c.db != 0 && sqlite3.Xsqlite3_is_interrupted(c.tls, c.db) == 0
 }
 
 // FunctionImpl describes an [application-defined SQL function]. If Scalar is
