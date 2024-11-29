@@ -18,6 +18,7 @@ import (
 	"net/url"
 	"reflect"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -884,7 +885,25 @@ func applyQueryParams(c *conn, query string) error {
 		return err
 	}
 
+	var a []string
 	for _, v := range q["_pragma"] {
+		a = append(a, v)
+	}
+	// Push 'busy_timeout' first, the rest in lexicographic order, case insenstive.
+	// See https://gitlab.com/cznic/sqlite/-/issues/198#note_2233423463 for
+	// discussion.
+	sort.Slice(a, func(i, j int) bool {
+		x, y := strings.TrimSpace(strings.ToLower(a[i])), strings.TrimSpace(strings.ToLower(a[j]))
+		if strings.HasPrefix(x, "busy_timeout") {
+			return true
+		}
+		if strings.HasPrefix(y, "busy_timeout") {
+			return false
+		}
+
+		return x < y
+	})
+	for _, v := range a {
 		cmd := "pragma " + v
 		_, err := c.exec(context.Background(), cmd, nil)
 		if err != nil {
