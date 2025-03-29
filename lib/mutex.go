@@ -88,12 +88,8 @@ var (
 
 type mutex struct {
 	sync.Mutex
-
-	poolIndex int
-
 	cnt int32
 	id  int32 // tls.ID
-
 	recursive bool
 }
 
