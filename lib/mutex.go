@@ -226,6 +226,7 @@ func mutexEnter(tls *libc.TLS, m uintptr) {
 
 	if !(*mutex)(unsafe.Pointer(m)).recursive {
 		(*mutex)(unsafe.Pointer(m)).Lock()
+		(*mutex)(unsafe.Pointer(m)).id = tls.ID
 		return
 	}
 
@@ -274,6 +275,7 @@ func mutexLeave(tls *libc.TLS, m uintptr) {
 	}
 
 	if !(*mutex)(unsafe.Pointer(m)).recursive {
+		(*mutex)(unsafe.Pointer(m)).id = 0
 		(*mutex)(unsafe.Pointer(m)).Unlock()
 		return
 	}
