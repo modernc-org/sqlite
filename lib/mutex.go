@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
+//go:build !linux
+
 package sqlite3
 
 import (
@@ -56,15 +58,6 @@ var (
 			f func(*libc.TLS, uintptr) int32
 		}{mutexNotheld})),
 	}
-
-	MutexCounters = libc.NewPerfCounter([]string{
-		"enter-fast",
-		"enter-recursive",
-		"enter-recursive-loop",
-		"try-fast",
-		"try-recursive",
-	})
-	MutexEnterCallers = libc.NewStackCapture(4)
 
 	mutexes mutexPool
 
@@ -137,88 +130,65 @@ func (m *mutexPool) free(p uintptr) {
 
 type mutex struct {
 	sync.Mutex
-	wait sync.Mutex
 
 	poolIndex int
 
 	cnt int32
-	id  int32
+	id  int32 // tls.ID
 
 	recursive bool
 }
 
 func (m *mutex) enter(id int32) {
-	// MutexEnterCallers.Record()
 	if !m.recursive {
-		// MutexCounters.Inc(0)
 		m.Lock()
-		m.id = id
 		return
 	}
 
-	// MutexCounters.Inc(1)
+	if atomic.CompareAndSwapInt32(&m.id, 0, id) {
+		m.cnt = 1
+		m.Lock()
+		return
+	}
+
+	if atomic.LoadInt32(&m.id) == id {
+		m.cnt++
+		return
+	}
+
 	for {
 		m.Lock()
-		switch m.id {
-		case 0:
+		if atomic.CompareAndSwapInt32(&m.id, 0, id) {
 			m.cnt = 1
-			m.id = id
-			m.wait.Lock()
-			m.Unlock()
-			return
-		case id:
-			m.cnt++
-			m.Unlock()
 			return
 		}
 
-		// MutexCounters.Inc(2)
 		m.Unlock()
-		m.wait.Lock()
-		//lint:ignore SA2001 TODO report staticcheck issue
-		m.wait.Unlock()
 	}
 }
 
 func (m *mutex) try(id int32) int32 {
 	if !m.recursive {
-		// MutexCounters.Inc(3)
-		return SQLITE_BUSY
+		if m.TryLock() {
+			return SQLITE_OK
+		}
+
+		return EBUSY
 	}
 
-	// MutexCounters.Inc(4)
-	m.Lock()
-	switch m.id {
-	case 0:
-		m.cnt = 1
-		m.id = id
-		m.wait.Lock()
-		m.Unlock()
-		return SQLITE_OK
-	case id:
-		m.cnt++
-		m.Unlock()
-		return SQLITE_OK
-	}
-
-	m.Unlock()
 	return SQLITE_BUSY
 }
 
 func (m *mutex) leave(id int32) {
 	if !m.recursive {
-		m.id = 0
 		m.Unlock()
 		return
 	}
 
-	m.Lock()
-	m.cnt--
-	if m.cnt == 0 {
-		m.id = 0
-		m.wait.Unlock()
+	if atomic.AddInt32(&m.cnt, -1) == 0 {
+		atomic.StoreInt32(&m.id, 0)
+		m.Unlock()
 	}
-	m.Unlock()
 }
 
 // int (*xMutexInit)(void);
@@ -286,8 +256,6 @@ func mutexEnd(tls *libc.TLS) int32 { return SQLITE_OK }
 // different mutex on every call. For the static mutex types, the same mutex is
 // returned on every call that has the same type number.
 func mutexAlloc(tls *libc.TLS, typ int32) uintptr {
-	defer func() {
-	}()
 	switch typ {
 	case SQLITE_MUTEX_FAST:
 		return mutexes.alloc(false)

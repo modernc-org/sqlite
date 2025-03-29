@@ -1324,7 +1324,7 @@ func vfsWrite(tls *libc.TLS, pFile uintptr, zBuf uintptr, iAmt int32, iOfst sqli
 			}
 			if (*VFSFile)(unsafe.Pointer(p)).nBuffer == 0 || (*VFSFile)(unsafe.Pointer(p)).iBufferOfst+sqlite3_int64((*VFSFile)(unsafe.Pointer(p)).nBuffer) == i {
 			} else {
-				libc.X__assert_fail(tls, ts+43, ts+89, uint32(294), uintptr(unsafe.Pointer(&__func__4)))
+				libc.X__assert_fail(tls, ts+43, ts+89, int32(294), uintptr(unsafe.Pointer(&__func__4)))
 			}
 			(*VFSFile)(unsafe.Pointer(p)).iBufferOfst = i - sqlite3_int64((*VFSFile)(unsafe.Pointer(p)).nBuffer)
 
@@ -1477,7 +1477,7 @@ func vfsCurrentTime(tls *libc.TLS, pVfs uintptr, pTime uintptr) int32 {
 }
 
 func Xsqlite3_fsFS(tls *libc.TLS, zName uintptr, pAppData uintptr) uintptr {
-	var p uintptr = sqlite3.Xsqlite3_malloc(tls, int32(unsafe.Sizeof(sqlite3_vfs{})))
+	var p uintptr = libc.Xmalloc(tls, libc.Tsize_t(unsafe.Sizeof(sqlite3_vfs{})))
 	if !(p != 0) {
 		return uintptr(0)
 	}

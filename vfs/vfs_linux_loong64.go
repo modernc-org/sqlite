@@ -2719,9 +2719,7 @@ func vfsCurrentTime(tls *libc.TLS, pVfs uintptr, pTime uintptr) (r int32) {
 //	**   sqlite3_vfs_register(sqlite3_fsFS(), 0);
 //	*/
 func Xsqlite3_fsFS(tls *libc.TLS, zName uintptr, pAppData uintptr) (r uintptr) {
-	var p uintptr
-	_ = p
-	p = sqlite3.Xsqlite3_malloc(tls, int32(168))
+	var p uintptr = libc.Xmalloc(tls, libc.Tsize_t(unsafe.Sizeof(sqlite3_vfs{})))
 	if !(p != 0) {
 		return libc.UintptrFromInt32(0)
 	}
