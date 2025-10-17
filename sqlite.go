@@ -1988,6 +1988,12 @@ type ExecQuerierContext interface {
 	driver.QueryerContext
 }
 
+type HookRegisterer interface {
+	RegisterPreUpdateHook(PreUpdateHookFn)
+	RegisterCommitHook(CommitHookFn)
+	RegisterRollbackHook(RollbackHookFn)
+}
+
 // Commit releases all resources associated with the Backup object but does not
 // close the destination database connection.
 //
