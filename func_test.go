@@ -18,6 +18,7 @@ import (
 	"path"
 	"regexp"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -901,6 +902,46 @@ func TestRegisteredFunctions(t *testing.T) {
 						}
 					}()
 				}
+			}
+		})
+	})
+
+	t.Run("QueryContext with successful interruption should not leak unclosed Rows", func(tt *testing.T) {
+		withDB(func(db *sql.DB) {
+			ctx, cancel := context.WithCancel(tt.Context())
+			MustRegisterDeterministicScalarFunction(
+				"test_sleep",
+				0,
+				func(*FunctionContext, []driver.Value) (driver.Value, error) {
+					<-ctx.Done()
+					return int64(42), nil
+				},
+			)
+
+			conn, err := db.Conn(tt.Context())
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer conn.Close()
+
+			var wg sync.WaitGroup
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				rows, err := conn.QueryContext(ctx, "select test_sleep()")
+				if err == nil {
+					t.Error("expected error")
+					rows.Close()
+				}
+				return
+			}()
+			time.Sleep(100 * time.Millisecond)
+			cancel()
+			wg.Wait()
+
+			// if rows leaked in unclosed state, checkpointing will fail
+			if _, err := conn.ExecContext(context.Background(), "PRAGMA wal_checkpoint"); err != nil {
+				tt.Fatal(err)
 			}
 		})
 	})
