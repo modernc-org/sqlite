@@ -37,6 +37,10 @@ import (
 	"modernc.org/sqlite/vfs"
 )
 
+var (
+	indent int // trc()
+)
+
 func caller(s string, va ...interface{}) {
 	if s == "" {
 		s = strings.Repeat("%v ", len(va))
@@ -90,9 +94,10 @@ func trc(s string, args ...interface{}) string { //TODO-
 	default:
 		s = fmt.Sprintf(s, args...)
 	}
-	r := fmt.Sprintf("\n%s: TRC %s", origin(2), s)
-	fmt.Fprintf(os.Stdout, "%s\n", r)
-	os.Stdout.Sync()
+	ts := time.Now().Format("15:04:05.000")
+	r := fmt.Sprintf("%s: %s[%s TRACE] %s", origin(2), strings.Repeat("· ", indent), ts, s)
+	fmt.Fprintf(os.Stderr, "%s\n", r)
+	os.Stderr.Sync()
 	return r
 }
 
@@ -3498,4 +3503,49 @@ func TestIssue209(t *testing.T) {
 	t.Run("empty-blob", func(t *testing.T) {
 		doTest([]byte{})
 	})
+}
+
+// https://gitlab.com/cznic/sqlite/-/issues/236
+func TestIssue236(t *testing.T) {
+	tempDir := t.TempDir()
+	db, err := sql.Open("sqlite", fmt.Sprintf("file:%s?_pragma=journal_mode(WAL)", filepath.Join(tempDir, "db.db")))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := db.Exec("create table t(i int);"); err != nil {
+		t.Fatal(err)
+	}
+
+	stmt, err := db.Prepare("insert into t values(?);")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	trc("==== prepared Exec")
+	for i := 0; i < 2; i++ {
+		_, err := stmt.Exec(i)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	trc("----")
+	if stmt, err = db.Prepare("select i from t order by i;"); err != nil {
+		t.Fatal(err)
+	}
+
+	trc("==== prepared Query")
+	for i := 0; i < 2; i++ {
+		rows, err := stmt.Query()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		for rows.Next() {
+			var i int64
+			rows.Scan(&i)
+			trc("", i)
+		}
+	}
+	trc("----")
 }
