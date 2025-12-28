@@ -121,17 +121,33 @@ func (r *rows) Next(dest []driver.Value) (err error) {
 					// but we put make this compatibility optional behind a DSN
 					// query parameter, because this changes API behavior, so an
 					// opt-in is needed.
+
 					switch r.ColumnTypeDatabaseTypeName(i) {
 					case "DATE", "DATETIME", "TIMESTAMP":
+						// Check for explicit opt-in first.  This fixes the bug for micro/nano users
+						// without breaking the legacy heuristic for existing users.
+						switch r.c.integerTimeFormat {
+						case "unix_micro":
+							dest[i] = time.Unix(v/1_000_000, (v%1_000_000)*1_000).UTC()
+							continue
+						case "unix_nano":
+							dest[i] = time.Unix(0, v).UTC()
+							continue
+						}
+
+						// Legacy Heuristic (mattn/go-sqlite3 compatibility).  NOTE: This heuristic
+						// fails for Millisecond timestamps representing dates before Sept 9, 2001
+						// (value < 1e12).
+
 						// Is it a seconds timestamp or a milliseconds
 						// timestamp?
 						if v > 1e12 || v < -1e12 {
-							// time.Unix expects nanoseconds, but this is a
-							// milliseconds timestamp, so convert ms->ns.
+							// Milliseconds
 							v *= int64(time.Millisecond)
 							dest[i] = time.Unix(0, v).UTC()
 						} else {
-							dest[i] = time.Unix(v, 0)
+							// Seconds
+							dest[i] = time.Unix(v, 0).UTC()
 						}
 					default:
 						dest[i] = v
