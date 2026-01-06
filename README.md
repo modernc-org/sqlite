@@ -1,4 +1,4 @@
-# ⚠️ Important: Repository Mirroring
+## Important: Repository Mirroring
 
 **This project is primarily developed on GitLab.** The repository you are currently viewing might be a mirror. Please review the guidelines below based on where you are viewing this:
 
@@ -9,13 +9,22 @@
 
 ---
 
-
-![logo](logo.png)
-
 [![Go Reference](https://pkg.go.dev/badge/modernc.org/sqlite.svg)](https://pkg.go.dev/modernc.org/sqlite)
 [![LiberaPay](https://liberapay.com/assets/widgets/donate.svg)](https://liberapay.com/jnml/donate)
 [![receives](https://img.shields.io/liberapay/receives/jnml.svg?logo=liberapay)](https://liberapay.com/jnml/donate)
 [![patrons](https://img.shields.io/liberapay/patrons/jnml.svg?logo=liberapay)](https://liberapay.com/jnml/donate)
+
+---
+
+### Enterprise Infrastructure Tier Sponsor
+
+[Tailscale](https://tailscale.com/)
+
+### Startup / Small Business Tier Sponsor
+
+[<img src="sponsors/octoberswimmer.png">](http://www.octoberswimmer.com/)
+
+---
 
 [The SQLite Drivers Benchmarks Game]
 
