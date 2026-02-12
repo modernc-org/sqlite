@@ -1627,6 +1627,113 @@ func TestIntToTimeOptInBad(t *testing.T) {
 	}
 }
 
+// TestTextToTimeScanType verifies that ColumnTypeScanType returns time.Time
+// for TEXT columns declared as DATETIME when _texttotime=1 is set,
+// and returns string by default.
+func TestTextToTimeScanType(t *testing.T) {
+	// Without _texttotime: ColumnTypeScanType should report string.
+	t.Run("default", func(t *testing.T) {
+		db, err := sql.Open(driverName, "file::memory:")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer db.Close()
+
+		_, err = db.Exec("CREATE TABLE t (id INTEGER PRIMARY KEY, ts DATETIME)")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		_, err = db.Exec("INSERT INTO t (id, ts) VALUES (1, '2024-01-01 00:00:00+00:00')")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		rows, err := db.Query("SELECT ts FROM t")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer rows.Close()
+
+		cts, err := rows.ColumnTypes()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		got := cts[0].ScanType()
+		want := reflect.TypeOf("")
+		if got != want {
+			t.Fatalf("default: ScanType = %v, want %v", got, want)
+		}
+	})
+
+	// With _texttotime=1: ColumnTypeScanType should report time.Time.
+	t.Run("opt-in", func(t *testing.T) {
+		db, err := sql.Open(driverName, "file::memory:?_texttotime=1")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer db.Close()
+
+		_, err = db.Exec("CREATE TABLE t (id INTEGER PRIMARY KEY, ts DATETIME)")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		_, err = db.Exec("INSERT INTO t (id, ts) VALUES (1, '2024-01-01 00:00:00+00:00')")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		rows, err := db.Query("SELECT ts FROM t")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer rows.Close()
+
+		cts, err := rows.ColumnTypes()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		got := cts[0].ScanType()
+		want := reflect.TypeOf(time.Time{})
+		if got != want {
+			t.Fatalf("opt-in: ScanType = %v, want %v", got, want)
+		}
+
+		// Also verify that scanning into interface{} yields time.Time.
+		if !rows.Next() {
+			t.Fatal("expected a row")
+		}
+		var v interface{}
+		if err := rows.Scan(&v); err != nil {
+			t.Fatal(err)
+		}
+		if _, ok := v.(time.Time); !ok {
+			t.Fatalf("Scan into interface{}: got %T, want time.Time", v)
+		}
+	})
+}
+
+func TestTextToTimeBad(t *testing.T) {
+	db, err := sql.Open(driverName, "file::memory:?_texttotime=foobar")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	_, err = db.Exec("select 1")
+	if err == nil {
+		t.Fatal("wanted error")
+	}
+
+	want := `unknown _texttotime "foobar", must be 1, t, T, TRUE, true, True, 0, f, F, FALSE, false, False`
+	if got := err.Error(); got != want {
+		t.Fatalf("got error %q, want %q", got, want)
+	}
+}
+
 // https://sqlite.org/lang_expr.html#varparam
 // https://gitlab.com/cznic/sqlite/-/issues/42
 func TestBinding(t *testing.T) {
