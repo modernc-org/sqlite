@@ -859,7 +859,24 @@ func (c *conn) RegisterFunction(zFuncName string, impl *FunctionImpl) error {
 		)
 
 	} else {
-		panic("aggretate functions are not implemented yet")
+		xAggregateFactories.mu.Lock()
+		id := xAggregateFactories.ids.next()
+		xAggregateFactories.m[id] = impl.MakeAggregate
+		xAggregateFactories.mu.Unlock()
+
+		rc = sqlite3.Xsqlite3_create_window_function(
+			c.tls,
+			c.db,
+			name,
+			impl.NArgs,
+			textrep,
+			id,
+			cFuncPointer(stepTrampoline),
+			cFuncPointer(finalTrampoline),
+			cFuncPointer(valueTrampoline),
+			cFuncPointer(inverseTrampoline),
+			0,
+		)
 	}
 
 	if rc != sqlite3.SQLITE_OK {
