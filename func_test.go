@@ -1152,3 +1152,58 @@ func TestRegisteredFunctions(t *testing.T) {
 		})
 	})
 }
+
+func TestConnRegisteredFunctions(t *testing.T) {
+	db, err := sql.Open("sqlite", "file::memory:")
+	if err != nil {
+		t.Fatalf("failed to open database: %v", err)
+	}
+	defer db.Close()
+
+	conn, err := db.Conn(t.Context())
+	if err != nil {
+		t.Fatalf("failed to open connection: %v", err)
+	}
+	defer conn.Close()
+
+	err = conn.Raw(func(driverConn any) error {
+		switch x := driverConn.(type) {
+		case interface {
+			RegisterFunction(string, *FunctionImpl) error
+		}:
+			return x.RegisterFunction("echo", &FunctionImpl{
+				NArgs:         1,
+				Deterministic: true,
+				Scalar: func(ctx *FunctionContext, args []driver.Value) (driver.Value, error) {
+					return args[0], nil
+				},
+			})
+		}
+
+		return fmt.Errorf("invalid connection type")
+
+	})
+	if err != nil {
+		t.Fatalf("failed to register function: %v", err)
+	}
+
+	var got string
+	err = conn.QueryRowContext(t.Context(), "SELECT echo('OK')").Scan(&got)
+	if err != nil {
+		t.Fatalf("failed to call function: %v", err)
+	}
+	if got != "OK" {
+		t.Errorf("expect OK, got %q", got)
+	}
+
+	conn2, err := db.Conn(t.Context())
+	if err != nil {
+		t.Fatalf("failed to open connection 2: %v", err)
+	}
+	defer conn2.Close()
+
+	err = conn2.QueryRowContext(t.Context(), "SELECT echo('OK')").Scan(&got)
+	if err == nil {
+		t.Fatal("expect error SQL logic error: no such function: echo")
+	}
+}
