@@ -8,7 +8,6 @@ import (
 	"context"
 	"database/sql/driver"
 	"fmt"
-	"log/slog"
 	"strconv"
 	"strings"
 	"sync"
@@ -34,12 +33,6 @@ type conn struct {
 	intToTime         bool
 	textToTime        bool
 	integerTimeFormat string
-
-	funcs struct {
-		mu  sync.RWMutex
-		m   map[uintptr]func(*FunctionContext, []driver.Value) (driver.Value, error)
-		ids idGen
-	}
 }
 
 func newConn(dsn string) (*conn, error) {
@@ -85,8 +78,6 @@ func newConn(dsn string) (*conn, error) {
 		c.Close()
 		return nil, err
 	}
-
-	c.funcs.m = make(map[uintptr]func(*FunctionContext, []driver.Value) (driver.Value, error))
 
 	return c, nil
 }
@@ -850,21 +841,10 @@ func (c *conn) RegisterFunction(zFuncName string, impl *FunctionImpl) error {
 	var rc int32
 
 	if impl.Scalar != nil {
-		c.funcs.mu.Lock()
-		id := c.funcs.ids.next()
-		c.funcs.m[id] = impl.Scalar
-		c.funcs.mu.Unlock()
-
-		/* without that slog.Debug line:
-
-		test binary compiled for linux/amd64
-		=== RUN   TestConnRegisteredFunctions
-		runtime: goroutine stack exceeds 1000000000-byte limit
-		runtime: sp=0x3d3ee0902398 stack=[0x3d3ee0902000, 0x3d3f00902000]
-		fatal error: stack overflow
-
-		*/
-		slog.Debug("RegisterFunc", "why", "with", "this", "line?")
+		xFuncs.mu.Lock()
+		id := xFuncs.ids.next()
+		xFuncs.m[id] = impl.Scalar
+		xFuncs.mu.Unlock()
 
 		rc = sqlite3.Xsqlite3_create_function(
 			c.tls,
@@ -873,7 +853,7 @@ func (c *conn) RegisterFunction(zFuncName string, impl *FunctionImpl) error {
 			impl.NArgs,
 			textrep,
 			id,
-			cFuncPointer(c.funcTrampoline),
+			cFuncPointer(funcTrampoline),
 			0,
 			0,
 		)
@@ -886,26 +866,6 @@ func (c *conn) RegisterFunction(zFuncName string, impl *FunctionImpl) error {
 		return c.errstr(rc)
 	}
 	return nil
-}
-
-func (c *conn) funcTrampoline(tls *libc.TLS, ctx uintptr, argc int32, argv uintptr) {
-	id := sqlite3.Xsqlite3_user_data(tls, ctx)
-	c.funcs.mu.RLock()
-	xFunc := c.funcs.m[id]
-	c.funcs.mu.RUnlock()
-
-	setErrorResult := errorResultFunction(tls, ctx)
-	res, err := xFunc(&FunctionContext{}, functionArgs(tls, argc, argv))
-
-	if err != nil {
-		setErrorResult(err)
-		return
-	}
-
-	err = functionReturnValue(tls, ctx, res)
-	if err != nil {
-		setErrorResult(err)
-	}
 }
 
 type userDefinedFunction struct {
