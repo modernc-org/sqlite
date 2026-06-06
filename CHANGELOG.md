@@ -1,6 +1,7 @@
 # Changelog
 
- - 2026-05-28 v1.52.0:
+ - 2026-06-06 v1.52.0:
+     -  Upgrade to [SQLite 3.53.2](https://sqlite.org/releaselog/3_53_2.html).
      - Add `Backup.Remaining` and `Backup.PageCount`, thin wrappers around the existing `sqlite3_backup_remaining` and `sqlite3_backup_pagecount` C symbols. Together they expose the per-`Step` progress counters that the underlying backup object already maintains, enabling progress reporting during online backups without dropping to `modernc.org/sqlite/lib` directly.
      - See [GitLab merge request #122](https://gitlab.com/cznic/sqlite/-/merge_requests/122), thanks Ian Chechin!
      - Drop the redundant second copy in `(*conn).columnText`, the path that backs every `Rows.Scan` into a Go `string` for a TEXT column. The value's bytes are still copied once out of SQLite-owned memory into a fresh Go buffer; that buffer is then reinterpreted as the result string with `unsafe.String` rather than copied a second time by the implicit `string([]byte)` conversion. This removes one allocation per TEXT value per row and roughly halves the bytes allocated on that path; on the new `BenchmarkColumnTextScan` cases it is ~13–20% faster for payloads of 256 B and larger, with no measurable change for very short strings. Purely internal: no API or behavioral change, and the returned string never aliases SQLite's buffer.
