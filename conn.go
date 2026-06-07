@@ -64,16 +64,28 @@ func newConn(dsn string) (*conn, error) {
 	}
 
 	c := &conn{tls: libc.NewTLS()}
-	db, err := c.openV2(
-		dsn,
-		vfsName,
-		sqlite3.SQLITE_OPEN_READWRITE|sqlite3.SQLITE_OPEN_CREATE|
-			sqlite3.SQLITE_OPEN_FULLMUTEX|
-			sqlite3.SQLITE_OPEN_URI,
+	// The withOpenGate wrapper marks the page-cache opened flag and holds
+	// pcacheState.openGate.RLock for the duration of sqlite3_open_v2, so
+	// any concurrent RegisterPageCacheModule blocks until this Open
+	// completes. sqlite3_initialize fires implicitly inside openV2 the
+	// first time; after that point SQLITE_CONFIG_PCACHE2 can no longer be
+	// installed. See pagecache.go for the lifecycle contract.
+	var (
+		db  uintptr
+		err error
 	)
-	if err != nil {
+	if gateErr := withOpenGate(func() error {
+		db, err = c.openV2(
+			dsn,
+			vfsName,
+			sqlite3.SQLITE_OPEN_READWRITE|sqlite3.SQLITE_OPEN_CREATE|
+				sqlite3.SQLITE_OPEN_FULLMUTEX|
+				sqlite3.SQLITE_OPEN_URI,
+		)
+		return err
+	}); gateErr != nil {
 		c.tls.Close()
-		return nil, err
+		return nil, gateErr
 	}
 
 	c.db = db
