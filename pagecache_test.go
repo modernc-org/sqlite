@@ -12,32 +12,23 @@ import (
 	"testing"
 	"time"
 	"unsafe"
-
-	"modernc.org/libc"
 )
 
-// TestPCacheMethods2Layout pins the on-disk shape of the sqlite3_pcache_methods2
-// struct as cznic emits it today. The test catches two failure modes:
+// TestPCacheMethods2Layout pins the field-name surface of the
+// sqlite3_pcache_methods2 struct as cznic transpiles it. populateCMethods
+// assigns by named field, so a renamed field would silently leave a C
+// pointer slot null and crash on first use. The total struct size is
+// also asserted as a lower bound to catch a regenerator that drops a
+// field outright.
 //
-//  1. A regenerated lib/ that reorders or renames fields. populateCMethods uses
-//     named-field assignment, so reordering by itself is safe, but renaming a
-//     field would silently make a field zero on every arch.
-//  2. A regenerated lib/ that introduces a new field between two existing
-//     ones, growing the struct without us noticing.
-//
-// Layout assertions are kept relative on purpose: hard-coded byte offsets
-// would be wrong on the 32-bit arches (uintptr is 4 bytes, no padding after
-// the int32 FiVersion) and on netbsd_amd64 (explicit F__ccgo_pad1 [4]byte).
+// The test deliberately does NOT pin the field count: at least one
+// supported arch (netbsd_amd64) emits a 14-field layout with an explicit
+// F__ccgo_pad1 padding member, and counting fields would force an
+// arch-conditional assertion. Named-field presence catches the failure
+// modes we care about without that friction.
 func TestPCacheMethods2Layout(t *testing.T) {
 	var m pcacheMethods2
 
-	// Field count: int32 iVersion + uintptr pArg + 11 callback uintptrs = 13.
-	v := reflect.ValueOf(m)
-	if got, want := v.NumField(), 13; got != want {
-		t.Fatalf("pcacheMethods2 has %d fields, want %d (struct regeneration drift)", got, want)
-	}
-
-	// Field shapes by name.
 	wantKinds := map[string]reflect.Kind{
 		"FiVersion":   reflect.Int32,
 		"FpArg":       reflect.Uintptr,
@@ -53,7 +44,7 @@ func TestPCacheMethods2Layout(t *testing.T) {
 		"FxDestroy":   reflect.Uintptr,
 		"FxShrink":    reflect.Uintptr,
 	}
-	tp := v.Type()
+	tp := reflect.TypeOf(m)
 	for name, kind := range wantKinds {
 		f, ok := tp.FieldByName(name)
 		if !ok {
@@ -65,17 +56,12 @@ func TestPCacheMethods2Layout(t *testing.T) {
 		}
 	}
 
-	// Minimum struct size: 1 int32 + 12 uintptrs (FpArg + 11 callbacks). On any
-	// arch unsafe.Sizeof(m) must be at least that, accounting for natural
-	// alignment.
 	minSize := unsafe.Sizeof(int32(0)) + 12*unsafe.Sizeof(uintptr(0))
 	if unsafe.Sizeof(m) < minSize {
 		t.Fatalf("unsafe.Sizeof(pcacheMethods2) = %d, want >= %d (struct shrunk; layout broken)",
 			unsafe.Sizeof(m), minSize)
 	}
 
-	// FpArg must follow FiVersion, FxInit must follow FpArg, and FxShrink must
-	// be the tail. Catches a regenerator that reorders the C struct.
 	off := func(name string) uintptr {
 		f, _ := tp.FieldByName(name)
 		return f.Offset
@@ -91,117 +77,67 @@ func TestPCacheMethods2Layout(t *testing.T) {
 	}
 }
 
-// validModuleStub returns a PageCacheModule with every required field populated
-// by harmless top-level no-op callbacks. The same pointer is returned on every
-// call so idempotency tests can compare against it.
-func validModuleStub() *PageCacheModule {
-	return &PageCacheModule{
-		Init:      stubInit,
-		Create:    stubCreate,
-		Cachesize: stubCachesize,
-		Pagecount: stubPagecount,
-		Fetch:     stubFetch,
-		Unpin:     stubUnpin,
-		Truncate:  stubTruncate,
-		Destroy:   stubDestroy,
+// TestRegisterPageCacheNil covers the nil-module rejection path.
+// Pure input validation, does not touch pcacheState beyond reading
+// nothing, safe to run in any order with other tests.
+func TestRegisterPageCacheNil(t *testing.T) {
+	if err := RegisterPageCache(nil); err == nil ||
+		!strings.Contains(err.Error(), "RegisterPageCache(nil)") {
+		t.Fatalf("RegisterPageCache(nil) error = %v, want sentinel message", err)
 	}
 }
 
-// Stub callbacks. They are intentionally top-level (closures are not safe with
-// cFuncPointer) but never actually run in TestRegisterPageCacheModuleValidation
-// because the validation tests do not progress past the lock.
-func stubInit(*libc.TLS, uintptr) int32                   { return 0 }
-func stubCreate(*libc.TLS, int32, int32, int32) uintptr   { return 0 }
-func stubCachesize(*libc.TLS, uintptr, int32)             {}
-func stubPagecount(*libc.TLS, uintptr) int32              { return 0 }
-func stubFetch(*libc.TLS, uintptr, uint32, int32) uintptr { return 0 }
-func stubUnpin(*libc.TLS, uintptr, uintptr, int32)        {}
-func stubTruncate(*libc.TLS, uintptr, uint32)             {}
-func stubDestroy(*libc.TLS, uintptr)                      {}
+// noopModule is a PageCache whose factory returns a noopCache
+// that refuses all Fetch and pretends to be a working cache. It is used
+// by lifecycle tests that need a non-nil module to register but do not
+// open a database and therefore never exercise the cache callbacks.
+type noopModule struct{}
 
-// TestRegisterPageCacheModuleValidation exercises the input-validation surface
-// of RegisterPageCacheModule. None of these subtests run the lifecycle gate
-// (they fail before the lock is taken), so they leave pcacheState untouched
-// and can be run in any order alongside other tests in the package.
-func TestRegisterPageCacheModuleValidation(t *testing.T) {
-	t.Run("nil", func(t *testing.T) {
-		if err := RegisterPageCacheModule(nil); err == nil ||
-			!strings.Contains(err.Error(), "RegisterPageCacheModule(nil)") {
-			t.Fatalf("RegisterPageCacheModule(nil) error = %v, want sentinel message", err)
-		}
-	})
+func (noopModule) Create(int, int, bool) (Cache, error) { return noopCache{}, nil }
 
-	required := []struct {
-		name string
-		zero func(*PageCacheModule)
-	}{
-		{"Init", func(m *PageCacheModule) { m.Init = nil }},
-		{"Create", func(m *PageCacheModule) { m.Create = nil }},
-		{"Cachesize", func(m *PageCacheModule) { m.Cachesize = nil }},
-		{"Pagecount", func(m *PageCacheModule) { m.Pagecount = nil }},
-		{"Fetch", func(m *PageCacheModule) { m.Fetch = nil }},
-		{"Unpin", func(m *PageCacheModule) { m.Unpin = nil }},
-		{"Truncate", func(m *PageCacheModule) { m.Truncate = nil }},
-		{"Destroy", func(m *PageCacheModule) { m.Destroy = nil }},
-	}
-	for _, tc := range required {
-		t.Run("missing/"+tc.name, func(t *testing.T) {
-			m := validModuleStub()
-			tc.zero(m)
-			err := RegisterPageCacheModule(m)
-			if err == nil ||
-				!strings.Contains(err.Error(), "PageCacheModule."+tc.name) {
-				t.Fatalf("RegisterPageCacheModule missing %s, err = %v, want mention of field",
-					tc.name, err)
-			}
-		})
-	}
-}
+type noopCache struct{}
 
-// TestRegisterPageCacheModuleLifecycle exercises the gate ordering between
-// RegisterPageCacheModule and the Open path. The subtests share pcacheState
-// and run in declaration order; once Lifecycle/TooLate flips the opened flag,
-// every other subtest in this file that calls RegisterPageCacheModule with a
-// valid module would also return ErrPageCacheTooLate, so the validation tests
-// live in their own function above and only this single function holds tests
-// that mutate the global lifecycle state.
-//
-// This test is intentionally structured as a single function: parallel
-// execution across separate top-level tests would race on pcacheState.
-func TestRegisterPageCacheModuleLifecycle(t *testing.T) {
-	// Confirm we are starting from a clean slate: if any earlier test in
-	// this run polluted pcacheState (e.g. by opening a connection), the
-	// rest of the lifecycle subtests would be meaningless. Skip rather
-	// than miss a regression.
+func (noopCache) SetSize(int)                  {}
+func (noopCache) PageCount() int               { return 0 }
+func (noopCache) Fetch(uint32, FetchMode) Page { return nil }
+func (noopCache) Unpin(Page, bool)             {}
+func (noopCache) Rekey(Page, uint32, uint32)   {}
+func (noopCache) Truncate(uint32)              {}
+func (noopCache) Destroy()                     {}
+func (noopCache) Shrink()                      {}
+
+// TestRegisterPageCacheLifecycle exercises the gate ordering
+// between RegisterPageCache and the Open path. The subtests share
+// pcacheState and must run before any sql.Open call in the same
+// process; they manipulate the gate flags directly so no real
+// sqlite3_config call commits during the test.
+func TestRegisterPageCacheLifecycle(t *testing.T) {
 	pcacheState.openGate.RLock()
 	registered := pcacheState.registered
 	opened := pcacheState.opened.Load()
 	pcacheState.openGate.RUnlock()
 	if registered != nil || opened {
 		t.Skip("pcacheState already polluted by an earlier test in this run; " +
-			"this lifecycle test must run before any sql.Open call. " +
-			"Move it earlier or run via go test -run TestRegisterPageCacheModuleLifecycle.")
+			"lifecycle test must run before any sql.Open call")
 	}
 
-	t.Run("DifferentPointersConflict", func(t *testing.T) {
-		// Two distinct *PageCacheModule values produce ErrPageCacheConflict
-		// once one of them is registered. We do not call Xsqlite3_config
-		// here because the gate check happens before configOnce.Do.
-		m1 := validModuleStub()
-		m2 := validModuleStub()
-		if m1 == m2 {
-			t.Fatal("validModuleStub returned the same pointer twice; invariant broken")
-		}
+	t.Run("DifferentValuesConflict", func(t *testing.T) {
+		// PageCache interface comparison uses underlying value
+		// equality. Two distinct *noopModulePtr addresses compare
+		// unequal; two struct-typed noopModule{} values with no fields
+		// compare equal, so we use pointer receivers here to model
+		// "two different impls registered". We bypass configOnce by
+		// writing to registered directly so the test does not commit
+		// a real install.
+		pm1 := &noopModulePtr{}
+		pm2 := &noopModulePtr{}
 
-		// Manually set the registered slot to m1 without going through the
-		// configOnce path. This isolates the conflict check from the real
-		// SQLite config call, which we cannot undo within a single process.
 		pcacheState.openGate.Lock()
 		if pcacheState.registered != nil {
 			pcacheState.openGate.Unlock()
-			t.Skip("registered slot was filled between Skip-guard and Lock; aborting")
+			t.Skip("registered slot filled before subtest")
 		}
-		pcacheState.registered = m1
+		pcacheState.registered = pm1
 		pcacheState.openGate.Unlock()
 		defer func() {
 			pcacheState.openGate.Lock()
@@ -209,26 +145,19 @@ func TestRegisterPageCacheModuleLifecycle(t *testing.T) {
 			pcacheState.openGate.Unlock()
 		}()
 
-		// Same pointer = no error.
-		if err := RegisterPageCacheModule(m1); err != nil {
-			t.Errorf("RegisterPageCacheModule(m1) second call err = %v, want nil (idempotent)", err)
+		if err := RegisterPageCache(pm1); err != nil {
+			t.Errorf("re-register same pointer err = %v, want nil", err)
 		}
-
-		// Different pointer = ErrPageCacheConflict.
-		err := RegisterPageCacheModule(m2)
-		if !errors.Is(err, ErrPageCacheConflict) {
-			t.Errorf("RegisterPageCacheModule(m2) err = %v, want ErrPageCacheConflict", err)
+		if err := RegisterPageCache(pm2); !errors.Is(err, ErrPageCacheConflict) {
+			t.Errorf("register different pointer err = %v, want ErrPageCacheConflict", err)
 		}
 	})
 
 	t.Run("TooLate", func(t *testing.T) {
-		// Simulate "a connection has been opened" by flipping the gate flag
-		// directly. We cannot easily undo this state within a process, so
-		// the subtest runs last in this function.
 		pcacheState.openGate.Lock()
 		if pcacheState.registered != nil {
 			pcacheState.openGate.Unlock()
-			t.Skip("registered slot was filled before TooLate subtest; aborting")
+			t.Skip("registered slot filled before subtest")
 		}
 		prevOpened := pcacheState.opened.Load()
 		pcacheState.opened.Store(true)
@@ -239,22 +168,17 @@ func TestRegisterPageCacheModuleLifecycle(t *testing.T) {
 			pcacheState.openGate.Unlock()
 		}()
 
-		err := RegisterPageCacheModule(validModuleStub())
-		if !errors.Is(err, ErrPageCacheTooLate) {
-			t.Errorf("RegisterPageCacheModule after Open err = %v, want ErrPageCacheTooLate", err)
+		if err := RegisterPageCache(noopModule{}); !errors.Is(err, ErrPageCacheTooLate) {
+			t.Errorf("RegisterPageCache after Open err = %v, want ErrPageCacheTooLate", err)
 		}
 	})
 
-	t.Run("TooLateIdempotentForSamePointer", func(t *testing.T) {
-		// A library that holds onto its module pointer and re-registers
-		// after Open should get a no-op success, not ErrPageCacheTooLate.
-		// This subtest uses the same flip-flag trick as TooLate above.
-		m := validModuleStub()
-
+	t.Run("TooLateIdempotentForSameValue", func(t *testing.T) {
+		m := &noopModulePtr{}
 		pcacheState.openGate.Lock()
 		if pcacheState.registered != nil {
 			pcacheState.openGate.Unlock()
-			t.Skip("registered slot was filled before idempotency subtest; aborting")
+			t.Skip("registered slot filled before subtest")
 		}
 		pcacheState.registered = m
 		prevOpened := pcacheState.opened.Load()
@@ -267,23 +191,28 @@ func TestRegisterPageCacheModuleLifecycle(t *testing.T) {
 			pcacheState.openGate.Unlock()
 		}()
 
-		if err := RegisterPageCacheModule(m); err != nil {
-			t.Errorf("re-register same pointer after Open err = %v, want nil", err)
+		if err := RegisterPageCache(m); err != nil {
+			t.Errorf("re-register same value after Open err = %v, want nil", err)
 		}
 	})
 }
 
-// TestOpenGateConcurrentReaders is a smoke test that the openGate RWMutex
-// does not deadlock under a fan of concurrent Open-side readers. It does
-// not exercise the Register-vs-Open race: a real Register call would
-// commit Xsqlite3_config, which is process-global and would break every
-// other test in the package. The Register-vs-Open ordering is exercised
-// indirectly by TestRegisterPageCacheModuleLifecycle/TooLate, which sets
-// the opened flag and then verifies Register sees it.
-//
-// What this test owns: many concurrent withOpenGate calls succeed without
-// races, every one of them flips opened to true, and the gate is free for
-// a subsequent Lock acquisition.
+// noopModulePtr has a token field so two &noopModulePtr{} composite
+// literals are guaranteed distinct addresses. Zero-size structs may
+// legally share addresses under the Go specification, which would
+// silently break the DifferentValuesConflict subtest.
+type noopModulePtr struct{ _ uint8 }
+
+func (*noopModulePtr) Create(int, int, bool) (Cache, error) { return noopCache{}, nil }
+
+// TestOpenGateConcurrentReaders is a smoke test that the openGate
+// RWMutex does not deadlock under a fan of concurrent Open-side
+// readers. It does not exercise the Register-vs-Open race: a real
+// Register call would commit Xsqlite3_config, which is process-global
+// and would break every other test in the package. The Register-vs-Open
+// ordering is exercised indirectly by
+// TestRegisterPageCacheLifecycle/TooLate, which sets the opened
+// flag and verifies Register sees it.
 func TestOpenGateConcurrentReaders(t *testing.T) {
 	const iterations = 32
 	const openers = 16
@@ -304,8 +233,6 @@ func TestOpenGateConcurrentReaders(t *testing.T) {
 		t.Fatal("pcacheState.opened is false after withOpenGate fan-out; gate is broken")
 	}
 
-	// Confirm Lock acquisition still completes promptly — a stuck reader
-	// would block this indefinitely and the test would time out.
 	done := make(chan struct{})
 	go func() {
 		pcacheState.openGate.Lock()
@@ -318,3 +245,38 @@ func TestOpenGateConcurrentReaders(t *testing.T) {
 		t.Fatal("Lock did not acquire within 5s after RLock fan-out; gate is stuck")
 	}
 }
+
+// TestPCacheIDGen exercises the bitset-backed ID allocator used by the
+// trampoline registry. The allocator is internal so the test reaches
+// for it directly; it is here rather than in a separate file so the
+// pcache feature stays self-contained.
+func TestPCacheIDGen(t *testing.T) {
+	var g pcacheIDGen
+	id1 := g.next()
+	id2 := g.next()
+	id3 := g.next()
+	if id1 == 0 || id2 == 0 || id3 == 0 {
+		t.Fatalf("next() returned reserved 0 sentinel: %d %d %d", id1, id2, id3)
+	}
+	if id1 == id2 || id1 == id3 || id2 == id3 {
+		t.Fatalf("next() returned duplicate IDs: %d %d %d", id1, id2, id3)
+	}
+	g.reclaim(id2)
+	id4 := g.next()
+	if id4 != id2 {
+		t.Errorf("next() after reclaim(id2) = %d, want %d (reclaimed slot)", id4, id2)
+	}
+}
+
+// An end-to-end test that actually opens a sqlite database and routes
+// it through a custom PageCache cannot live in this package: the
+// modernc.org/sqlite/vec package's init() calls
+// Xsqlite3_auto_extension, which itself calls Xsqlite3_initialize
+// (lib/sqlite_darwin_arm64.go: Xsqlite3_auto_extension), and vec is
+// loaded by vec_test.go in this same test binary. By the time any test
+// here runs, sqlite3_initialize has already fired and
+// Xsqlite3_config(SQLITE_CONFIG_PCACHE2) returns SQLITE_MISUSE. The
+// wiring has been exercised end-to-end by the maintainer with a
+// minimal page cache (see MR thread); we defer adding an in-tree
+// end-to-end test to a follow-up MR that can isolate the binary from
+// vec's init path.

@@ -66,7 +66,7 @@ func newConn(dsn string) (*conn, error) {
 	c := &conn{tls: libc.NewTLS()}
 	// The withOpenGate wrapper marks the page-cache opened flag and holds
 	// pcacheState.openGate.RLock for the duration of sqlite3_open_v2, so
-	// any concurrent RegisterPageCacheModule blocks until this Open
+	// any concurrent RegisterPageCache blocks until this Open
 	// completes. sqlite3_initialize fires implicitly inside openV2 the
 	// first time; after that point SQLITE_CONFIG_PCACHE2 can no longer be
 	// installed. See pagecache.go for the lifecycle contract.
