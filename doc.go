@@ -8,6 +8,17 @@
 // SQLite is an in-process implementation of a self-contained, serverless,
 // zero-configuration, transactional SQL database engine.
 //
+// # Pluggable page cache
+//
+// The package exposes a Go-facing wrapper for SQLite's
+// SQLITE_CONFIG_PCACHE2 mechanism. Applications can supply their own
+// page cache implementation by registering a [PageCache] before the
+// first [sql.Open] via [RegisterPageCache]. See the docstrings
+// on [PageCache], [Cache], and [Page] for the contract; the binding
+// owns the sqlite3_pcache_page stub on behalf of the implementation
+// and re-consults Cache.Fetch on every SQLite request, so a bounded
+// and evicting purgeable cache works as the C contract intends.
+//
 // # Fragile modernc.org/libc dependency
 //
 // When you import this package you should use in your go.mod file the exact
