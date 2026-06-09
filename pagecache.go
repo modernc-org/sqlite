@@ -65,9 +65,12 @@ type PageCache interface {
 	Create(pageSize, extraSize int, purgeable bool) (Cache, error)
 }
 
-// Cache is one database's worth of cached pages. Methods may be
-// invoked concurrently from multiple goroutines and MUST be threadsafe
-// (this build assumes SQLITE_THREADSAFE=1).
+// Cache is one database's worth of cached pages. All callbacks for a
+// single Cache are serialised by the SQLite engine: this driver opens
+// every connection SQLITE_OPEN_FULLMUTEX without shared-cache mode,
+// and database/sql never invokes one driver.Conn from two goroutines,
+// so an implementation does not need to synchronise per-Cache state
+// against concurrent calls.
 //
 // Implementations should NOT call RegisterPageCache directly or
 // transitively. Callbacks run under the openGate read lock that the
@@ -82,28 +85,22 @@ type Cache interface {
 	// unpinned combined).
 	PageCount() int
 
-	// Fetch returns the Page for key or nil per FetchMode. SQLite will
-	// call Fetch many times for the same key; the implementation MUST
-	// return a Page whose Buf() and Extra() pointer addresses are
-	// identical across calls for the same key until the binding signals
-	// eviction via Unpin(discard=true), a Truncate sweep covering the
-	// key, or Destroy on this cache.
+	// Fetch returns the Page for key or nil per FetchMode. The binding
+	// calls Fetch on every SQLite request and compares the returned
+	// Page to the value held under key from the previous Fetch; when
+	// they match (the cache retained the entry) the same
+	// sqlite3_pcache_page stub is handed back to SQLite, and when they
+	// differ the binding retires the stale stub and mints a new one.
+	// The implementation is therefore free to evict and re-allocate
+	// between Fetches without leaking a stale view to SQLite.
 	Fetch(key uint32, mode FetchMode) Page
 
 	// Unpin tells the cache that the engine is finished using the
-	// Page for now. If discard is true the implementation may release
-	// the underlying memory immediately; if discard is false the
-	// implementation MUST keep Buf() and Extra() valid at the same
-	// addresses until a subsequent eviction signal arrives (Unpin
-	// with discard=true, a Truncate covering the key, or Destroy).
-	//
-	// This is stricter than SQLite's xUnpin contract, which permits
-	// the cache to evict unpinned pages on its own. The binding
-	// caches the sqlite3_pcache_page stub per key and returns the
-	// same stub to SQLite on every subsequent Fetch without
-	// re-invoking Fetch, so an implementation that silently evicts
-	// on Unpin(discard=false) will hand SQLite a stub pointing at
-	// freed memory. SQLite never refcounts: one Unpin call is final
+	// Page for now. If discard is true SQLite has no further need
+	// for the page and the cache may release its memory; if discard
+	// is false the cache may retain the entry for reuse or release
+	// it at its discretion (the normal way to honour a bounded
+	// cache_size). SQLite never refcounts: one Unpin call is final
 	// regardless of how many Fetches preceded.
 	Unpin(p Page, discard bool)
 
@@ -131,22 +128,35 @@ type Cache interface {
 
 // Page is one cache entry. Buf and Extra return pointers into
 // implementation-owned memory that MUST remain valid and at the same
-// address from the Fetch that first returned the Page until the cache
-// signals eviction via Unpin(discard=true) on the same Page, a
-// Truncate(limit) covering its key, or Destroy on the owning cache.
+// addresses for the duration of the pin: from the Fetch that returned
+// the Page until the matching Unpin. While the page is unpinned the
+// implementation is free to release the memory; the next Fetch for
+// the same key will be consulted afresh and may return either the
+// same Page (memory retained) or a different one.
 //
-// The memory MUST be C-stable (libc.Xmalloc, runtime.Pinner-pinned
-// slices, or an off-heap allocator). Go-heap memory the GC can relocate
-// is forbidden: SQLite stores Buf and Extra addresses inside its own C
-// structures and dereferences them without GC barriers.
+// The memory MUST be off-heap: libc.Xmalloc, sqlite3_malloc, mmap, or
+// an equivalent allocator outside the Go heap. Go-heap memory is
+// forbidden, including memory pinned with runtime.Pinner: SQLite
+// stores Extra addresses inside its own C structures and performs
+// interior pointer arithmetic on them (it overlays PgHdr at the head
+// of Extra), which trips Go's checkptr enforcement under -race the
+// moment _sqlite3PcacheFetchFinish runs. Pinned slices preserve the
+// allocation but lose checkptr provenance through the binding's
+// unsafe.Pointer round-trip, so the failure surfaces only under the
+// race detector and not in normal test runs.
+//
+// Page values are compared by the binding to detect whether the
+// implementation retained or replaced the cached entry across a
+// Fetch cycle, so Page MUST be a comparable type. Pointer-backed
+// implementations (the natural shape) satisfy this automatically.
 //
 // Buf must be at least pageSize bytes and is where SQLite stores the
 // database page contents. Extra must be at least extraSize bytes (the
 // extraSize passed to PageCache.Create, which already includes
 // SQLite's PgHdr overhead) and is treated by SQLite as opaque scratch
-// space. Implementations should zero Extra on a freshly-allocated Page
-// so SQLite's PgHdr backpointer is read as null; the binding does not
-// touch Extra contents.
+// space. Implementations should zero Extra on a freshly-allocated
+// Page so SQLite's PgHdr backpointer is read as null; the binding
+// does not touch Extra contents.
 type Page interface {
 	Buf() unsafe.Pointer
 	Extra() unsafe.Pointer

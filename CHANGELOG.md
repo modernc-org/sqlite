@@ -1,5 +1,9 @@
 # Changelog
 
+ - TBC vNEXT:
+     - Add a Go-facing wrapper for `SQLITE_CONFIG_PCACHE2`. `PageCache` is the factory and `Cache` the per-database instance, both idiomatic Go interfaces; `Page` exposes the raw `Buf` and `Extra` pointers that SQLite reads through the C pcache contract. `RegisterPageCache` and `MustRegisterPageCache` install the module process-globally before the first `sql.Open`; subsequent Open calls are gated through a one-shot `Xsqlite3_config(SQLITE_CONFIG_PCACHE2)` so a too-late Register returns `ErrPageCacheTooLate` rather than silently falling through to the built-in pcache1. The binding owns the `sqlite3_pcache_page` stub and re-consults the implementation on every Fetch, reusing the stub only when the returned `Page` value is unchanged, which keeps a bounded/evicting purgeable cache safe by construction.
+     - See [GitLab merge request #126](https://gitlab.com/cznic/sqlite/-/merge_requests/126), thanks Ian Chechin!
+
  - 2026-06-06 v1.52.0:
      -  Upgrade to [SQLite 3.53.2](https://sqlite.org/releaselog/3_53_2.html).
      - Add `Backup.Remaining` and `Backup.PageCount`, thin wrappers around the existing `sqlite3_backup_remaining` and `sqlite3_backup_pagecount` C symbols. Together they expose the per-`Step` progress counters that the underlying backup object already maintains, enabling progress reporting during online backups without dropping to `modernc.org/sqlite/lib` directly.

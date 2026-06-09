@@ -33,11 +33,21 @@ import (
 //     same key return the same stub; this is the binding-side fix for
 //     the "stale pPgHdr->pPage" issue called out in MR #126's
 //     §2 design note.
-//   - The Page object the user returns from Cache.Fetch is held
-//     verbatim in the binding's byKey map. Buf() and Extra() are
-//     called only at stub-mint time; SQLite reads pBuf/pExtra
-//     directly from the stub on subsequent fetches, so the user impl
-//     does not pay for repeated interface dispatch on the hot path.
+//   - The Page object the user returns from Cache.Fetch is held in
+//     the binding's byStub map so a Page-identity comparison on the
+//     next Fetch for the same key can short-circuit stub reallocation
+//     when the impl retains the entry.
+//
+// Threading invariant: all Cache callbacks for a single pcacheBinding
+// are serialised by the SQLite engine. This driver opens every
+// connection SQLITE_OPEN_FULLMUTEX without shared-cache mode, and
+// database/sql never invokes one driver.Conn from two goroutines, so
+// the Cache instance returned by xCreate is only ever touched from
+// one goroutine at a time. The mutex on pcacheBinding protects the
+// maps against any future shared-cache mode and against the
+// cross-cache traffic that the package-global pcacheBindings
+// registry would otherwise impose; under the current invariant it is
+// uncontended.
 type pcacheBinding struct {
 	mu     sync.Mutex
 	cache  Cache
@@ -201,55 +211,78 @@ func pcacheTrampolinePagecount(tls *libc.TLS, pCache uintptr) int32 {
 	return int32(b.cache.PageCount())
 }
 
-// pcacheTrampolineFetch forwards xFetch and owns the
-// sqlite3_pcache_page stub identity. If the binding already has a
-// stub for this key it returns it without calling the user impl
-// (SQLite's contract requires identical pointer on re-fetch for the
-// same key). Otherwise it asks the user impl for a Page and mints a
-// fresh stub via libc.Xcalloc, copying Buf and Extra into the stub
-// once.
+// pcacheTrampolineFetch forwards xFetch to Cache.Fetch on every
+// request. SQLite does not require that re-fetches for the same key
+// return an identical sqlite3_pcache_page pointer:
+// _sqlite3PcacheFetchFinish keys off whether pPage->pExtra is already
+// initialised (PgHdr.pPage != 0); a fresh page (zeroed Extra) is just
+// re-initialised. So the binding asks the impl on every call and only
+// reuses the cached stub when the returned Page is the same value;
+// when the impl evicts and replaces the entry the stale stub is
+// retired and a fresh one minted.
+//
+// This makes a bounded, evicting purgeable cache (the normal way an
+// impl honours cache_size) safe by construction: an impl that drops
+// an entry on Unpin(discard=false) cannot leak a stale stub to
+// SQLite because the next Fetch reaches the impl, observes the
+// eviction (page == nil or a different Page), and the binding
+// updates its bookkeeping accordingly.
 func pcacheTrampolineFetch(tls *libc.TLS, pCache uintptr, key uint32, createFlag int32) uintptr {
 	b := lookupPcacheBinding(pCache)
 	if b == nil {
 		return pcacheNullStub
 	}
-	b.mu.Lock()
-	if stub, ok := b.byKey[key]; ok {
-		b.mu.Unlock()
-		return stub
-	}
-	b.mu.Unlock()
 	page := b.cache.Fetch(key, FetchMode(createFlag))
+
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	old, had := b.byKey[key]
+
 	if page == nil {
+		// Lookup miss, eviction, or OOM: retire any stale stub the
+		// binding still held for this key. The next Fetch with
+		// createFlag > 0 will re-allocate.
+		if had {
+			delete(b.byKey, key)
+			delete(b.byStub, old)
+			libc.Xfree(tls, old)
+		}
 		return pcacheNullStub
+	}
+	if had && b.byStub[old].page == page {
+		// Same Page value retained across the unpin/refetch cycle;
+		// reuse the existing stub. Buf and Extra addresses are stable
+		// while the page is pinned, which is exactly the window during
+		// which SQLite holds the stub pointer.
+		return old
+	}
+	if had {
+		// Page was replaced for this key (impl evicted and re-allocated
+		// fresh memory). Retire the stale stub before minting a new one;
+		// SQLite has already finished using the old stub by the time
+		// xUnpin returned.
+		delete(b.byStub, old)
+		libc.Xfree(tls, old)
 	}
 	stub := libc.Xcalloc(tls, 1, pcacheStubSize)
 	if stub == 0 {
+		delete(b.byKey, key)
 		return pcacheNullStub
 	}
-	stubFields := (*[2]uintptr)(unsafe.Pointer(stub))
-	stubFields[0] = uintptr(page.Buf())
-	stubFields[1] = uintptr(page.Extra())
-	b.mu.Lock()
-	// Re-check: another goroutine may have raced ahead while we were
-	// outside the lock. If so, drop our stub and return theirs.
-	if existing, ok := b.byKey[key]; ok {
-		b.mu.Unlock()
-		libc.Xfree(tls, stub)
-		return existing
-	}
+	f := (*[2]uintptr)(unsafe.Pointer(stub))
+	f[0], f[1] = uintptr(page.Buf()), uintptr(page.Extra())
 	b.byKey[key] = stub
 	b.byStub[stub] = pcacheEntry{page: page, key: key}
-	b.mu.Unlock()
 	return stub
 }
 
-// pcacheTrampolineUnpin forwards xUnpin to Cache.Unpin. When
-// discard is non-zero the entry is evicted: the user's Unpin is
-// invoked first, then the binding frees the stub and drops it from
-// both maps. When discard is zero the binding only forwards to the
-// user (the cache MAY retain the entry); the stub stays alive and
-// will be returned again on the next Fetch for the same key.
+// pcacheTrampolineUnpin forwards xUnpin to Cache.Unpin. When discard
+// is non-zero the binding evicts: it frees the stub after the user's
+// Unpin returns. When discard is zero the binding only forwards to
+// the user; the cache MAY release or retain the page and its memory
+// at its discretion. The next Fetch for the key consults the impl,
+// so a release between unpin and the next fetch is observed and
+// reflected in the binding's bookkeeping.
 func pcacheTrampolineUnpin(tls *libc.TLS, pCache, pPage uintptr, discard int32) {
 	b := lookupPcacheBinding(pCache)
 	if b == nil {
@@ -265,26 +298,17 @@ func pcacheTrampolineUnpin(tls *libc.TLS, pCache, pPage uintptr, discard int32) 
 	if discard == 0 {
 		return
 	}
-	// Re-check under the second lock acquisition before freeing:
-	// a concurrent Truncate covering entry.key could have already
-	// freed and deleted this stub between the first Unlock and now.
-	// Freeing twice would corrupt the libc allocator.
 	b.mu.Lock()
-	_, stillThere := b.byStub[pPage]
-	if stillThere {
-		delete(b.byKey, entry.key)
-		delete(b.byStub, pPage)
-	}
+	delete(b.byKey, entry.key)
+	delete(b.byStub, pPage)
 	b.mu.Unlock()
-	if stillThere {
-		libc.Xfree(tls, pPage)
-	}
+	libc.Xfree(tls, pPage)
 }
 
-// pcacheTrampolineRekey forwards xRekey to Cache.Rekey, then
-// updates the binding's byKey map so a subsequent Fetch for newKey
-// returns the same stub. If newKey already has a stub the spec
-// guarantees the colliding entry is unpinned; we evict it via libc.Xfree.
+// pcacheTrampolineRekey forwards xRekey to Cache.Rekey, then updates
+// the binding's byKey map so a subsequent Fetch for newKey returns
+// the same stub. If newKey already has a stub the spec guarantees
+// the colliding entry is unpinned; the binding retires it.
 func pcacheTrampolineRekey(tls *libc.TLS, pCache, pPage uintptr, oldKey, newKey uint32) {
 	b := lookupPcacheBinding(pCache)
 	if b == nil {
@@ -297,16 +321,8 @@ func pcacheTrampolineRekey(tls *libc.TLS, pCache, pPage uintptr, oldKey, newKey 
 		return
 	}
 	b.cache.Rekey(entry.page, oldKey, newKey)
-	// Re-check under the second lock acquisition before mutating: a
-	// concurrent Truncate covering oldKey could have already freed
-	// pPage and dropped it from byStub. Without the re-check we would
-	// resurrect the freed pointer into byKey/byStub and a subsequent
-	// Fetch would return a stub pointing at libc-freed memory.
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	if _, stillThere := b.byStub[pPage]; !stillThere {
-		return
-	}
 	if collider, ok := b.byKey[newKey]; ok && collider != pPage {
 		delete(b.byKey, newKey)
 		delete(b.byStub, collider)
