@@ -22,7 +22,13 @@ import (
 //     wrapper's footprint per insert,
 //   - HeapInuse before/after, which captures whether the wrapper or
 //     the Pool itself accumulates Go-heap garbage proportional to the
-//     workload size, and
+//     workload size,
+//   - easy-refusals/op, the number of FetchCreateEasy refusals at cap
+//     per insert. SQLite handles a refusal by spilling dirty pages and
+//     retrying with FetchCreateForce, so this is a direct proxy for the
+//     I/O pressure the strict Easy contract adds vs pcache1's
+//     recycle-without-spill behavior (raised by cznic in the !127
+//     review),
 //   - the Pool.Stats counters at the end, which show that the bounded
 //     cache stayed bounded (Allocs and Evictions are within an order
 //     of magnitude of each other, never one growing without the other).
@@ -78,6 +84,7 @@ func BenchmarkPoolBoundedCache(b *testing.B) {
 
 	b.ReportMetric(float64(delta.Allocs)/float64(b.N), "page-allocs/op")
 	b.ReportMetric(float64(delta.Evictions)/float64(b.N), "page-evictions/op")
+	b.ReportMetric(float64(delta.EasyRefusals)/float64(b.N), "easy-refusals/op")
 	b.ReportMetric(float64(memAfter.HeapInuse-memBefore.HeapInuse), "go-heap-inuse-delta-bytes")
 	b.Logf("pool delta over %d inserts: %+v", b.N, delta)
 }
@@ -131,6 +138,7 @@ func BenchmarkPoolEvictionChurn(b *testing.B) {
 	delta := statsDelta(baseline, poolUnderTest.Stats())
 	b.ReportMetric(float64(delta.Allocs)/float64(b.N), "page-allocs/op")
 	b.ReportMetric(float64(delta.Evictions)/float64(b.N), "page-evictions/op")
+	b.ReportMetric(float64(delta.EasyRefusals)/float64(b.N), "easy-refusals/op")
 	b.ReportMetric(float64(delta.Truncates)/float64(b.N), "truncates/op")
 	b.Logf("eviction-churn delta over %d cycles: %+v", b.N, delta)
 }

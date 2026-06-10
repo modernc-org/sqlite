@@ -58,13 +58,14 @@ import (
 // so a long-running process can observe hit/miss/eviction behaviour
 // through [Pool.Stats] without instrumenting individual caches.
 type Pool struct {
-	hits      atomic.Int64
-	misses    atomic.Int64
-	allocs    atomic.Int64
-	evictions atomic.Int64
-	rekeys    atomic.Int64
-	truncates atomic.Int64
-	caches    atomic.Int64
+	hits         atomic.Int64
+	misses       atomic.Int64
+	allocs       atomic.Int64
+	evictions    atomic.Int64
+	easyRefusals atomic.Int64
+	rekeys       atomic.Int64
+	truncates    atomic.Int64
+	caches       atomic.Int64
 }
 
 // New returns a Pool with empty counters. Multiple New values compare
@@ -74,10 +75,25 @@ func New() *Pool { return &Pool{} }
 // Stats is a snapshot of a Pool's lifetime counters. The counters are
 // monotonically non-decreasing across the lifetime of the Pool.
 type Stats struct {
-	Hits      int64 // Fetches that found an existing page
-	Misses    int64 // Fetches that did not find one
-	Allocs    int64 // Fresh page allocations from libc
-	Evictions int64 // LRU-driven page releases
+	Hits   int64 // Fetches that found an existing page
+	Misses int64 // Fetches that did not find one
+	Allocs int64 // Fresh page allocations from libc
+
+	// Evictions counts every page release through the standard
+	// per-page paths: LRU-tail eviction (FetchCreateForce at cap,
+	// SetSize shrink-to-target, Shrink) and Unpin(discard=true).
+	// It does NOT count bulk frees performed by Truncate, Rekey
+	// collisions, or Destroy.
+	Evictions int64
+
+	// EasyRefusals counts how often a FetchCreateEasy returned nil
+	// because the cache was at PRAGMA cache_size and an allocation
+	// would require eviction. SQLite handles a refusal by spilling
+	// dirty pages and retrying with FetchCreateForce, so this counter
+	// is a direct proxy for the I/O pressure the strict Easy contract
+	// adds vs pcache1's recycle-without-spill behavior at cap.
+	EasyRefusals int64
+
 	Rekeys    int64 // Rekey calls forwarded to the cache
 	Truncates int64 // Truncate calls forwarded to the cache
 	Caches    int64 // Caches created over the Pool's lifetime
@@ -86,13 +102,14 @@ type Stats struct {
 // Stats returns a snapshot of the Pool's lifetime counters.
 func (p *Pool) Stats() Stats {
 	return Stats{
-		Hits:      p.hits.Load(),
-		Misses:    p.misses.Load(),
-		Allocs:    p.allocs.Load(),
-		Evictions: p.evictions.Load(),
-		Rekeys:    p.rekeys.Load(),
-		Truncates: p.truncates.Load(),
-		Caches:    p.caches.Load(),
+		Hits:         p.hits.Load(),
+		Misses:       p.misses.Load(),
+		Allocs:       p.allocs.Load(),
+		Evictions:    p.evictions.Load(),
+		EasyRefusals: p.easyRefusals.Load(),
+		Rekeys:       p.rekeys.Load(),
+		Truncates:    p.truncates.Load(),
+		Caches:       p.caches.Load(),
 	}
 }
 
@@ -204,6 +221,7 @@ func (c *cache) Fetch(key uint32, mode sqlite.FetchMode) sqlite.Page {
 	}
 	if mode == sqlite.FetchCreateEasy {
 		if c.targetSize > 0 && len(c.pages) >= c.targetSize {
+			c.pool.easyRefusals.Add(1)
 			return nil
 		}
 	}
