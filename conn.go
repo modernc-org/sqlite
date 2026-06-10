@@ -797,17 +797,17 @@ func (c *conn) freeAllocs(allocs []uintptr) {
 // is passed as NULL because callers in this driver only need the side
 // effect on the connection, not the post-set value.
 //
-// The vararg payload is one int followed by one pointer; both slots are
-// pointer-sized so the layout is portable across the supported 32-/64-bit
-// targets. Returns the underlying SQLite result code (SQLITE_OK on
-// success).
+// The vararg payload is one int followed by one pointer. libc.VaList packs
+// every argument into a fixed 8-byte slot regardless of the target's pointer
+// width (an int is widened to 8 bytes), so the two-argument list needs 2*8
+// bytes. Returns the underlying SQLite result code (SQLITE_OK on success).
 func (c *conn) dbConfigBool(op int32, onoff bool) int32 {
 	var v int32
 	if onoff {
 		v = 1
 	}
-	const slot = unsafe.Sizeof(uintptr(0))
-	bp := libc.Xmalloc(c.tls, types.Size_t(2*slot))
+	const vaSlot = 8 // libc.VaList stride per argument, all targets
+	bp := libc.Xmalloc(c.tls, types.Size_t(2*vaSlot))
 	if bp == 0 {
 		return sqlite3.SQLITE_NOMEM
 	}
