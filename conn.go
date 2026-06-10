@@ -106,6 +106,15 @@ func newConn(dsn string) (*conn, error) {
 	defer libc.Xfree(c.tls, zMain)
 	c.inMemory = libc.GoString(sqlite3.Xsqlite3_db_filename(c.tls, c.db, zMain)) == ""
 
+	// _dqs is applied before applyQueryParams because the SQLite contract
+	// requires sqlite3_db_config(SQLITE_DBCONFIG_DQS_*) to be set before
+	// any statement is prepared on the connection. applyQueryParams runs
+	// user-supplied PRAGMA statements, so it must come after.
+	if err = applyDQSConfig(c, query); err != nil {
+		c.Close()
+		return nil, err
+	}
+
 	if err = applyQueryParams(c, query); err != nil {
 		c.Close()
 		return nil, err
@@ -780,6 +789,31 @@ func (c *conn) freeAllocs(allocs []uintptr) {
 	for _, v := range allocs {
 		c.free(v)
 	}
+}
+
+// dbConfigBool calls sqlite3_db_config with the (int onoff, int *pRes)
+// vararg form, used by the boolean-toggle ops such as
+// SQLITE_DBCONFIG_DQS_DDL / DQS_DML / ENABLE_FKEY / ENABLE_TRIGGER. pRes
+// is passed as NULL because callers in this driver only need the side
+// effect on the connection, not the post-set value.
+//
+// The vararg payload is one int followed by one pointer; both slots are
+// pointer-sized so the layout is portable across the supported 32-/64-bit
+// targets. Returns the underlying SQLite result code (SQLITE_OK on
+// success).
+func (c *conn) dbConfigBool(op int32, onoff bool) int32 {
+	var v int32
+	if onoff {
+		v = 1
+	}
+	const slot = unsafe.Sizeof(uintptr(0))
+	bp := libc.Xmalloc(c.tls, types.Size_t(2*slot))
+	if bp == 0 {
+		return sqlite3.SQLITE_NOMEM
+	}
+	defer libc.Xfree(c.tls, bp)
+	return sqlite3.Xsqlite3_db_config(c.tls, c.db, op,
+		libc.VaList(bp, v, uintptr(0)))
 }
 
 // C documentation

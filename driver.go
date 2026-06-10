@@ -87,6 +87,18 @@ func newDriver() *Driver { return d }
 // _txlock: The locking behavior to use when beginning a transaction. May be
 // "deferred" (the default), "immediate", or "exclusive" (case insensitive). See:
 // https://www.sqlite.org/lang_transaction.html#deferred_immediate_and_exclusive_transactions
+//
+// _dqs: Opt-in toggle for SQLite's double-quoted string literal
+// compatibility quirk on the connection. Accepts the values strconv.ParseBool
+// understands ("0"/"1", "false"/"true", "f"/"t", case-insensitive). When
+// absent or set to a true value, SQLite's built-in behavior is unchanged:
+// a double-quoted identifier that fails to resolve is silently
+// re-interpreted as a string literal. When set to a false value,
+// SQLITE_DBCONFIG_DQS_DDL and SQLITE_DBCONFIG_DQS_DML are both turned
+// off via sqlite3_db_config so that mistakes hidden by the legacy
+// fallback surface as a parse error instead. See:
+// https://www.sqlite.org/quirks.html#dblquote and
+// https://gitlab.com/cznic/sqlite/-/issues/61
 func (d *Driver) Open(name string) (conn driver.Conn, err error) {
 	if dmesgs {
 		defer func() {
