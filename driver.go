@@ -99,6 +99,22 @@ func newDriver() *Driver { return d }
 // fallback surface as a parse error instead. See:
 // https://www.sqlite.org/quirks.html#dblquote and
 // https://gitlab.com/cznic/sqlite/-/issues/61
+//
+// _error_rc: Opt-in error-string reporting mode for synthesised errors.
+// Accepts the values strconv.ParseBool understands ("0"/"1",
+// "false"/"true", "f"/"t", case-insensitive). When absent or set to a
+// false value, the legacy "errstr: errmsg (rc)" form is preserved
+// byte-for-byte: the canonical sqlite3_errstr(rc) and the connection's
+// sqlite3_errmsg(db) are concatenated even when the latter belongs to a
+// different operation, which can read as misleading on open-time
+// failures such as SQLITE_CANTOPEN reporting "out of memory". When set
+// to a true value, the appended errmsg is suppressed if
+// sqlite3_extended_errcode(db) is inconsistent with the operation rc
+// (full match first, primary code as fallback); in that case the
+// canonical errstr(rc) is used alone. The Code() returned by the
+// driver's *Error is unchanged in either mode. The parameter is parsed
+// before sqlite3_open_v2 so open-time errors are covered. See
+// https://gitlab.com/cznic/sqlite/-/issues/230.
 func (d *Driver) Open(name string) (conn driver.Conn, err error) {
 	if dmesgs {
 		defer func() {
