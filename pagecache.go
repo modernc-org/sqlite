@@ -224,10 +224,9 @@ func withOpenGate(fn func() error) error {
 // pcacheMethods2 is the Go view of the C sqlite3_pcache_methods2 struct
 // as cznic transpiles it. Every supported GOOS/GOARCH pair exports the
 // type with the same FiVersion/FpArg/FxInit/... field names; the per-arch
-// Go compiler emits the correct byte layout. The old-generator arches
-// (freebsd/386, freebsd/arm, netbsd/amd64) are not in build_all_targets
-// and do not currently build for unrelated upstream reasons, so no shim
-// is needed.
+// Go compiler emits the correct byte layout. The remaining old-generator
+// arches (freebsd/386, freebsd/arm) are not in build_all_targets and do
+// not currently build for unrelated upstream reasons, so no shim is needed.
 type pcacheMethods2 = sqlite3.Tsqlite3_pcache_methods2
 
 // RegisterPageCache installs m as the process-global SQLite page

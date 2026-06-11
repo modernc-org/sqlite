@@ -39,6 +39,7 @@ func main() {
 		{"linux", "ppc64le"},
 		{"linux", "riscv64"},
 		{"linux", "s390x"},
+		{"netbsd", "amd64"},
 		{"openbsd", "amd64"},
 		{"openbsd", "arm64"},
 		{"windows", "386"},
@@ -72,6 +73,15 @@ func main() {
 				adn := x.TypeSpecList.TypeSpec.(*gc.AliasDeclNode)
 				nm := adn.IDENT.Src()
 				taken[nm] = struct{}{}
+			case *gc.ConstDeclNode:
+				// Some targets (e.g. netbsd/amd64) emit spurious
+				// `const <typename> = 0` macro-eval artifacts that collide
+				// with the un-prefixed type alias generated below. Record
+				// const names so the colliding alias is skipped, leaving the
+				// const (harmless, unreferenced) as the sole declaration.
+				if y, ok := x.ConstSpec.(*gc.ConstSpecNode); ok {
+					taken[y.IDENT.Src()] = struct{}{}
+				}
 			}
 		}
 	loop:
@@ -140,6 +150,7 @@ type Sqlite3_vtab_cursor = sqlite3_vtab_cursor
 			{"linux", "ppc64le"},
 			{"linux", "riscv64"},
 			{"linux", "s390x"},
+			{"netbsd", "amd64"},
 			{"openbsd", "amd64"},
 			{"openbsd", "arm64"},
 			{"windows", "386"},
