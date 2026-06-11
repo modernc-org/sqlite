@@ -100,11 +100,12 @@ func BenchmarkPoolBoundedCache(b *testing.B) {
 // easy-refusals/op collapses to a fixed first-cycle cost divided
 // by b.N. The reportable evictions/op and easy-refusals/op are the
 // steady-state churn the binding handles per SQL statement under
-// cache pressure. xRekey coverage lives in the pool unit tests
-// (TestRekey, TestRekeyEvictsCollider) because the SQLite engine
-// only emits xRekey from a narrow set of b-tree rebalance paths
-// that are not reliably triggered by the SQL surface from a
-// benchmark.
+// cache pressure. The rotating-residue + matching-batch INSERT
+// pattern also reliably triggers the b-tree rebalance paths that
+// emit xRekey through the SQL surface (~13 Rekeys per cycle,
+// scaling linearly with b.N); the benchmark therefore complements
+// the dedicated xRekey unit tests (TestRekey, TestRekeyEvictsCollider)
+// rather than deferring to them.
 func BenchmarkPoolEvictionChurn(b *testing.B) {
 	path := filepath.Join(b.TempDir(), "churn.db")
 	db, err := sql.Open("sqlite", path)
