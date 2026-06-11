@@ -89,15 +89,22 @@ func BenchmarkPoolBoundedCache(b *testing.B) {
 	b.Logf("pool delta over %d inserts: %+v", b.N, delta)
 }
 
-// BenchmarkPoolEvictionChurn drives a delete/vacuum/insert cycle
-// against a small bounded cache so the LRU has to evict many times
-// the cache_size over the course of the run. The reportable
-// evictions/op is the steady-state churn the binding handles per
-// SQL statement under cache pressure. xRekey coverage lives in the
-// pool unit tests (TestRekey, TestRekeyEvictsCollider) because the
-// SQLite engine only emits xRekey from a narrow set of b-tree
-// rebalance paths that are not reliably triggered by the SQL surface
-// from a benchmark.
+// BenchmarkPoolEvictionChurn drives a rotating-residue
+// delete + vacuum + matching-batch insert cycle against a small
+// bounded cache so the LRU has to evict many times the cache_size
+// over the run. Cycle i deletes rows where k % 3 == i % 3, then
+// re-inserts a small batch of rows whose keys map back to that
+// residue so the next visit (three cycles later) finds rows to
+// scan. Without the rotation + re-insert the workload converges to
+// a no-op after the seed's k % 3 = 0 partition is drained, and
+// easy-refusals/op collapses to a fixed first-cycle cost divided
+// by b.N. The reportable evictions/op and easy-refusals/op are the
+// steady-state churn the binding handles per SQL statement under
+// cache pressure. xRekey coverage lives in the pool unit tests
+// (TestRekey, TestRekeyEvictsCollider) because the SQLite engine
+// only emits xRekey from a narrow set of b-tree rebalance paths
+// that are not reliably triggered by the SQL surface from a
+// benchmark.
 func BenchmarkPoolEvictionChurn(b *testing.B) {
 	path := filepath.Join(b.TempDir(), "churn.db")
 	db, err := sql.Open("sqlite", path)
@@ -112,26 +119,57 @@ func BenchmarkPoolEvictionChurn(b *testing.B) {
 		b.Fatalf("CREATE TABLE: %v", err)
 	}
 
-	// Seed enough rows to force the b-tree to grow.
+	const batchPerCycle = 200 // rows re-inserted into the just-cleared residue each cycle
+
+	// Seed three batches of batchPerCycle rows, one per residue class
+	// (k % 3 in {0, 1, 2}), so the first three cycles of the
+	// rotating-residue DELETE each remove a same-size partition. From
+	// cycle 0 forward, every cycle removes batchPerCycle rows and
+	// re-inserts batchPerCycle rows, keeping per-cycle work constant
+	// and the reported per-op metrics independent of b.N. Without
+	// the constant per-cycle work, the seed's k % 3 = 0 partition
+	// would drain on cycle 0 and easy-refusals/op would collapse to
+	// a fixed first-cycle cost divided by b.N.
 	blob := make([]byte, 256)
-	for i := 0; i < 2000; i++ {
-		if _, err := db.Exec(`INSERT INTO r(v) VALUES (?)`, blob); err != nil {
-			b.Fatalf("seed[%d]: %v", i, err)
+	var seedKey int64
+	for residue := int64(0); residue < 3; residue++ {
+		for j := 0; j < batchPerCycle; j++ {
+			seedKey++
+			for seedKey%3 != residue {
+				seedKey++
+			}
+			if _, err := db.Exec(`INSERT INTO r(k, v) VALUES (?, ?)`, seedKey, blob); err != nil {
+				b.Fatalf("seed[%d,%d]: %v", residue, j, err)
+			}
 		}
 	}
 
 	baseline := poolUnderTest.Stats()
+	nextKey := seedKey + 1
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		if _, err := db.Exec(`DELETE FROM r WHERE k % 3 = 0`); err != nil {
+		residue := int64(i % 3)
+		if _, err := db.Exec(`DELETE FROM r WHERE k % 3 = ?`, residue); err != nil {
 			b.Fatalf("DELETE[%d]: %v", i, err)
 		}
 		if _, err := db.Exec(`PRAGMA incremental_vacuum`); err != nil {
 			b.Fatalf("vacuum[%d]: %v", i, err)
 		}
-		if _, err := db.Exec(`INSERT INTO r(v) VALUES (?)`, blob); err != nil {
-			b.Fatalf("INSERT[%d]: %v", i, err)
+		// Re-insert batchPerCycle rows whose keys land in the
+		// just-cleared residue, in a fresh disjoint range. The next
+		// time this residue rotates around (three cycles later) the
+		// DELETE finds these rows and the spill pressure recurs,
+		// keeping EasyRefusals scaling with b.N rather than capping
+		// at the seed's one-time first-cycle cost.
+		for j := 0; j < batchPerCycle; j++ {
+			for nextKey%3 != residue {
+				nextKey++
+			}
+			if _, err := db.Exec(`INSERT INTO r(k, v) VALUES (?, ?)`, nextKey, blob); err != nil {
+				b.Fatalf("INSERT[%d,%d]: %v", i, j, err)
+			}
+			nextKey += 3
 		}
 	}
 	b.StopTimer()

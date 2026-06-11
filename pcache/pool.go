@@ -81,7 +81,9 @@ type Stats struct {
 
 	// Evictions counts every page release through the standard
 	// per-page paths: LRU-tail eviction (FetchCreateForce at cap,
-	// SetSize shrink-to-target, Shrink) and Unpin(discard=true).
+	// SetSize shrink-to-target, Shrink, and Unpin(discard=false)
+	// trimming back to target after a FetchCreateForce overcommit)
+	// and Unpin(discard=true).
 	// It does NOT count bulk frees performed by Truncate, Rekey
 	// collisions, or Destroy.
 	Evictions int64
