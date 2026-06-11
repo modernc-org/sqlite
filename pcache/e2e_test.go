@@ -200,6 +200,116 @@ func TestPoolMultipleDatabases(t *testing.T) {
 	}
 }
 
+// TestSharedCacheTwoConns_Integrity exercises the cache=shared
+// invariant the per-cache sync.Mutex was added to defend. Two sql.Conn
+// values opened against the same cache=shared URI share one engine
+// pCache* and therefore one of our cache instances; concurrent
+// writers from two goroutines (each on its own pinned Conn) drive
+// concurrent Fetch / Unpin / Rekey / Truncate callbacks into that
+// shared cache. PRAGMA integrity_check on a third connection at the
+// end verifies the database is well-formed.
+//
+// The substantive assertion is that this test runs cleanly under
+// -race. Without the per-cache mutex the Go race detector reports
+// false-positive races on cache.pages / page.pinned / page.lruElem
+// even though SQLite's BtShared mutex already serialises the
+// callbacks; with the mutex the detector sees the happens-before
+// edge and the run is clean. See sharing.go for the design notes.
+func TestSharedCacheTwoConns_Integrity(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipped under -short; this test drives concurrent writers and is meant for the full + -race runs")
+	}
+	// Shared cache + WAL on a real file. SQLite shares one pCache*
+	// across every connection opened against the same URI when
+	// cache=shared is in the query string and the path is otherwise
+	// identical, so both db.Conn() calls below feed into one Cache.
+	dbPath := filepath.Join(t.TempDir(), "shared.db")
+	dsn := "file:" + dbPath + "?cache=shared&_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)"
+	db, err := sql.Open("sqlite", dsn)
+	if err != nil {
+		t.Fatalf("sql.Open: %v", err)
+	}
+	defer db.Close()
+
+	if _, err := db.Exec(`CREATE TABLE t (k INTEGER PRIMARY KEY, v BLOB)`); err != nil {
+		t.Fatalf("CREATE TABLE: %v", err)
+	}
+
+	const (
+		writers      = 2
+		rowsPerLoop  = 200
+		writerLoops  = 3 // total per-writer = rowsPerLoop * writerLoops = 600
+		blobBytes    = 64
+		cacheSizePgs = 16
+	)
+
+	errs := make(chan error, writers)
+	for w := 0; w < writers; w++ {
+		w := w
+		go func() {
+			conn, err := db.Conn(t.Context())
+			if err != nil {
+				errs <- fmt.Errorf("writer[%d] Conn: %w", w, err)
+				return
+			}
+			defer conn.Close()
+			if _, err := conn.ExecContext(t.Context(),
+				fmt.Sprintf(`PRAGMA cache_size=%d`, cacheSizePgs)); err != nil {
+				errs <- fmt.Errorf("writer[%d] cache_size: %w", w, err)
+				return
+			}
+			blob := make([]byte, blobBytes)
+			for loop := 0; loop < writerLoops; loop++ {
+				for i := 0; i < rowsPerLoop; i++ {
+					blob[0] = byte(loop)
+					blob[1] = byte(w)
+					blob[2] = byte(i)
+					if _, err := conn.ExecContext(t.Context(),
+						`INSERT INTO t(v) VALUES (?)`, blob); err != nil {
+						errs <- fmt.Errorf("writer[%d] loop[%d] INSERT[%d]: %w",
+							w, loop, i, err)
+						return
+					}
+				}
+				if _, err := conn.ExecContext(t.Context(),
+					`DELETE FROM t WHERE k % 7 = ?`, int64(w)); err != nil {
+					errs <- fmt.Errorf("writer[%d] loop[%d] DELETE: %w",
+						w, loop, err)
+					return
+				}
+			}
+			errs <- nil
+		}()
+	}
+	for w := 0; w < writers; w++ {
+		if err := <-errs; err != nil {
+			t.Fatalf("writer: %v", err)
+		}
+	}
+
+	// integrity_check on a fresh connection: this is the
+	// gold-standard "the cache did not silently corrupt anything"
+	// assertion. It iterates every page and reports problems by
+	// name, so a single "ok" row means clean.
+	rows, err := db.Query(`PRAGMA integrity_check`)
+	if err != nil {
+		t.Fatalf("integrity_check: %v", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var line string
+		if err := rows.Scan(&line); err != nil {
+			t.Fatalf("integrity_check Scan: %v", err)
+		}
+		if line != "ok" {
+			t.Errorf("integrity_check: %q", line)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("integrity_check Err: %v", err)
+	}
+}
+
 // statsDelta returns the field-wise difference between two Stats
 // snapshots. Counters are monotonic, so every field is >= 0.
 func statsDelta(before, after pcache.Stats) pcache.Stats {
