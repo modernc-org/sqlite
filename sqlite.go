@@ -174,6 +174,36 @@ func applyDQSConfig(c *conn, query string) error {
 	return nil
 }
 
+// getErrorRcMode reads the _error_rc DSN query parameter and returns
+// the parsed boolean. Called from newConn before sqlite3_open_v2 so
+// open-time failures get the conditional errmsg treatment too: the
+// temporary db handle that openV2 may leave behind on failure carries
+// a stale errmsg from earlier initialisation, and the legacy
+// "errstr: errmsg" form surfaces that as a misleading message.
+//
+// Absent parameter or false value preserves the SQLite-default error
+// reporting byte-for-byte (legacy behavior). A true value switches
+// the connection into the conditional mode described on
+// errstrForDB. An unparseable value is reported as a descriptive
+// error.
+//
+// See #230.
+func getErrorRcMode(query string) (bool, error) {
+	q, err := url.ParseQuery(query)
+	if err != nil {
+		return false, err
+	}
+	v := q.Get("_error_rc")
+	if v == "" {
+		return false, nil
+	}
+	on, err := strconv.ParseBool(v)
+	if err != nil {
+		return false, fmt.Errorf("invalid _error_rc value %q: %w", v, err)
+	}
+	return on, nil
+}
+
 func applyQueryParams(c *conn, query string) error {
 	q, err := url.ParseQuery(query)
 	if err != nil {
