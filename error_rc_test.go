@@ -110,6 +110,70 @@ func TestErrorRcSyntaxErrorPreservesErrmsg(t *testing.T) {
 	}
 }
 
+// TestErrstrForDBSuppressOnMismatch pins the _error_rc=1 conditional
+// suppress branch deterministically by calling errstrForDB with a
+// healthy db handle (sqlite3_extended_errcode = SQLITE_OK,
+// sqlite3_errmsg = "not an error") and a deliberately mismatched
+// rc = SQLITE_CANTOPEN, so the new behavior is verified without
+// relying on a host-specific open-time failure path. In legacy mode
+// the formatter appends the handle's stale "not an error" as the
+// helpful detail; in _error_rc=1 mode the conditional suppress
+// branch fires and the canonical errstr(rc) is used alone.
+// Code() returns SQLITE_CANTOPEN in both modes.
+func TestErrstrForDBSuppressOnMismatch(t *testing.T) {
+	c, err := newConn(":memory:")
+	if err != nil {
+		t.Fatalf("newConn: %v", err)
+	}
+	defer c.Close()
+
+	const mismatchedRc = int32(sqlite3.SQLITE_CANTOPEN)
+
+	cases := []struct {
+		name        string
+		errorRcMode bool
+		mustHave    []string
+		mustNotHave []string
+	}{
+		{
+			name:        "legacy_mode_appends_errmsg",
+			errorRcMode: false,
+			mustHave:    []string{"unable to open database file", "not an error"},
+			mustNotHave: nil,
+		},
+		{
+			name:        "error_rc_mode_suppresses_errmsg",
+			errorRcMode: true,
+			mustHave:    []string{"unable to open database file"},
+			mustNotHave: []string{"not an error"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := errstrForDB(c.tls, mismatchedRc, c.db, tc.errorRcMode)
+			var sqlErr *Error
+			if !errors.As(got, &sqlErr) {
+				t.Fatalf("expected *Error, got %T (%v)", got, got)
+			}
+			if sqlErr.Code() != sqlite3.SQLITE_CANTOPEN {
+				t.Errorf("Code() = %d, want SQLITE_CANTOPEN (%d)",
+					sqlErr.Code(), sqlite3.SQLITE_CANTOPEN)
+			}
+			low := strings.ToLower(sqlErr.Error())
+			for _, s := range tc.mustHave {
+				if !strings.Contains(low, s) {
+					t.Errorf("error %q missing %q", sqlErr, s)
+				}
+			}
+			for _, s := range tc.mustNotHave {
+				if strings.Contains(low, s) {
+					t.Errorf("error %q must not contain %q", sqlErr, s)
+				}
+			}
+		})
+	}
+}
+
 // TestErrorRcInvalidValue surfaces an unparseable _error_rc value at
 // newConn rather than silently ignoring it.
 func TestErrorRcInvalidValue(t *testing.T) {

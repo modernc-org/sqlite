@@ -181,8 +181,8 @@ func applyDQSConfig(c *conn, query string) error {
 // a stale errmsg from earlier initialisation, and the legacy
 // "errstr: errmsg" form surfaces that as a misleading message.
 //
-// Absent parameter or true value preserves the SQLite-default error
-// reporting byte-for-byte (legacy behavior). A false value switches
+// Absent parameter or false value preserves the SQLite-default error
+// reporting byte-for-byte (legacy behavior). A true value switches
 // the connection into the conditional mode described on
 // errstrForDB. An unparseable value is reported as a descriptive
 // error.
