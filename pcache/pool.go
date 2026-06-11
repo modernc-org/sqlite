@@ -128,6 +128,45 @@ type cache struct {
 	// absent from the list and have a nil lruElem.
 	lru       *list.List
 	destroyed bool
+
+	inflight int32 // PROBE ONLY: goroutines currently inside a method of this cache
+}
+
+// PROBE ONLY (experiment, not for merge). The probe uses atomics only —
+// it adds NO mutual exclusion — so it measures whether two goroutines
+// actually execute this cache's callbacks at the same time, independent
+// of the race detector and of any lock. ProbeMaxInflight stays 1 iff the
+// callbacks are genuinely serialised (e.g. by SQLite's BtShared mutex);
+// a value >1 would be hard proof of real concurrent entry.
+//
+// Note: because these atomics touch a shared location on entry/exit,
+// they incidentally give the race detector a happens-before edge it
+// otherwise lacks for libc's pthread mutex — so running the probe build
+// under -race SILENCES the (false-positive) report. Read ProbeMaxInflight
+// without -race; the number, not the detector, is the evidence.
+var (
+	ProbeMaxInflight      int32
+	ProbeConcurrentEvents int64
+)
+
+// ResetProbe zeroes the probe counters; call at the start of a probe test.
+func ResetProbe() {
+	atomic.StoreInt32(&ProbeMaxInflight, 0)
+	atomic.StoreInt64(&ProbeConcurrentEvents, 0)
+}
+
+func (c *cache) probeEnter() func() {
+	n := atomic.AddInt32(&c.inflight, 1)
+	if n > 1 {
+		atomic.AddInt64(&ProbeConcurrentEvents, 1)
+	}
+	for {
+		m := atomic.LoadInt32(&ProbeMaxInflight)
+		if n <= m || atomic.CompareAndSwapInt32(&ProbeMaxInflight, m, n) {
+			break
+		}
+	}
+	return func() { atomic.AddInt32(&c.inflight, -1) }
 }
 
 // page is one cached entry. It is comparable via *page identity, which
@@ -158,6 +197,7 @@ func (p *page) Extra() unsafe.Pointer { return unsafe.Pointer(p.extra) }
 // new target is below the current count. A zero or negative target is
 // treated as "unbounded" and disables eviction-on-trim.
 func (c *cache) SetSize(n int) {
+	defer c.probeEnter()()
 	if n < 0 {
 		n = 0
 	}
@@ -167,7 +207,7 @@ func (c *cache) SetSize(n int) {
 
 // PageCount returns the total number of pages held, pinned plus
 // unpinned.
-func (c *cache) PageCount() int { return len(c.pages) }
+func (c *cache) PageCount() int { defer c.probeEnter()(); return len(c.pages) }
 
 // Fetch implements the [sqlite.Cache] Fetch contract.
 //
@@ -184,6 +224,7 @@ func (c *cache) PageCount() int { return len(c.pages) }
 // overcommits and returns a fresh page; pcache1 behaves identically
 // and SQLite needs the page to make forward progress.
 func (c *cache) Fetch(key uint32, mode sqlite.FetchMode) sqlite.Page {
+	defer c.probeEnter()()
 	if c.destroyed {
 		return nil
 	}
@@ -232,6 +273,7 @@ func (c *cache) Fetch(key uint32, mode sqlite.FetchMode) sqlite.Page {
 // is only ever called with discard=true in practice, so this branch
 // is a safety net rather than a hot path.
 func (c *cache) Unpin(pg sqlite.Page, discard bool) {
+	defer c.probeEnter()()
 	if c.destroyed {
 		return
 	}
@@ -254,6 +296,7 @@ func (c *cache) Unpin(pg sqlite.Page, discard bool) {
 // moment of the call; the cache discards it here so the binding's
 // stale-stub bookkeeping has nothing left to point at.
 func (c *cache) Rekey(pg sqlite.Page, oldKey, newKey uint32) {
+	defer c.probeEnter()()
 	if c.destroyed {
 		return
 	}
@@ -274,6 +317,7 @@ func (c *cache) Rekey(pg sqlite.Page, oldKey, newKey uint32) {
 // entry whose key is greater than or equal to limit is released,
 // including pinned entries.
 func (c *cache) Truncate(limit uint32) {
+	defer c.probeEnter()()
 	if c.destroyed {
 		return
 	}
@@ -290,6 +334,7 @@ func (c *cache) Truncate(limit uint32) {
 // from the binding become no-ops. The parent binding will not call
 // any other method after Destroy.
 func (c *cache) Destroy() {
+	defer c.probeEnter()()
 	if c.destroyed {
 		return
 	}
@@ -311,6 +356,7 @@ func (c *cache) Destroy() {
 // Shrink drops every unpinned page, regardless of targetSize. SQLite
 // uses this as a memory-pressure hint.
 func (c *cache) Shrink() {
+	defer c.probeEnter()()
 	if c.destroyed {
 		return
 	}
