@@ -60,3 +60,32 @@ Examples
   - Module reads the file header to compute columns, declares them via `ctx.Declare("CREATE TABLE csv_users(name, email, ...)")`, and streams rows via a cursor.
 
 See `vtab` package docs for full API details.
+
+Generated sources (deduplication)
+---------------------------------
+
+The transpiled SQLite C amalgamation in `lib/` and the `sqlite-vec` extension in
+`vec/` ship one generated Go file per `GOOS`/`GOARCH`. Declarations that are
+byte-identical across targets are folded into build-tagged shared files —
+`lib/sqlite.go` plus `lib/sqlite_g_<hex>.go` (and `vec/vec.go` plus
+`vec/vec_g_<hex>.go`) — by [`modernc.org/undup`](https://gitlab.com/cznic/undup),
+wired into `make vendor`. Go's build constraints make every target compile exactly
+the same set of declarations as before, so this is purely a packaging change: it
+keeps each tag's module download well under Go's 500&nbsp;MB cap and does not
+affect the public API or behavior.
+
+To read or debug a single target's full, self-contained generated source, expand
+the tree back to one complete file per target:
+
+```sh
+go run modernc.org/undup@v0.0.5 -expand -dir lib   # writes full lib/sqlite_<goos>_<goarch>.go
+go run modernc.org/undup@v0.0.5 -expand -dir vec   # writes full vec/vec_<goos>_<goarch>.go
+```
+
+This removes the shared `*_g_*.go` files and rewrites each
+`*_<goos>_<goarch>.go` as a standalone file — convenient for grepping, reading, or
+stepping through one platform's code. Restore the committed, deduplicated form
+with `git checkout -- lib vec`, or re-fold in place with
+`go run modernc.org/undup@v0.0.5 -dir lib` (and `-dir vec`). Hand-written platform
+files (`libsqlite3_*.go`, `hooks_*.go`, …) carry no generated-code marker and are
+never touched by either step.

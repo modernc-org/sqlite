@@ -4,6 +4,11 @@
 
 .PHONY:	all build_all_targets clean edit editor test vendor work
 
+# Pinned deduplicator. undup folds byte-identical declarations shared across the
+# per-target generated files in lib/ and vec/ into build-tagged shared files,
+# keeping each tag's module download under Go's 500MB cap. Bump deliberately.
+UNDUP = modernc.org/undup@v0.0.5
+
 all: editor
 	golint 2>&1
 	staticcheck 2>&1
@@ -67,9 +72,19 @@ test:
 	go test -v -timeout 24h
 	
 vendor:
+	# Reconstruct full per-target files (a no-op the first time), so the freshly
+	# vendored transpiles overwrite a clean tree with no stale shared files.
+	go run $(UNDUP) -expand -dir lib
+	go run $(UNDUP) -expand -dir vec
 	cd vendor_libs && go build -o ../vendor main.go
 	./vendor
 	rm -f vendor
+	# Fold byte-identical declarations back into build-tagged shared files. undup
+	# only touches files carrying the generated-code marker, never hand-written
+	# platform files (libsqlite3_*.go, hooks_*.go, ...).
+	go run $(UNDUP) -dir lib
+	go run $(UNDUP) -dir vec
+	gofmt -s -w lib/sqlite*.go vec/vec*.go
 	make build_all_targets
 
 work:
