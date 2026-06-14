@@ -71,7 +71,6 @@ vendor:
 	./vendor
 	rm -f vendor
 	make build_all_targets
-	make build_all_targets
 
 work:
 	rm -f go.work*
