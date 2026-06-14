@@ -13256,7 +13256,10 @@ func init() {
 //	** Initialize the mutex system.
 //	*/
 var mu sync.Mutex
- func _sqlite3MutexInit(tls *libc.TLS) (r int32) { mu.Lock(); defer mu.Unlock();
+
+func _sqlite3MutexInit(tls *libc.TLS) (r int32) {
+	mu.Lock()
+	defer mu.Unlock()
 	var pFrom, pTo uintptr
 	var rc int32
 	_, _, _ = pFrom, pTo, rc
@@ -214414,7 +214417,7 @@ func _fts5UpdateMethod(tls *libc.TLS, pVtab uintptr, nArg int32, apVal uintptr, 
 				pStorage = (*TFts5FullTable)(unsafe.Pointer(pTab)).FpStorage
 				iOld = Xsqlite3_value_int64(tls, **(**uintptr)(__ccgo_up(apVal)))        /* Old rowid */
 				iNew1 = Xsqlite3_value_int64(tls, **(**uintptr)(__ccgo_up(apVal + 1*8))) /* New rowid */
-				**(**int32)(__ccgo_up(bp + 4)) = 0                                        /* Content only update */
+				**(**int32)(__ccgo_up(bp + 4)) = 0                                       /* Content only update */
 				/* If this is a contentless table (including contentless_unindexed=1
 				 ** tables), check if the UPDATE may proceed.  */
 				if _fts5IsContentless(tls, pTab, int32(1)) != 0 {
