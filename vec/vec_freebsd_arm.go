@@ -838,16 +838,6 @@ const m_LDBL_MIN_10_EXP = "DBL_MIN_10_EXP"
 
 const m_LDBL_MIN_EXP = "DBL_MIN_EXP"
 
-const m_SQLITE_SCM_DATETIME = "2026-05-05T10:34:17.344Z"
-
-const m_SQLITE_SCM_TAGS = "release version-3.53.1"
-
-const m_SQLITE_SOURCE_ID = "2026-05-05 10:34:17 c88b22011a54b4f6fbd149e9f8e4de77658ce58143a1af0e3785e4e6475127e9"
-
-const m_SQLITE_VERSION = "3.53.1"
-
-const m_SQLITE_VERSION_NUMBER = 3053001
-
 const m___ARM_ARCH = 7
 
 const m___ARM_ARCH_7A__ = 1
