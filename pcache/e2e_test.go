@@ -99,8 +99,10 @@ func TestPoolRoundTripIntegrity(t *testing.T) {
 	}
 
 	// Delete half the rows and run incremental_vacuum so the b-tree
-	// rearranges. This was the workload that previously exercised the
-	// xRekey path 15 times on cznic's harness.
+	// rearranges. The DELETE + incremental_vacuum pattern is the same
+	// shape as cznic's !127 validation harness; xRekey is exercised in
+	// the unit tests (TestRekey, TestRekeyEvictsCollider) because the
+	// SQL surface here does not reliably emit it.
 	if _, err := conn.ExecContext(t.Context(), `DELETE FROM t WHERE k % 2 = 0`); err != nil {
 		t.Fatalf("DELETE: %v", err)
 	}
@@ -204,12 +206,13 @@ func TestPoolMultipleDatabases(t *testing.T) {
 // snapshots. Counters are monotonic, so every field is >= 0.
 func statsDelta(before, after pcache.Stats) pcache.Stats {
 	return pcache.Stats{
-		Hits:      after.Hits - before.Hits,
-		Misses:    after.Misses - before.Misses,
-		Allocs:    after.Allocs - before.Allocs,
-		Evictions: after.Evictions - before.Evictions,
-		Rekeys:    after.Rekeys - before.Rekeys,
-		Truncates: after.Truncates - before.Truncates,
-		Caches:    after.Caches - before.Caches,
+		Hits:         after.Hits - before.Hits,
+		Misses:       after.Misses - before.Misses,
+		Allocs:       after.Allocs - before.Allocs,
+		Evictions:    after.Evictions - before.Evictions,
+		EasyRefusals: after.EasyRefusals - before.EasyRefusals,
+		Rekeys:       after.Rekeys - before.Rekeys,
+		Truncates:    after.Truncates - before.Truncates,
+		Caches:       after.Caches - before.Caches,
 	}
 }

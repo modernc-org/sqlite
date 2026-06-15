@@ -89,16 +89,29 @@ func TestNonPurgeableDropsOnUnpin(t *testing.T) {
 }
 
 func TestEasyHonoursCacheSize(t *testing.T) {
-	_, c := pcacheCreate(t, true)
+	pool, c := pcacheCreate(t, true)
 	c.SetSize(2)
 	a := c.Fetch(1, sqlite.FetchCreateForce)
 	b := c.Fetch(2, sqlite.FetchCreateForce)
 	if a == nil || b == nil {
 		t.Fatal("setup: failed to allocate two pages within targetSize")
 	}
-	// At cap with both pinned. Easy must refuse to allocate a third.
+	// At cap with both pinned. Easy must refuse to allocate a third,
+	// and the refusal must increment Stats.EasyRefusals so the
+	// benchmark can surface I/O-pressure proxies for the strict
+	// at-cap behavior (cznic note on !127).
 	if pg := c.Fetch(3, sqlite.FetchCreateEasy); pg != nil {
 		t.Errorf("FetchCreateEasy at cap returned %v, want nil", pg)
+	}
+	if got := pool.Stats().EasyRefusals; got != 1 {
+		t.Errorf("Stats.EasyRefusals after one Easy refusal = %d, want 1", got)
+	}
+	// A second Easy refusal at cap accumulates.
+	if pg := c.Fetch(4, sqlite.FetchCreateEasy); pg != nil {
+		t.Errorf("FetchCreateEasy at cap (second call) returned %v, want nil", pg)
+	}
+	if got := pool.Stats().EasyRefusals; got != 2 {
+		t.Errorf("Stats.EasyRefusals after two Easy refusals = %d, want 2", got)
 	}
 	// Force at cap with everything pinned: overcommit (matches pcache1).
 	if pg := c.Fetch(3, sqlite.FetchCreateForce); pg == nil {
