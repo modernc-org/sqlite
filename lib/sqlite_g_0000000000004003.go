@@ -4,10 +4,6 @@
 
 package sqlite3
 
-import (
-	"modernc.org/libc"
-)
-
 const CHARCLASS_NAME_MAX = 14
 
 const COLL_WEIGHTS_MAX = 2
@@ -54,8 +50,6 @@ type Tidtype_t = int32
 
 type Tkauth_cred_t = uintptr
 
-type Tsuseconds_t = int32
-
 type Tswblk_t = int32
 
 type Tttysize = struct {
@@ -73,36 +67,9 @@ const _POSIX2_VERSION = 200112
 
 const _POSIX_THREAD_KEYS_MAX = 128
 
-const _POSIX_VERSION = 200112
-
 const _P_ALL = 0
 
 const _P_PID = 1
-
-// C documentation
-//
-//	/*
-//	** Find the current time (in Universal Coordinated Time).  Write into *piNow
-//	** the current time and date as a Julian Day number times 86_400_000.  In
-//	** other words, write into *piNow the number of milliseconds since the Julian
-//	** epoch of noon in Greenwich on November 24, 4714 B.C according to the
-//	** proleptic Gregorian calendar.
-//	**
-//	** On success, return SQLITE_OK.  Return SQLITE_ERROR if the time and date
-//	** cannot be found.
-//	*/
-func _unixCurrentTimeInt64(tls *libc.TLS, NotUsed uintptr, piNow uintptr) (r int32) {
-	bp := tls.Alloc(16)
-	defer tls.Free(16)
-	var rc int32
-	var _ /* sNow at bp+0 */ Ttimeval
-	_ = rc
-	rc = SQLITE_OK
-	libc.Xgettimeofday(tls, bp, uintptr(0)) /* Cannot fail given valid arguments */
-	**(**Tsqlite3_int64)(__ccgo_up(piNow)) = _unixEpoch + int64(1000)*int64((**(**Ttimeval)(__ccgo_up(bp))).Ftv_sec) + int64((**(**Ttimeval)(__ccgo_up(bp))).Ftv_usec/int32(1000))
-	_ = NotUsed
-	return rc
-}
 
 type exception = Texception
 

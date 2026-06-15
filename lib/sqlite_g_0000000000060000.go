@@ -77711,11 +77711,6 @@ type Ttimeb = struct {
 
 type Ttimecaps_tag = TTIMECAPS
 
-type Ttimespec = struct {
-	Ftv_sec  Ttime_t
-	Ftv_nsec int32
-}
-
 type Ttimeval = struct {
 	Ftv_sec  int32
 	Ftv_usec int32

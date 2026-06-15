@@ -3408,8 +3408,6 @@ type Trslvmulti_req = struct {
 	Fllsa uintptr
 }
 
-type Trune_t = int32
-
 type Trusage = struct {
 	Fru_utime    Ttimeval
 	Fru_stime    Ttimeval
@@ -8982,14 +8980,6 @@ const __ILP32_OFF32 = -1
 
 const __ILP32_OFFBIG = -1
 
-const __INT_FAST64_FMTd__ = "lld"
-
-const __INT_FAST64_FMTi__ = "lli"
-
-const __INT_LEAST64_FMTd__ = "lld"
-
-const __INT_LEAST64_FMTi__ = "lli"
-
 const __INT_LEAST64_MAX = 9223372036854775807
 
 const __INT_LEAST64_MIN = -9223372036854775808
@@ -9491,22 +9481,6 @@ const __TVOS_9_0 = 90000
 const __TVOS_9_1 = 90100
 
 const __TVOS_9_2 = 90200
-
-const __UINT_FAST64_FMTX__ = "llX"
-
-const __UINT_FAST64_FMTo__ = "llo"
-
-const __UINT_FAST64_FMTu__ = "llu"
-
-const __UINT_FAST64_FMTx__ = "llx"
-
-const __UINT_LEAST64_FMTX__ = "llX"
-
-const __UINT_LEAST64_FMTo__ = "llo"
-
-const __UINT_LEAST64_FMTu__ = "llu"
-
-const __UINT_LEAST64_FMTx__ = "llx"
 
 const __UINT_LEAST64_MAX = 18446744073709551615
 
@@ -104733,8 +104707,6 @@ type rslvmulti_req = Trslvmulti_req
 const ru_first = 0
 
 const ru_last = 0
-
-type rune_t = Trune_t
 
 type rusage = Trusage
 

@@ -61,8 +61,6 @@ type Tmax_align_t = struct {
 
 type Tptrdiff_t = int32
 
-type Trsize_t = uint32
-
 type Ttime_t = int32
 
 // C documentation
@@ -5395,28 +5393,6 @@ const m_FP_NAN = 0x0100
 const m_FP_NORMAL = 0x0400
 
 const m_FP_ZERO = 0x4000
-
-const m_PRIXPTR = "X"
-
-const m_PRIdPTR = "d"
-
-const m_PRIiPTR = "i"
-
-const m_PRIoPTR = "o"
-
-const m_PRIuPTR = "u"
-
-const m_PRIxPTR = "x"
-
-const m_SCNdPTR = "d"
-
-const m_SCNiPTR = "i"
-
-const m_SCNoPTR = "o"
-
-const m_SCNuPTR = "u"
-
-const m_SCNxPTR = "x"
 
 const m_SSIZE_MAX = "INT_MAX"
 

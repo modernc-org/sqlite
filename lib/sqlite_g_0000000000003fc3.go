@@ -15,8 +15,6 @@ type Tiovec = struct {
 	Fiov_len  Tsize_t
 }
 
-type Tkey_t = int32
-
 const USE_PREAD = 1
 
 const WNOHANG = 1

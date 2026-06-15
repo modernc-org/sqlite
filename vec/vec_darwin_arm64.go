@@ -64,8 +64,6 @@ const m___ARM_FEATURE_SHA512 = 1
 
 const m___ARM_NEON_SVE_BRIDGE = 1
 
-const m___ARM_NEON__ = 1
-
 const m___DARWIN_ONLY_64_BIT_INO_T = 1
 
 const m___DARWIN_ONLY_VERS_1050 = 1

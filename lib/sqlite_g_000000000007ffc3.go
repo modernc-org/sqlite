@@ -4,15 +4,7 @@
 
 package sqlite3
 
-import (
-	"modernc.org/libc"
-)
-
 const MB_CUR_MAX = 0
-
-const SIG_ATOMIC_MAX = 2147483647
-
-const SIG_ATOMIC_MIN = -2147483648
 
 var _aBase = [27]Tu64{
 	0:  uint64(0x8000000000000000),
@@ -71,29 +63,6 @@ var _aScale = [26]Tu64{
 	23: uint64(0xf24a01a73cf2dccf),
 	24: uint64(0xc3b8358109e84f07),
 	25: uint64(0x9e19db92b4e31ba9),
-}
-
-// C documentation
-//
-//	/*
-//	** Two inputs are multiplied to get a 128-bit result.  Write the
-//	** lower 64-bits of the result into *pLo, and return the high-order
-//	** 64 bits.
-//	*/
-func _sqlite3Multiply128(tls *libc.TLS, a Tu64, b Tu64, pLo uintptr) (r Tu64) {
-	var a0, a0b0, a0b1, a1, a1b0, a1b1, b0, b1, t Tu64
-	_, _, _, _, _, _, _, _, _ = a0, a0b0, a0b1, a1, a1b0, a1b1, b0, b1, t
-	a0 = uint64(uint32(a))
-	a1 = a >> int32(32)
-	b0 = uint64(uint32(b))
-	b1 = b >> int32(32)
-	a0b0 = a0 * b0
-	a1b1 = a1 * b1
-	a0b1 = a0 * b1
-	a1b0 = a1 * b0
-	t = a0b0>>libc.Int32FromInt32(32) + uint64(uint32(a0b1)) + uint64(uint32(a1b0))
-	**(**Tu64)(__ccgo_up(pLo)) = a0b0&uint64(0xffffffff) | t<<libc.Int32FromInt32(32)
-	return a1b1 + a0b1>>libc.Int32FromInt32(32) + a1b0>>libc.Int32FromInt32(32) + t>>libc.Int32FromInt32(32)
 }
 
 type uint_fast64_t = Tuint_fast64_t

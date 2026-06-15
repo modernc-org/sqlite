@@ -29,7 +29,9 @@ func main() {
 	for _, v := range []struct{ goos, goarch string }{
 		{"darwin", "amd64"},
 		{"darwin", "arm64"},
+		{"freebsd", "386"},
 		{"freebsd", "amd64"},
+		{"freebsd", "arm"},
 		{"freebsd", "arm64"},
 		{"linux", "386"},
 		{"linux", "amd64"},
@@ -140,7 +142,9 @@ type Sqlite3_vtab_cursor = sqlite3_vtab_cursor
 		for _, v := range []struct{ goos, goarch string }{
 			{"darwin", "amd64"},
 			{"darwin", "arm64"},
+			{"freebsd", "386"},
 			{"freebsd", "amd64"},
+			{"freebsd", "arm"},
 			{"freebsd", "arm64"},
 			{"linux", "386"},
 			{"linux", "amd64"},

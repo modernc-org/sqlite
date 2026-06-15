@@ -103,8 +103,6 @@ type Trlimit = struct {
 	Frlim_max Trlim_t
 }
 
-type Trune_t = int32
-
 type Trusage = struct {
 	Fru_utime    Ttimeval
 	Fru_stime    Ttimeval
@@ -5618,14 +5616,6 @@ const m___ENVIRONMENT_MAC_OS_X_VERSION_MIN_REQUIRED__ = 260000
 
 const m___ENVIRONMENT_OS_VERSION_MIN_REQUIRED__ = 260000
 
-const m___INT_FAST64_FMTd__ = "lld"
-
-const m___INT_FAST64_FMTi__ = "lli"
-
-const m___INT_LEAST64_FMTd__ = "lld"
-
-const m___INT_LEAST64_FMTi__ = "lli"
-
 const m___INT_LEAST64_MAX = "INT64_MAX"
 
 const m___INT_LEAST64_MIN = "INT64_MIN"
@@ -6128,27 +6118,7 @@ const m___TVOS_9_1 = 90100
 
 const m___TVOS_9_2 = 90200
 
-const m___UINT_FAST64_FMTX__ = "llX"
-
-const m___UINT_FAST64_FMTo__ = "llo"
-
-const m___UINT_FAST64_FMTu__ = "llu"
-
-const m___UINT_FAST64_FMTx__ = "llx"
-
-const m___UINT_FAST64_MAX__ = "18446744073709551615U"
-
-const m___UINT_LEAST64_FMTX__ = "llX"
-
-const m___UINT_LEAST64_FMTo__ = "llo"
-
-const m___UINT_LEAST64_FMTu__ = "llu"
-
-const m___UINT_LEAST64_FMTx__ = "llx"
-
 const m___UINT_LEAST64_MAX = "UINT64_MAX"
-
-const m___UINT_LEAST64_MAX__ = "18446744073709551615U"
 
 const m___VERSION__ = "Apple LLVM 21.0.0 (clang-2100.0.123.102)"
 
@@ -6386,8 +6356,6 @@ type off_t = Toff_t
 type proc_rlimit_control_wakeupmon = Tproc_rlimit_control_wakeupmon
 
 type rlimit = Trlimit
-
-type rune_t = Trune_t
 
 type rusage = Trusage
 

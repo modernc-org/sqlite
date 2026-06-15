@@ -13,5 +13,3 @@ const __SSE2__ = 1
 const __SSE_MATH__ = 1
 
 const __SSE__ = 1
-
-const __code_model_small__ = 1

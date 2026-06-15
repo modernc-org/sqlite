@@ -10,14 +10,10 @@ const __ARM_FEATURE_DIRECTED_ROUNDING = 1
 
 const __ARM_FEATURE_DIV = 1
 
-const __ARM_FEATURE_LDREX = 15
-
 const __ARM_NEON_FP = 14
 
 const __ARM_STATE_ZA = 1
 
 const __ARM_STATE_ZT0 = 1
-
-const __BITINT_MAXWIDTH__ = 128
 
 const __HAVE_FUNCTION_MULTI_VERSIONING = 1

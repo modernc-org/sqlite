@@ -14,8 +14,6 @@ const __ARM_ARCH = 8
 
 const __ARM_ARCH_ISA_A64 = 1
 
-const __ARM_ARCH_PROFILE = 65
-
 const __ARM_FEATURE_FMA = 1
 
 const __ARM_FEATURE_IDIV = 1
@@ -23,12 +21,6 @@ const __ARM_FEATURE_IDIV = 1
 const __ARM_FEATURE_NUMERIC_MAXMIN = 1
 
 const __ARM_FP = 14
-
-const __ARM_FP16_ARGS = 1
-
-const __ARM_FP16_FORMAT_IEEE = 1
-
-const __ARM_NEON = 1
 
 const __ARM_PCS_AAPCS64 = 1
 

@@ -11,8 +11,6 @@ import (
 	libsqlite3 "modernc.org/sqlite/lib"
 )
 
-type T___wchar_t = uint32
-
 func Xvec0Filter_knn_chunks_iter(tls *libc.TLS, p uintptr, stmtChunks uintptr, vector_column uintptr, vectorColumnIdx int32, arrayRowidsIn uintptr, aMetadataIn uintptr, idxStr uintptr, argc int32, argv uintptr, queryVector uintptr, k Ti64, out_topk_rowids uintptr, out_topk_distances uintptr, out_used uintptr) (r int32) {
 	bp := tls.Alloc(192)
 	defer tls.Free(192)
@@ -902,8 +900,6 @@ func _vec_normalize(tls *libc.TLS, context uintptr, argc int32, argv uintptr) {
 	(*(*func(*libc.TLS, uintptr))(unsafe.Pointer(bp + 16)))(tls, **(**uintptr)(__ccgo_up(bp)))
 }
 
-const m_CHAR_MAX = "UCHAR_MAX"
-
 const m_LDBL_DECIMAL_DIG = 36
 
 const m_LDBL_DIG = 33
@@ -917,14 +913,6 @@ const m_LDBL_MAX = "1.189731495357231765085759326628007016E+4932"
 const m_LDBL_MIN = 3.362103143112093506262677817321752603e-4932
 
 const m_LDBL_TRUE_MIN = 6.475175119438025110924438958227646552e-4966
-
-const m___WCHAR_MAX = "__UINT_MAX"
-
-const m___WCHAR_MAX__ = 4294967295
-
-const m___WCHAR_MIN = 0
-
-const m___WCHAR_UNSIGNED__ = 1
 
 type t__mbstate_t = struct {
 	F_mbstateL  [0]t__int64_t

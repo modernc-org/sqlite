@@ -44,16 +44,4 @@ const _POSIX_V7_ILP32_OFF32 = -1
 
 const _XOPEN_CRYPT = 1
 
-const __INT64_FMTd__ = "lld"
-
-const __INT64_FMTi__ = "lli"
-
 const __STDC_NO_THREADS__ = 1
-
-const __UINT64_FMTX__ = "llX"
-
-const __UINT64_FMTo__ = "llo"
-
-const __UINT64_FMTu__ = "llu"
-
-const __UINT64_FMTx__ = "llx"

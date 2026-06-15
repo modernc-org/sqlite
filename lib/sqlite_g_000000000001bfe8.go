@@ -4,14 +4,4 @@
 
 package sqlite3
 
-const FP_INFINITE = 1
-
-const RTLD_LOCAL = 0
-
 type Tsuseconds_t = int64
-
-const _POSIX_VERSION = 200809
-
-const __unix = 1
-
-const unix = 1

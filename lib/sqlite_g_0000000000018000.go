@@ -2883,10 +2883,6 @@ const _STACKALIGNBYTES = 15
 
 const _XOPEN_UUCP = -1
 
-const __INTMAX_FMTd__ = "lld"
-
-const __INTMAX_FMTi__ = "lli"
-
 const __INT_FAST16_MAX = 2147483647
 
 const __INT_FAST16_MIN = -2147483648
@@ -2912,14 +2908,6 @@ const __NBBY = 8
 const __OpenBSD__ = 1
 
 const __PIE__ = 1
-
-const __UINTMAX_FMTX__ = "llX"
-
-const __UINTMAX_FMTo__ = "llo"
-
-const __UINTMAX_FMTu__ = "llu"
-
-const __UINTMAX_FMTx__ = "llx"
 
 const __UINT_FAST16_MAX = 4294967295
 
@@ -40376,8 +40364,6 @@ type t__rlim_t = uint64
 type t__sFstub = struct {
 	F_stub int64
 }
-
-type t__segsz_t = int32
 
 type t__tfork = struct {
 	Ftf_tcb   uintptr

@@ -298,8 +298,6 @@ type T_dl_info = TDl_info
 
 type Taccmode_t = uint32
 
-type Tclock_t = uint32
-
 type Tfd_set = struct {
 	Ffds_bits [8]t__fd_mask
 }

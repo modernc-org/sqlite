@@ -1215,8 +1215,6 @@ type max_align_t = Tmax_align_t
 
 type qdiv_t = Tqdiv_t
 
-type t__fd_mask = uint32
-
 type t__in_addr_t = uint32
 
 type t__in_port_t = uint16

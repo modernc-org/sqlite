@@ -22,13 +22,7 @@ const TABLDISC = 3
 
 type Trlim_t = uint64
 
-type Tsegsz_t = int32
-
 const _POSIX_THREAD_SAFE_FUNCTIONS = 200112
-
-const __const = 0
-
-const __signed = 0
 
 // C documentation
 //
