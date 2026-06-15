@@ -41,6 +41,7 @@ package pcache
 
 import (
 	"container/list"
+	"sync"
 	"sync/atomic"
 	"unsafe"
 
@@ -131,10 +132,42 @@ func (p *Pool) Create(pageSize, extraSize int, purgeable bool) (sqlite.Cache, er
 	}, nil
 }
 
-// cache is one Pool-issued per-database cache. All methods run
-// single-goroutine under the parent package's invariant; no
-// per-instance synchronisation is required.
+// cache is one Pool-issued per-database cache.
+//
+// Without SQLite's shared-cache mode every method on a given cache
+// runs single-goroutine under the parent package's invariant (every
+// connection is opened SQLITE_OPEN_FULLMUTEX, no shared cache is
+// enabled at the engine level, and database/sql never uses one
+// driver.Conn from two goroutines), so no per-instance synchronisation
+// is needed for correctness.
+//
+// Under cache=shared, the engine reuses one pCache* across every
+// Btree opened against the same shared-cache scope. SQLite serialises
+// those calls internally through sqlite3BtreeEnter on a shared BtShared
+// mutex, so the impl never actually races; verified empirically with a
+// lock-free in-flight probe (max-in-flight = 1 on the canonical two-
+// connection workload, 4 on a positive control with goroutines hitting
+// the cache directly). But the Go race detector does not recognise
+// SQLite's libc mutex as a happens-before edge and flags the Fetch
+// vs Unpin reads/writes on pinned and lruElem as false-positive
+// data races.
+//
+// mu serialises every public method on the cache. It is always
+// taken, regardless of whether the parent connection opted into
+// shared-cache mode, because the binding has no signal to switch on
+// at Pool.Create time. The lock is uncontended on the common
+// non-shared-cache path (where SQLite's own invariants already
+// guarantee single-goroutine access), so the cost is one
+// uncontended atomic CAS per callback - negligible next to the
+// SQLite work the callback bookends. The win is that pcache users
+// who also opt into cache=shared and run their test suite under
+// -race see -race-clean behaviour rather than spurious DATA RACE
+// failures; the alternative would be to either document the false
+// positive or refuse to serve a shared-cache parent connection at
+// Create, both worse trade-offs.
 type cache struct {
+	mu sync.Mutex
+
 	pool                *Pool
 	pageSize, extraSize int
 	purgeable           bool
@@ -177,6 +210,8 @@ func (p *page) Extra() unsafe.Pointer { return unsafe.Pointer(p.extra) }
 // new target is below the current count. A zero or negative target is
 // treated as "unbounded" and disables eviction-on-trim.
 func (c *cache) SetSize(n int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	if n < 0 {
 		n = 0
 	}
@@ -186,7 +221,11 @@ func (c *cache) SetSize(n int) {
 
 // PageCount returns the total number of pages held, pinned plus
 // unpinned.
-func (c *cache) PageCount() int { return len(c.pages) }
+func (c *cache) PageCount() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return len(c.pages)
+}
 
 // Fetch implements the [sqlite.Cache] Fetch contract.
 //
@@ -203,6 +242,8 @@ func (c *cache) PageCount() int { return len(c.pages) }
 // overcommits and returns a fresh page; pcache1 behaves identically
 // and SQLite needs the page to make forward progress.
 func (c *cache) Fetch(key uint32, mode sqlite.FetchMode) sqlite.Page {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	if c.destroyed {
 		return nil
 	}
@@ -252,6 +293,8 @@ func (c *cache) Fetch(key uint32, mode sqlite.FetchMode) sqlite.Page {
 // is only ever called with discard=true in practice, so this branch
 // is a safety net rather than a hot path.
 func (c *cache) Unpin(pg sqlite.Page, discard bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	if c.destroyed {
 		return
 	}
@@ -274,6 +317,8 @@ func (c *cache) Unpin(pg sqlite.Page, discard bool) {
 // moment of the call; the cache discards it here so the binding's
 // stale-stub bookkeeping has nothing left to point at.
 func (c *cache) Rekey(pg sqlite.Page, oldKey, newKey uint32) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	if c.destroyed {
 		return
 	}
@@ -294,6 +339,8 @@ func (c *cache) Rekey(pg sqlite.Page, oldKey, newKey uint32) {
 // entry whose key is greater than or equal to limit is released,
 // including pinned entries.
 func (c *cache) Truncate(limit uint32) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	if c.destroyed {
 		return
 	}
@@ -310,6 +357,8 @@ func (c *cache) Truncate(limit uint32) {
 // from the binding become no-ops. The parent binding will not call
 // any other method after Destroy.
 func (c *cache) Destroy() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	if c.destroyed {
 		return
 	}
@@ -331,6 +380,8 @@ func (c *cache) Destroy() {
 // Shrink drops every unpinned page, regardless of targetSize. SQLite
 // uses this as a memory-pressure hint.
 func (c *cache) Shrink() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	if c.destroyed {
 		return
 	}
