@@ -5,11 +5,13 @@
 package pcache_test
 
 import (
+	"context"
 	"database/sql"
 	"path/filepath"
 	"runtime"
 	"testing"
 
+	"modernc.org/sqlite"
 	"modernc.org/sqlite/pcache"
 )
 
@@ -180,6 +182,117 @@ func BenchmarkPoolEvictionChurn(b *testing.B) {
 	b.ReportMetric(float64(delta.EasyRefusals)/float64(b.N), "easy-refusals/op")
 	b.ReportMetric(float64(delta.Truncates)/float64(b.N), "truncates/op")
 	b.Logf("eviction-churn delta over %d cycles: %+v", b.N, delta)
+}
+
+// dbStatus reads one per-connection counter through the parent package's
+// [sqlite.DBStatus] escape hatch. The benchmark uses it to read the real
+// pager-level CACHE_SPILL / CACHE_WRITE counters instead of the in-package
+// EasyRefusals proxy.
+func dbStatus(b *testing.B, conn *sql.Conn, op sqlite.DBStatusOp) int {
+	b.Helper()
+	var cur int
+	if err := conn.Raw(func(dc any) error {
+		s, ok := dc.(sqlite.DBStatus)
+		if !ok {
+			b.Fatalf("driver conn does not implement sqlite.DBStatus")
+		}
+		c, _, err := s.Status(op, false)
+		cur = c
+		return err
+	}); err != nil {
+		b.Fatalf("db_status(%d): %v", op, err)
+	}
+	return cur
+}
+
+// BenchmarkPoolSpillIO measures the pool's real I/O pressure under the
+// rotating-residue eviction-churn workload by reading SQLite's pager-level
+// counters (SQLITE_DBSTATUS_CACHE_SPILL, _CACHE_WRITE, _CACHE_HIT,
+// _CACHE_MISS) through the parent package's sqlite.DBStatus API, rather than
+// the in-package EasyRefusals proxy that BenchmarkPoolEvictionChurn reports.
+//
+// cache-spill/op and cache-write/op are the numbers that actually answer the
+// "does the strict Easy contract cost extra I/O vs pcache1" question cznic
+// raised on the !127 review: they are maintained identically by the pager for
+// pcache1 and the pool, so they are a genuine apples-to-apples measure.
+//
+// To produce the pcache1 baseline, run this same workload in a sibling
+// working tree whose test binary does not import this package, so the parent
+// driver falls back to the in-engine pcache1; registration is process-global
+// and one-shot, so the two caches cannot be compared in a single process. The
+// MR description carries the side-by-side numbers; this benchmark is the
+// reproducer for the pool side.
+//
+// The workload runs on a single pinned *sql.Conn so PRAGMA cache_size and the
+// per-connection db_status counters refer to the same connection.
+func BenchmarkPoolSpillIO(b *testing.B) {
+	path := filepath.Join(b.TempDir(), "spillio.db")
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		b.Fatalf("Open: %v", err)
+	}
+	defer db.Close()
+
+	conn, err := db.Conn(context.Background())
+	if err != nil {
+		b.Fatalf("Conn: %v", err)
+	}
+	defer conn.Close()
+
+	exec := func(q string, args ...any) {
+		if _, err := conn.ExecContext(context.Background(), q, args...); err != nil {
+			b.Fatalf("exec %q: %v", q, err)
+		}
+	}
+	exec(`PRAGMA cache_size=16`)
+	exec(`PRAGMA auto_vacuum=incremental`)
+	exec(`CREATE TABLE r (k INTEGER PRIMARY KEY, v BLOB)`)
+
+	const batchPerCycle = 200
+
+	blob := make([]byte, 256)
+	var seedKey int64
+	for residue := int64(0); residue < 3; residue++ {
+		for j := 0; j < batchPerCycle; j++ {
+			seedKey++
+			for seedKey%3 != residue {
+				seedKey++
+			}
+			exec(`INSERT INTO r(k, v) VALUES (?, ?)`, seedKey, blob)
+		}
+	}
+
+	spill0 := dbStatus(b, conn, sqlite.DBStatusCacheSpill)
+	write0 := dbStatus(b, conn, sqlite.DBStatusCacheWrite)
+	hit0 := dbStatus(b, conn, sqlite.DBStatusCacheHit)
+	miss0 := dbStatus(b, conn, sqlite.DBStatusCacheMiss)
+
+	nextKey := seedKey + 1
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		residue := int64(i % 3)
+		exec(`DELETE FROM r WHERE k % 3 = ?`, residue)
+		exec(`PRAGMA incremental_vacuum`)
+		for j := 0; j < batchPerCycle; j++ {
+			for nextKey%3 != residue {
+				nextKey++
+			}
+			exec(`INSERT INTO r(k, v) VALUES (?, ?)`, nextKey, blob)
+			nextKey += 3
+		}
+	}
+	b.StopTimer()
+
+	spill := dbStatus(b, conn, sqlite.DBStatusCacheSpill) - spill0
+	write := dbStatus(b, conn, sqlite.DBStatusCacheWrite) - write0
+	hit := dbStatus(b, conn, sqlite.DBStatusCacheHit) - hit0
+	miss := dbStatus(b, conn, sqlite.DBStatusCacheMiss) - miss0
+	b.ReportMetric(float64(spill)/float64(b.N), "cache-spill/op")
+	b.ReportMetric(float64(write)/float64(b.N), "cache-write/op")
+	b.ReportMetric(float64(hit)/float64(b.N), "cache-hit/op")
+	b.ReportMetric(float64(miss)/float64(b.N), "cache-miss/op")
+	b.Logf("pager-counter deltas over %d cycles: spill=%d write=%d hit=%d miss=%d",
+		b.N, spill, write, hit, miss)
 }
 
 // statsDelta is defined in e2e_test.go; same package.
