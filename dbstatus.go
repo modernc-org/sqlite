@@ -19,20 +19,25 @@ import (
 // semantics.
 type DBStatusOp int32
 
-// DBStatus* are the operations accepted by [DBStatus.Status]. They fall into
-// three families that report their value differently:
+// DBStatus* are the operations accepted by [DBStatus.Status]. They report
+// their value differently depending on the op:
 //
-//   - Memory high-water ops (DBStatusLookasideUsed, DBStatusCacheUsed,
-//     DBStatusSchemaUsed, DBStatusStmtUsed, DBStatusCacheUsedShared): current
-//     is the bytes in use now; high is the high-water mark. The reset flag
-//     rebases the high-water mark to current (where SQLite tracks one).
+//   - DBStatusLookasideUsed: current is the lookaside memory in use now; high
+//     is its high-water mark. The reset flag rebases the high-water mark to
+//     current. This is the only op that maintains a high-water mark.
+//   - Memory-usage ops (DBStatusCacheUsed, DBStatusSchemaUsed,
+//     DBStatusStmtUsed, DBStatusCacheUsedShared): current is the bytes in use
+//     now; high is always 0; the reset flag is ignored.
 //   - Running-counter ops (DBStatusCacheHit, DBStatusCacheMiss,
-//     DBStatusCacheWrite, DBStatusCacheSpill, DBStatusDeferredFKs): current
-//     is the cumulative count; high is always 0. The reset flag zeroes
-//     current.
+//     DBStatusCacheWrite, DBStatusCacheSpill, DBStatusTempbufSpill): current
+//     is the cumulative count (bytes spilled, for DBStatusTempbufSpill); high
+//     is always 0. The reset flag zeroes current.
 //   - Lookaside event ops (DBStatusLookasideHit, DBStatusLookasideMissSize,
 //     DBStatusLookasideMissFull): the count is reported in high, not current
 //     (current is always 0). The reset flag zeroes high.
+//   - DBStatusDeferredFKs: current is 1 if the connection has unresolved
+//     deferred foreign-key constraints, else 0; high is always 0; the reset
+//     flag is ignored.
 const (
 	DBStatusLookasideUsed     = DBStatusOp(sqlite3.SQLITE_DBSTATUS_LOOKASIDE_USED)
 	DBStatusCacheUsed         = DBStatusOp(sqlite3.SQLITE_DBSTATUS_CACHE_USED)
