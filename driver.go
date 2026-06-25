@@ -74,7 +74,15 @@ func newDriver() *Driver { return d }
 // to time if the field contain integer (int64).
 //
 // _texttotime: Enable ColumnTypeScanType to report time.Time instead of string
-// for TEXT columns declared as DATE, DATETIME, TIME, or TIMESTAMP.
+// for TEXT columns declared as DATE, DATETIME, TIME, or TIMESTAMP. It also
+// best-effort upgrades date-shaped TEXT values from columns SQLite reports with
+// an empty declared type (aggregates and expressions such as MAX(d) or
+// upper(d), subqueries, and typeless real columns) to time.Time, since the
+// declared-type test cannot catch those (#248). When that upgrade fires, a Scan
+// into interface{} yields a time.Time where it previously yielded a string, and
+// a Scan into *string receives the value reformatted to RFC3339Nano rather than
+// the raw stored text. A value that does not parse as a time is delivered
+// unchanged as the original string.
 //
 // _timezone: A timezone to use for all time reads and writes, such as "UTC".
 // The value is parsed by time.LoadLocation.
