@@ -1990,6 +1990,53 @@ func TestTextToTimeScanType(t *testing.T) {
 	})
 }
 
+// TestTextToTimeAggregates verifies that under _texttotime=1, aggregate and
+// expression columns over a DATETIME TEXT column (MAX/MIN/COALESCE), which
+// SQLite reports with an empty declared type, are still delivered as time.Time
+// so a Scan into *time.Time succeeds (#248). A non-date TEXT aggregate, whose
+// value does not parse as a time, must still scan as string.
+func TestTextToTimeAggregates(t *testing.T) {
+	db, err := sql.Open(driverName, "file::memory:?_texttotime=1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	if _, err := db.Exec("CREATE TABLE t (id INTEGER PRIMARY KEY, ts DATETIME, name TEXT)"); err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range []struct{ ts, name string }{
+		{"2024-01-01 00:00:00+00:00", "alice"},
+		{"2024-06-15 12:30:00+00:00", "bob"},
+	} {
+		if _, err := db.Exec("INSERT INTO t (ts, name) VALUES (?, ?)", row.ts, row.name); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	for _, q := range []string{
+		"SELECT MAX(ts) FROM t",
+		"SELECT MIN(ts) FROM t",
+		"SELECT COALESCE(MAX(ts), MAX(ts)) FROM t",
+	} {
+		var got time.Time
+		if err := db.QueryRow(q).Scan(&got); err != nil {
+			t.Fatalf("%s: Scan into time.Time: %v", q, err)
+		}
+		if got.IsZero() {
+			t.Fatalf("%s: got zero time", q)
+		}
+	}
+
+	var name string
+	if err := db.QueryRow("SELECT MAX(name) FROM t").Scan(&name); err != nil {
+		t.Fatalf("MAX(name) Scan into string: %v", err)
+	}
+	if name != "bob" {
+		t.Fatalf("MAX(name) = %q, want \"bob\"", name)
+	}
+}
+
 func TestTextToTimeBad(t *testing.T) {
 	db, err := sql.Open(driverName, "file::memory:?_texttotime=foobar")
 	if err != nil {
