@@ -1,6 +1,7 @@
 # Changelog
 
- - 2026-06-25 v1.54.0:
+ - 2026-07-15 v1.54.0:
+     - Upgrade to [SQLite 3.53.3](https://sqlite.org/releaselog/3_53_3.html). This also bumps the pinned `modernc.org/libc` to v1.74.1; as always, downstream modules must pin the exact same `modernc.org/libc` version this module's `go.mod` pins (see [GitLab issue #177](https://gitlab.com/cznic/sqlite/-/issues/177)).
      - Under the opt-in `_texttotime` DSN parameter, best-effort parse date-shaped TEXT values from columns SQLite reports with an empty declared type — aggregates and expressions over a date column (`MAX(d)`, `COALESCE(d, ...)`, `upper(d)`, `d || ''`), subqueries, and typeless real columns (`CREATE TABLE t(x)`) — into `time.Time`, instead of delivering them as a raw string that `Scan` cannot store into a `*time.Time`. The existing declared `DATE`/`DATETIME`/`TIME`/`TIMESTAMP` path is unchanged; this only adds the empty-decltype case. The conversion is strictly best-effort: a value that does not parse as a time falls through to the original string, so no `Scan` that worked before can newly fail. `ColumnTypeScanType` continues to report `string` for empty-decltype columns, since the declared type cannot prove the column is temporal. Without `_texttotime` the behavior is byte-for-byte unchanged. Resolves [GitLab issue #248](https://gitlab.com/cznic/sqlite/-/issues/248).
      - See [GitLab merge request #133](https://gitlab.com/cznic/sqlite/-/merge_requests/133), thanks Ian Chechin!
 

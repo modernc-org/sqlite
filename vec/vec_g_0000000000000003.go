@@ -4790,6 +4790,8 @@ const m_MAC_OS_VERSION_26_3 = "__MAC_26_3"
 
 const m_MAC_OS_VERSION_26_4 = "__MAC_26_4"
 
+const m_MAC_OS_VERSION_26_5 = "__MAC_26_5"
+
 const m_MAC_OS_X_VERSION_10_0 = "__MAC_10_0"
 
 const m_MAC_OS_X_VERSION_10_1 = "__MAC_10_1"
@@ -5456,6 +5458,8 @@ const m___BRIDGEOS_10_3 = 100300
 
 const m___BRIDGEOS_10_4 = 100400
 
+const m___BRIDGEOS_26_5 = 260500
+
 const m___BRIDGEOS_2_0 = 20000
 
 const m___BRIDGEOS_3_0 = 30000
@@ -5608,6 +5612,8 @@ const m___DRIVERKIT_25_3 = 250300
 
 const m___DRIVERKIT_25_4 = 250400
 
+const m___DRIVERKIT_25_5 = 250500
+
 const m___DYNAMIC__ = 1
 
 const m___ENABLE_LEGACY_MAC_AVAILABILITY = 1
@@ -5755,6 +5761,8 @@ const m___IPHONE_26_2 = 260200
 const m___IPHONE_26_3 = 260300
 
 const m___IPHONE_26_4 = 260400
+
+const m___IPHONE_26_5 = 260500
 
 const m___IPHONE_2_0 = 20000
 
@@ -5962,6 +5970,8 @@ const m___MAC_26_3 = 260300
 
 const m___MAC_26_4 = 260400
 
+const m___MAC_26_5 = 260500
+
 const m___PRI_64_LENGTH_MODIFIER__ = "ll"
 
 const m___PRI_8_LENGTH_MODIFIER__ = "hh"
@@ -6112,6 +6122,8 @@ const m___TVOS_26_3 = 260300
 
 const m___TVOS_26_4 = 260400
 
+const m___TVOS_26_5 = 260500
+
 const m___TVOS_9_0 = 90000
 
 const m___TVOS_9_1 = 90100
@@ -6120,7 +6132,7 @@ const m___TVOS_9_2 = 90200
 
 const m___UINT_LEAST64_MAX = "UINT64_MAX"
 
-const m___VERSION__ = "Apple LLVM 21.0.0 (clang-2100.0.123.102)"
+const m___VERSION__ = "Apple LLVM 21.0.0 (clang-2100.1.1.101)"
 
 const m___VISIONOS_1_0 = 10000
 
@@ -6139,6 +6151,8 @@ const m___VISIONOS_26_2 = 260200
 const m___VISIONOS_26_3 = 260300
 
 const m___VISIONOS_26_4 = 260400
+
+const m___VISIONOS_26_5 = 260500
 
 const m___VISIONOS_2_0 = 20000
 
@@ -6199,6 +6213,8 @@ const m___WATCHOS_26_2 = 260200
 const m___WATCHOS_26_3 = 260300
 
 const m___WATCHOS_26_4 = 260400
+
+const m___WATCHOS_26_5 = 260500
 
 const m___WATCHOS_2_0 = 20000
 
@@ -6280,7 +6296,7 @@ const m___WATCHOS_9_5 = 90500
 
 const m___WATCHOS_9_6 = 90600
 
-const m___apple_build_version__ = 21000099
+const m___apple_build_version__ = 21000101
 
 const m___clang_major__ = 21
 
@@ -6288,7 +6304,7 @@ const m___clang_minor__ = 0
 
 const m___clang_patchlevel__ = 0
 
-const m___clang_version__ = "21.0.0 (clang-2100.0.123.102)"
+const m___clang_version__ = "21.0.0 (clang-2100.1.1.101)"
 
 const m___exported_hidden = "__private_extern__"
 
