@@ -145,4 +145,19 @@ func TestDSNPragmas(t *testing.T) {
 		// invalid keeps it disabled
 		verifyPragma(t, "_query_only=x", "query_only", "0")
 	})
+
+	t.Run("Test combined DSN", func(t *testing.T) {
+		// The mattn-compat keys must coexist in a single DSN. busy_timeout is
+		// applied first and query_only last (see applyQueryParams); the DSN lists
+		// them in a different order on purpose, so this also confirms the apply
+		// order is fixed by the driver, not by the order the keys appear in the
+		// DSN.
+		verifyPragma(t, "_query_only=1&_synchronous=NORMAL&_journal_mode=wal&_foreign_keys=on&_busy_timeout=5000",
+			"busy_timeout", "5000",
+			"foreign_keys", "1",
+			"journal_mode", "wal",
+			"synchronous", "1",
+			"query_only", "1",
+		)
+	})
 }

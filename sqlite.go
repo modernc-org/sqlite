@@ -367,6 +367,8 @@ func applyQueryParams(c *conn, query string) error {
 		}
 	}
 
+	// query_only is applied last: it makes the connection read-only, so it must
+	// not precede the write-capable pragmas above (notably auto_vacuum).
 	if v := q.Get("_query_only"); v != "" {
 		cmd := "pragma query_only = " + v
 		_, err := c.exec(context.Background(), cmd, nil)

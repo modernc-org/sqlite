@@ -53,6 +53,19 @@ func newDriver() *Driver { return d }
 // keyword added for you). May be specified more than once, '&'-separated. For more
 // information on supported PRAGMAs see: https://www.sqlite.org/pragma.html
 //
+// The following shorthand keys set common PRAGMAs for easier DSN compatibility
+// when migrating from github.com/mattn/go-sqlite3. Each value is passed as-is to
+// the corresponding PRAGMA and is not validated. They are applied in a fixed
+// order (busy_timeout first, query_only last) so an order-sensitive combination
+// works in a single DSN:
+//
+//	_busy_timeout, _timeout   -> PRAGMA busy_timeout
+//	_foreign_keys, _fk        -> PRAGMA foreign_keys
+//	_journal_mode, _journal   -> PRAGMA journal_mode
+//	_synchronous, _sync       -> PRAGMA synchronous
+//	_auto_vacuum, _vacuum     -> PRAGMA auto_vacuum
+//	_query_only               -> PRAGMA query_only
+//
 // _time_format: The name of a format to use when writing time values to the database.
 // The currently supported values are (1) "sqlite" for YYYY-MM-DD HH:MM:SS.SSS[+-]HH:MM
 // (format 4 from https://www.sqlite.org/lang_datefunc.html#time_values with sub-second
