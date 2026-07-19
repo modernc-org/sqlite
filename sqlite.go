@@ -210,6 +210,24 @@ func applyQueryParams(c *conn, query string) error {
 		return err
 	}
 
+	var busyTimeout string
+	if v := q.Get("_busy_timeout"); v != "" {
+		busyTimeout = v
+	} else if v := q.Get("_timeout"); v != "" {
+		busyTimeout = v
+	}
+
+	// Busy timeout must be one of the first PRAGMAs set from query params as some
+	// that make changes to the database might otherwise unexpectedly fail with
+	// SQLITE_BUSY.
+	if busyTimeout != "" {
+		cmd := "pragma busy_timeout = " + busyTimeout
+		_, err := c.exec(context.Background(), cmd, nil)
+		if err != nil {
+			return err
+		}
+	}
+
 	var a []string
 	for _, v := range q["_pragma"] {
 		a = append(a, v)
@@ -287,6 +305,74 @@ func applyQueryParams(c *conn, query string) error {
 				v)
 		}
 		c.textToTime = onoff
+	}
+
+	var foreignKeys string
+	if v := q.Get("_foreign_keys"); v != "" {
+		foreignKeys = v
+	} else if v := q.Get("_fk"); v != "" {
+		foreignKeys = v
+	}
+
+	if foreignKeys != "" {
+		cmd := "pragma foreign_keys = " + foreignKeys
+		_, err := c.exec(context.Background(), cmd, nil)
+		if err != nil {
+			return err
+		}
+	}
+
+	var journalMode string
+	if v := q.Get("_journal_mode"); v != "" {
+		journalMode = v
+	} else if v := q.Get("_journal"); v != "" {
+		journalMode = v
+	}
+
+	if journalMode != "" {
+		cmd := "pragma journal_mode = " + journalMode
+		_, err := c.exec(context.Background(), cmd, nil)
+		if err != nil {
+			return err
+		}
+	}
+
+	var synchronous string
+	if v := q.Get("_synchronous"); v != "" {
+		synchronous = v
+	} else if v := q.Get("_sync"); v != "" {
+		synchronous = v
+	}
+
+	if synchronous != "" {
+		cmd := "pragma synchronous = " + synchronous
+		_, err := c.exec(context.Background(), cmd, nil)
+		if err != nil {
+			return err
+		}
+	}
+
+	var autoVacuum string
+	if v := q.Get("_auto_vacuum"); v != "" {
+		autoVacuum = v
+	} else if v := q.Get("_vacuum"); v != "" {
+		autoVacuum = v
+	}
+
+	if autoVacuum != "" {
+		cmd := "pragma auto_vacuum = " + autoVacuum
+		_, err := c.exec(context.Background(), cmd, nil)
+		if err != nil {
+			return err
+		}
+	}
+
+	if v := q.Get("_query_only"); v != "" {
+		cmd := "pragma query_only = " + v
+		_, err := c.exec(context.Background(), cmd, nil)
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
