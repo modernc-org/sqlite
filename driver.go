@@ -54,17 +54,27 @@ func newDriver() *Driver { return d }
 // information on supported PRAGMAs see: https://www.sqlite.org/pragma.html
 //
 // The following shorthand keys set common PRAGMAs for easier DSN compatibility
-// when migrating from github.com/mattn/go-sqlite3. Each value is passed as-is to
-// the corresponding PRAGMA and is not validated. They are applied in a fixed
-// order (busy_timeout first, query_only last) so an order-sensitive combination
-// works in a single DSN:
+// when migrating from github.com/mattn/go-sqlite3. Each value is validated
+// against the same set github.com/mattn/go-sqlite3 accepts (case-insensitive);
+// an unrecognized value fails the connection with an error instead of being
+// silently ignored. The keys are applied in a fixed order, independent of the
+// order they appear in the DSN: _busy_timeout and _auto_vacuum first (auto_vacuum
+// must be set before the database is first written), then the _pragma values,
+// then the remaining keys, and _query_only last. Where a shorthand key and a
+// _pragma set the same PRAGMA, whichever is applied later in that order wins. If
+// a key and its alias are both supplied, the alias (the second name below) wins,
+// matching github.com/mattn/go-sqlite3. Accepted values:
 //
-//	_busy_timeout, _timeout   -> PRAGMA busy_timeout
-//	_foreign_keys, _fk        -> PRAGMA foreign_keys
-//	_journal_mode, _journal   -> PRAGMA journal_mode
-//	_synchronous, _sync       -> PRAGMA synchronous
-//	_auto_vacuum, _vacuum     -> PRAGMA auto_vacuum
-//	_query_only               -> PRAGMA query_only
+//	_busy_timeout, _timeout   -> PRAGMA busy_timeout   (an integer)
+//	_foreign_keys, _fk        -> PRAGMA foreign_keys   (0 1 false true no yes off on)
+//	_journal_mode, _journal   -> PRAGMA journal_mode   (DELETE TRUNCATE PERSIST MEMORY WAL OFF)
+//	_synchronous, _sync       -> PRAGMA synchronous    (0 OFF 1 NORMAL 2 FULL 3 EXTRA)
+//	_auto_vacuum, _vacuum     -> PRAGMA auto_vacuum    (0 NONE 1 FULL 2 INCREMENTAL)
+//	_query_only               -> PRAGMA query_only     (0 1 false true no yes off on)
+//
+// Unlike these validated shorthand keys, each _pragma value is executed verbatim
+// (with PRAGMA prepended) and is not validated, so a DSN that includes _pragma
+// must come from a trusted source.
 //
 // _time_format: The name of a format to use when writing time values to the database.
 // The currently supported values are (1) "sqlite" for YYYY-MM-DD HH:MM:SS.SSS[+-]HH:MM
