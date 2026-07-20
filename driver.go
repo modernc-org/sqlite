@@ -74,9 +74,16 @@ func newDriver() *Driver { return d }
 //	_auto_vacuum, _vacuum     -> PRAGMA auto_vacuum    (0 NONE 1 FULL 2 INCREMENTAL)
 //	_query_only               -> PRAGMA query_only     (0 1 false true no yes off on)
 //
+// All DSN parameters that can be validated are validated before any of them is
+// applied, so a DSN carrying a typo fails without having executed the PRAGMAs
+// that precede it -- a rejected DSN does not leave the database converted to WAL
+// or with auto_vacuum already set.
+//
 // Unlike these validated shorthand keys, each _pragma value is executed verbatim
 // (with PRAGMA prepended) and is not validated, so a DSN that includes _pragma
-// must come from a trusted source.
+// must come from a trusted source. It is also the one case that can still fail
+// partway: a bad _pragma is only rejected by SQLite as it runs, after any
+// earlier _pragma in the list has taken effect.
 //
 // _time_format: The name of a format to use when writing time values to the database.
 // The currently supported values are (1) "sqlite" for YYYY-MM-DD HH:MM:SS.SSS[+-]HH:MM

@@ -245,11 +245,22 @@ func applyQueryParams(c *conn, query string) error {
 		return err
 	}
 
-	// mattn-compatible shorthand PRAGMA keys. Each value is validated against the
-	// same set github.com/mattn/go-sqlite3 accepts (case-insensitive); an
-	// unrecognized value is a hard error rather than a silent no-op. When a key
-	// and its alias are both present the alias wins, matching mattn. See the
-	// Driver documentation in driver.go for the full apply order and precedence.
+	// Validation phase. Everything that can be rejected is rejected here, before
+	// the apply phase below executes a single statement. PRAGMA journal_mode and
+	// auto_vacuum are persistent changes to the database file, so validating
+	// lazily as each key is applied would let a typo in a later parameter fail
+	// the connection only after the file had already been converted -- a failed
+	// Open must not leave the database half-configured. Assignments to c are
+	// exempt from that concern: newConn closes and discards the connection when
+	// this returns an error, so they cannot outlive the failure.
+	//
+	// Each shorthand value is validated against the same set
+	// github.com/mattn/go-sqlite3 accepts (case-insensitive). When a key and its
+	// alias are both present the alias wins, matching mattn. See the Driver
+	// documentation in driver.go for the full apply order and precedence.
+	//
+	// _pragma values are the one exception: they are executed verbatim and
+	// cannot be checked here, so a malformed _pragma can still fail partway.
 	busyKey, busyTimeout := dsnPick(q, "_busy_timeout", "_timeout")
 	if busyTimeout != "" {
 		if _, err := strconv.ParseInt(busyTimeout, 10, 64); err != nil {
@@ -257,50 +268,37 @@ func applyQueryParams(c *conn, query string) error {
 		}
 	}
 
-	// Busy timeout must be one of the first PRAGMAs set from query params as some
-	// that make changes to the database might otherwise unexpectedly fail with
-	// SQLITE_BUSY.
-	if busyTimeout != "" {
-		if _, err := c.exec(context.Background(), "pragma busy_timeout = "+busyTimeout, nil); err != nil {
-			return err
-		}
-	}
-
-	// auto_vacuum must be applied while the database is still new: a journal_mode
-	// change or the first table materialises page 1 and locks the setting in, so
-	// it runs before the _pragma list and the other shorthand keys.
 	autoVacuumKey, autoVacuum := dsnPick(q, "_auto_vacuum", "_vacuum")
 	if autoVacuum != "" {
 		if err := dsnEnum(autoVacuumKey, autoVacuum, []string{"0", "NONE", "1", "FULL", "2", "INCREMENTAL"}); err != nil {
 			return err
 		}
-		if _, err := c.exec(context.Background(), "pragma auto_vacuum = "+autoVacuum, nil); err != nil {
+	}
+
+	foreignKeysKey, foreignKeys := dsnPick(q, "_foreign_keys", "_fk")
+	if foreignKeys != "" {
+		if err := dsnBool(foreignKeysKey, foreignKeys); err != nil {
 			return err
 		}
 	}
 
-	var a []string
-	for _, v := range q["_pragma"] {
-		a = append(a, v)
+	journalModeKey, journalMode := dsnPick(q, "_journal_mode", "_journal")
+	if journalMode != "" {
+		if err := dsnEnum(journalModeKey, journalMode, []string{"DELETE", "TRUNCATE", "PERSIST", "MEMORY", "WAL", "OFF"}); err != nil {
+			return err
+		}
 	}
-	// Push 'busy_timeout' first, the rest in lexicographic order, case insenstive.
-	// See https://gitlab.com/cznic/sqlite/-/issues/198#note_2233423463 for
-	// discussion.
-	sort.Slice(a, func(i, j int) bool {
-		x, y := strings.TrimSpace(strings.ToLower(a[i])), strings.TrimSpace(strings.ToLower(a[j]))
-		if strings.HasPrefix(x, "busy_timeout") {
-			return true
-		}
-		if strings.HasPrefix(y, "busy_timeout") {
-			return false
-		}
 
-		return x < y
-	})
-	for _, v := range a {
-		cmd := "pragma " + v
-		_, err := c.exec(context.Background(), cmd, nil)
-		if err != nil {
+	synchronousKey, synchronous := dsnPick(q, "_synchronous", "_sync")
+	if synchronous != "" {
+		if err := dsnEnum(synchronousKey, synchronous, []string{"0", "OFF", "1", "NORMAL", "2", "FULL", "3", "EXTRA"}); err != nil {
+			return err
+		}
+	}
+
+	queryOnly := q.Get("_query_only")
+	if queryOnly != "" {
+		if err := dsnBool("_query_only", queryOnly); err != nil {
 			return err
 		}
 	}
@@ -358,31 +356,66 @@ func applyQueryParams(c *conn, query string) error {
 		c.textToTime = onoff
 	}
 
-	foreignKeysKey, foreignKeys := dsnPick(q, "_foreign_keys", "_fk")
-	if foreignKeys != "" {
-		if err := dsnBool(foreignKeysKey, foreignKeys); err != nil {
+	// Apply phase. The order here is the documented one and is independent of
+	// the order the keys appear in the DSN.
+	//
+	// Busy timeout must be one of the first PRAGMAs set from query params as some
+	// that make changes to the database might otherwise unexpectedly fail with
+	// SQLITE_BUSY.
+	if busyTimeout != "" {
+		if _, err := c.exec(context.Background(), "pragma busy_timeout = "+busyTimeout, nil); err != nil {
 			return err
 		}
+	}
+
+	// auto_vacuum must be applied while the database is still new: a journal_mode
+	// change or the first table materialises page 1 and locks the setting in, so
+	// it runs before the _pragma list and the other shorthand keys.
+	if autoVacuum != "" {
+		if _, err := c.exec(context.Background(), "pragma auto_vacuum = "+autoVacuum, nil); err != nil {
+			return err
+		}
+	}
+
+	var a []string
+	for _, v := range q["_pragma"] {
+		a = append(a, v)
+	}
+	// Push 'busy_timeout' first, the rest in lexicographic order, case insenstive.
+	// See https://gitlab.com/cznic/sqlite/-/issues/198#note_2233423463 for
+	// discussion.
+	sort.Slice(a, func(i, j int) bool {
+		x, y := strings.TrimSpace(strings.ToLower(a[i])), strings.TrimSpace(strings.ToLower(a[j]))
+		if strings.HasPrefix(x, "busy_timeout") {
+			return true
+		}
+		if strings.HasPrefix(y, "busy_timeout") {
+			return false
+		}
+
+		return x < y
+	})
+	for _, v := range a {
+		cmd := "pragma " + v
+		_, err := c.exec(context.Background(), cmd, nil)
+		if err != nil {
+			return err
+		}
+	}
+
+	if foreignKeys != "" {
 		if _, err := c.exec(context.Background(), "pragma foreign_keys = "+foreignKeys, nil); err != nil {
 			return err
 		}
 	}
 
-	journalModeKey, journalMode := dsnPick(q, "_journal_mode", "_journal")
 	if journalMode != "" {
-		if err := dsnEnum(journalModeKey, journalMode, []string{"DELETE", "TRUNCATE", "PERSIST", "MEMORY", "WAL", "OFF"}); err != nil {
-			return err
-		}
 		if _, err := c.exec(context.Background(), "pragma journal_mode = "+journalMode, nil); err != nil {
 			return err
 		}
 	}
 
-	synchronousKey, synchronous := dsnPick(q, "_synchronous", "_sync")
 	if synchronous != "" {
-		if err := dsnEnum(synchronousKey, synchronous, []string{"0", "OFF", "1", "NORMAL", "2", "FULL", "3", "EXTRA"}); err != nil {
-			return err
-		}
 		if _, err := c.exec(context.Background(), "pragma synchronous = "+synchronous, nil); err != nil {
 			return err
 		}
@@ -390,11 +423,8 @@ func applyQueryParams(c *conn, query string) error {
 
 	// query_only is applied last: it makes the connection read-only, so it must
 	// not precede the write-capable pragmas above (notably auto_vacuum).
-	if v := q.Get("_query_only"); v != "" {
-		if err := dsnBool("_query_only", v); err != nil {
-			return err
-		}
-		if _, err := c.exec(context.Background(), "pragma query_only = "+v, nil); err != nil {
+	if queryOnly != "" {
+		if _, err := c.exec(context.Background(), "pragma query_only = "+queryOnly, nil); err != nil {
 			return err
 		}
 	}

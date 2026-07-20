@@ -206,4 +206,63 @@ func TestDSNPragmas(t *testing.T) {
 		// An empty value is not validated, so it is not an error either.
 		verifyPragma(t, "_synchronous=", "synchronous", "2")
 	})
+
+	t.Run("Test validation precedes application", func(t *testing.T) {
+		// A DSN carrying a valid persistent PRAGMA and an invalid value elsewhere
+		// must fail without having applied the valid one: journal_mode and
+		// auto_vacuum change the database file, and a failed Open must not leave
+		// it half-configured. Applying lazily per key would convert the file to
+		// WAL and only then reject _synchronous.
+		verifyPersistentUnchanged := func(t *testing.T, query, wantErrSubstr string) {
+			t.Helper()
+			dbPath := filepath.Join(t.TempDir(), "tmp.db")
+
+			db, err := sql.Open("sqlite", dbPath+"?"+query)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var x int
+			err = db.QueryRow("SELECT 1").Scan(&x)
+			if err == nil {
+				t.Fatalf("query %q: expected an error, got none", query)
+			}
+			if !strings.Contains(err.Error(), wantErrSubstr) {
+				t.Fatalf("query %q: error %q does not contain %q", query, err.Error(), wantErrSubstr)
+			}
+			db.Close()
+
+			// Reopen without parameters and confirm the file was left alone.
+			db2, err := sql.Open("sqlite", dbPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer db2.Close()
+
+			var journalMode string
+			if err := db2.QueryRow("PRAGMA journal_mode").Scan(&journalMode); err != nil {
+				t.Fatal(err)
+			}
+			if journalMode != "delete" {
+				t.Errorf("query %q: failed open still converted the database to journal_mode %q", query, journalMode)
+			}
+
+			if _, err := db2.Exec("CREATE TABLE t(x)"); err != nil {
+				t.Fatal(err)
+			}
+			var autoVacuum string
+			if err := db2.QueryRow("PRAGMA auto_vacuum").Scan(&autoVacuum); err != nil {
+				t.Fatal(err)
+			}
+			if autoVacuum != "0" {
+				t.Errorf("query %q: failed open still set auto_vacuum to %q", query, autoVacuum)
+			}
+		}
+
+		verifyPersistentUnchanged(t, "_journal_mode=wal&_synchronous=bogus", "invalid _synchronous")
+		verifyPersistentUnchanged(t, "_auto_vacuum=1&_foreign_keys=nope", "invalid _foreign_keys")
+		verifyPersistentUnchanged(t, "_journal_mode=wal&_auto_vacuum=1&_query_only=maybe", "invalid _query_only")
+
+		// A non-PRAGMA parameter rejected late must not apply the PRAGMAs either.
+		verifyPersistentUnchanged(t, "_journal_mode=wal&_txlock=bogus", "unknown _txlock")
+	})
 }
