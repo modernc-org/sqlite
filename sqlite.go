@@ -206,13 +206,16 @@ func getErrorRcMode(query string) (bool, error) {
 
 // dsnPick returns the value and key name for a mattn-compatible shorthand DSN
 // parameter and its alias. When both are present the alias wins, matching
-// github.com/mattn/go-sqlite3. An empty value counts as absent.
+// github.com/mattn/go-sqlite3. Selection is by presence, not by value, so an
+// alias supplied with an empty value ("_foreign_keys=on&_fk=") selects the
+// alias and yields an empty value, suppressing the PRAGMA entirely rather than
+// falling back to the primary key. That too matches mattn.
 func dsnPick(q url.Values, primary, alias string) (key, val string) {
-	if v := q.Get(primary); v != "" {
-		key, val = primary, v
+	if _, ok := q[primary]; ok {
+		key, val = primary, q.Get(primary)
 	}
-	if v := q.Get(alias); v != "" {
-		key, val = alias, v
+	if _, ok := q[alias]; ok {
+		key, val = alias, q.Get(alias)
 	}
 	return key, val
 }

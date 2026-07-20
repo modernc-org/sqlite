@@ -63,7 +63,9 @@ func newDriver() *Driver { return d }
 // then the remaining keys, and _query_only last. Where a shorthand key and a
 // _pragma set the same PRAGMA, whichever is applied later in that order wins. If
 // a key and its alias are both supplied, the alias (the second name below) wins,
-// matching github.com/mattn/go-sqlite3. Accepted values:
+// matching github.com/mattn/go-sqlite3; supplying the alias with an empty value
+// therefore suppresses the PRAGMA rather than deferring to the primary key.
+// Accepted values:
 //
 //	_busy_timeout, _timeout   -> PRAGMA busy_timeout   (an integer)
 //	_foreign_keys, _fk        -> PRAGMA foreign_keys   (0 1 false true no yes off on)

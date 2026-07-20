@@ -193,4 +193,17 @@ func TestDSNPragmas(t *testing.T) {
 			"query_only", "1",
 		)
 	})
+
+	t.Run("Test empty alias suppresses the PRAGMA", func(t *testing.T) {
+		// Selection between a key and its alias is by presence, not by value, so
+		// an alias supplied empty selects the alias and suppresses the PRAGMA
+		// rather than falling back to the primary key. Matches mattn.
+		verifyPragma(t, "_foreign_keys=on&_fk=", "foreign_keys", "0")
+		verifyPragma(t, "_fk=on&_foreign_keys=", "foreign_keys", "1")
+		verifyPragma(t, "_journal_mode=wal&_journal=", "journal_mode", "delete")
+		verifyPragma(t, "_busy_timeout=5000&_timeout=", "busy_timeout", "0")
+
+		// An empty value is not validated, so it is not an error either.
+		verifyPragma(t, "_synchronous=", "synchronous", "2")
+	})
 }
