@@ -181,12 +181,15 @@ func TestConnectorWrapping(t *testing.T) {
 }
 
 // TestConnectorRejectsMalformedQuery covers the eager half of the validation
-// contract: a dsn whose query string is not parseable fails at construction.
+// contract: what can be rejected without opening a database is rejected at
+// construction. That is a query string that does not parse, and conflicting
+// vfs parameters.
 func TestConnectorRejectsMalformedQuery(t *testing.T) {
 	for _, dsn := range []string{
 		"file::memory:?_pragma=%zz",
 		"file::memory:?%",
 		"file::memory:?a=%2",
+		"file::memory:?vfs=a&vfs=b",
 	} {
 		c, err := NewConnector(dsn)
 		if err == nil {

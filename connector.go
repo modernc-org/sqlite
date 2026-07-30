@@ -7,7 +7,6 @@ package sqlite // import "modernc.org/sqlite"
 import (
 	"context"
 	"database/sql/driver"
-	"net/url"
 	"strings"
 )
 
@@ -53,17 +52,23 @@ import (
 // no way to undo a registration; a library doing the above would have to
 // invent a unique name per configuration. sql.OpenDB registers nothing.
 //
-// Only the syntax of the dsn query string is checked here -- a malformed
-// query, such as one carrying an invalid percent-escape, is reported
-// immediately. Parameter values are validated when a connection is opened, so
-// an unknown parameter or an out-of-range value is reported by Connect, and
-// hence by the first use of the sql.DB, rather than by NewConnector.
+// The dsn is checked here only as far as it can be without opening a database:
+// a query string that does not parse, such as one carrying an invalid
+// percent-escape, and conflicting vfs parameters are reported immediately.
+// Everything else is validated when the connection is opened, so an unknown
+// parameter or an out-of-range value is reported by Connect, and hence by the
+// first use of the sql.DB, rather than by NewConnector.
 //
 // The returned Connector is safe for concurrent use; database/sql calls
 // Connect from multiple goroutines as it grows the pool. As with sql.Open, it
 // does not itself open a connection.
 func NewConnector(dsn string) (driver.Connector, error) {
-	if _, err := url.ParseQuery(dsnQuery(dsn)); err != nil {
+	// getVFSName is the first thing newConn does with the query string: it
+	// parses it, which rejects a malformed query, and it rejects conflicting
+	// vfs parameters. Calling that same function rather than repeating its
+	// parse here keeps what NewConnector rejects aligned with what opening a
+	// connection rejects, by construction.
+	if _, err := getVFSName(dsnQuery(dsn)); err != nil {
 		return nil, err
 	}
 
