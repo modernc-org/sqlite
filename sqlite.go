@@ -29,8 +29,9 @@ import (
 )
 
 var (
-	_ driver.Conn   = (*conn)(nil)
-	_ driver.Driver = (*Driver)(nil)
+	_ driver.Conn      = (*conn)(nil)
+	_ driver.Connector = (*connector)(nil)
+	_ driver.Driver    = (*Driver)(nil)
 	//lint:ignore SA1019 TODO implement ExecerContext
 	_ driver.Execer = (*conn)(nil)
 	//lint:ignore SA1019 TODO implement QueryerContext

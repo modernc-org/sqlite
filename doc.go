@@ -81,6 +81,12 @@
 //
 //	...
 //
+// [NewConnector] is an alternative entry point returning a
+// [driver.Connector] for use with [sql.OpenDB]. It opens the same
+// connections sql.Open does, from the same driver, and exists for callers that
+// need to interpose on them -- tracing, metrics, or connection-scoped setup --
+// which sql.Open gives no access to. See its docstring for an example.
+//
 // # Debug and development versions
 //
 // A comma separated list of options can be passed to `go generate` via the

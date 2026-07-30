@@ -17,7 +17,7 @@ The hand-written Go on top of that transpiled core implements the `database/sql/
 - `vfs/` — exposes a Go `fs.FS` as a read-only SQLite VFS. `vfs.New(fsys)` returns a registered VFS name; open with `?vfs=<name>`. C side is transpiled per platform from `vfs/c/vfs.c` via the `vfs/Makefile`.
 - `vtab/` — Go-facing virtual-table API (no dependency on the transpiled C). `vtab.RegisterModule(db, name, module)` registers modules on **new connections only**; the bridge to C lives in the top-level `vtab.go`. See `vtab/doc.go` for the contract (Updater/Renamer/Transactional optional interfaces, re-entrancy rules, ArgIndex/Omit semantics).
 - `vendor_libs/main.go` (build tag `none`) — regeneration tool. Reads transpiled `ccgo_<goos>_<goarch>.go` from sibling repos `../libsqlite3` and `../libsqlite_vec`, rewrites package names and imports, and writes `lib/sqlite_*.go` / `vec/vec_*.go`. Invoked by `make vendor`.
-- `examples/` — runnable samples: `example1`, `vtab_basic`, `vtab_csv`, `vtab_match`, `vtab_regexp`.
+- `examples/` — runnable samples: `example1`, `connector`, `vtab_basic`, `vtab_csv`, `vtab_match`, `vtab_regexp`.
 - `addport.go`, `issue198/`, `issue120.diff` — porting/regression scaffolding kept around for reference; not built.
 
 ## Commands
