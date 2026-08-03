@@ -4,19 +4,23 @@
 
 package vec
 
-const m___GNUC_MINOR__ = 4
+const m__FORTIFY_SOURCE = 3
 
-const m___GNUC__ = 11
+const m___FLT16_IS_IEC_60559__ = 1
 
-const m___GXX_ABI_VERSION = 1016
+const m___GNUC_MINOR__ = 3
+
+const m___GNUC__ = 13
+
+const m___GXX_ABI_VERSION = 1018
 
 const m___SSP_STRONG__ = 3
 
-const m___VERSION__ = "11.4.0"
+const m___VERSION__ = "13.3.0"
 
 const m___riscv = 1
 
-const m___riscv_a = 2000000
+const m___riscv_a = 2001000
 
 const m___riscv_arch_test = 1
 
@@ -26,15 +30,13 @@ const m___riscv_c = 2000000
 
 const m___riscv_cmodel_medany = 1
 
-const m___riscv_cmodel_pic = 1
-
 const m___riscv_compressed = 1
 
-const m___riscv_d = 2000000
+const m___riscv_d = 2002000
 
 const m___riscv_div = 1
 
-const m___riscv_f = 2000000
+const m___riscv_f = 2002000
 
 const m___riscv_fdiv = 1
 
@@ -44,7 +46,7 @@ const m___riscv_float_abi_double = 1
 
 const m___riscv_fsqrt = 1
 
-const m___riscv_i = 2000000
+const m___riscv_i = 2001000
 
 const m___riscv_m = 2000000
 

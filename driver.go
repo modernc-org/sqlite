@@ -178,6 +178,14 @@ func newDriver() *Driver { return d }
 // driver's *Error is unchanged in either mode. The parameter is parsed
 // before sqlite3_open_v2 so open-time errors are covered. See
 // https://gitlab.com/cznic/sqlite/-/issues/230.
+//
+// vfs: The name of the SQLite VFS to open the database with. Note the absent
+// underscore prefix: this is the same parameter SQLite recognizes in a file:
+// URI, and its value is passed on as the sqlite3_open_v2 zVfs argument. It
+// selects any VFS registered with SQLite, in particular one returned by
+// [modernc.org/sqlite/vfs.New], which exposes a Go fs.FS as a read-only VFS.
+// When absent or empty the default VFS is used. Supplying the parameter more
+// than once with values that differ is an error.
 func (d *Driver) Open(name string) (conn driver.Conn, err error) {
 	if dmesgs {
 		defer func() {

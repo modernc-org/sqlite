@@ -4,6 +4,18 @@
 
 package vec
 
+const m___GCC_ATOMIC_BOOL_LOCK_FREE = 2
+
+const m___GCC_ATOMIC_CHAR16_T_LOCK_FREE = 2
+
+const m___GCC_ATOMIC_CHAR_LOCK_FREE = 2
+
 const m___GCC_ATOMIC_LLONG_LOCK_FREE = 2
+
+const m___GCC_ATOMIC_SHORT_LOCK_FREE = 2
+
+const m___GCC_HAVE_SYNC_COMPARE_AND_SWAP_1 = 1
+
+const m___GCC_HAVE_SYNC_COMPARE_AND_SWAP_2 = 1
 
 const m___GCC_HAVE_SYNC_COMPARE_AND_SWAP_8 = 1

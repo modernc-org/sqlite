@@ -4,6 +4,18 @@
 
 package vec
 
+const m___DBL_IS_IEC_60559__ = 2
+
+const m___FLT32X_IS_IEC_60559__ = 2
+
+const m___FLT32_IS_IEC_60559__ = 2
+
+const m___FLT64_IS_IEC_60559__ = 2
+
+const m___FLT_IS_IEC_60559__ = 2
+
 const m___GNUC__ = 12
 
 const m___GXX_ABI_VERSION = 1017
+
+const m___LDBL_IS_IEC_60559__ = 2

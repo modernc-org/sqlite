@@ -746,7 +746,15 @@ const m___ARM_FEATURE_LDREX = 4
 
 const m___ARM_FP = 12
 
+const m___GCC_ATOMIC_BOOL_LOCK_FREE = 1
+
+const m___GCC_ATOMIC_CHAR16_T_LOCK_FREE = 1
+
+const m___GCC_ATOMIC_CHAR_LOCK_FREE = 1
+
 const m___GCC_ATOMIC_LLONG_LOCK_FREE = 1
+
+const m___GCC_ATOMIC_SHORT_LOCK_FREE = 1
 
 const m___LLACCUM_EPSILON__ = "0x1P-31LLK"
 

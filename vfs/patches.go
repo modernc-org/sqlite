@@ -2,6 +2,31 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
+// Package vfs exposes a Go [fs.FS] to SQLite as a read-only VFS.
+//
+// [New] registers the file system with SQLite and returns the name it was
+// registered under. Passing that name as the vfs DSN query parameter opens a
+// database read from the wrapped file system instead of from the host one.
+// Paths are resolved by the wrapped [fs.FS], so the database is named relative
+// to its root:
+//
+//	name, fsvfs, err := vfs.New(os.DirFS(dir))
+//	if err != nil {
+//		return err
+//	}
+//
+//	defer fsvfs.Close()
+//
+//	db, err := sql.Open("sqlite", "file:test.db?vfs="+name)
+//
+// Any [fs.FS] will do, an embed.FS included, which is what makes this useful
+// for shipping a database inside the binary. The VFS is read only: it has no
+// write path and refuses to create a journal, so a database opened through it
+// can only be read from.
+//
+// Registration is process-global, as SQLite's own VFS registry is. Each [New]
+// registers a separate VFS under a fresh name, and [FS.Close] unregisters it
+// again.
 package vfs
 
 import (

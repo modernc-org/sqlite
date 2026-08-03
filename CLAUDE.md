@@ -13,7 +13,7 @@ The hand-written Go on top of that transpiled core implements the `database/sql/
 - `sqlite.go`, `conn.go`, `driver.go`, `stmt.go`, `rows.go`, `tx.go`, `backup.go`, `error.go`, `result.go`, `convert.go` — hand-written `database/sql/driver` implementation calling into `lib/`.
 - `vtab.go`, `pre_update_hook.go`, `fcntl.go`, `mutex.go` — Go-facing extensions wired to SQLite hooks/trampolines.
 - `lib/` — transpiled SQLite 3.53.3. One `sqlite_<goos>_<goarch>.go` per supported triple; `defs.go`, `hooks.go`, `hooks_linux_arm64.go`, `mutex.go`, plus `libsqlite3_freebsd.go`/`libsqlite3_windows.go` hold hand-written patches that augment the generated code. Import as `sqlite3 "modernc.org/sqlite/lib"`.
-- `vec/` — transpiled `sqlite-vec` v0.1.9, auto-registers via `sqlite3_auto_extension` in `patches.go` on package init. Activate by blank-importing: `_ "modernc.org/sqlite/vec"`. Not all platforms have a `vec_*.go` (e.g. no `linux/s390x` in `vec_test.go`'s `//go:build`).
+- `vec/` — transpiled `sqlite-vec` v0.1.9, auto-registers via `sqlite3_auto_extension` in `patches.go` on package init. Activate by blank-importing: `_ "modernc.org/sqlite/vec"`. Covers the same 19 targets `lib/` does; `vec_test.go`'s `//go:build` constrains by GOOS only.
 - `vfs/` — exposes a Go `fs.FS` as a read-only SQLite VFS. `vfs.New(fsys)` returns a registered VFS name; open with `?vfs=<name>`. C side is transpiled per platform from `vfs/c/vfs.c` via the `vfs/Makefile`.
 - `vtab/` — Go-facing virtual-table API (no dependency on the transpiled C). `vtab.RegisterModule(db, name, module)` registers modules on **new connections only**; the bridge to C lives in the top-level `vtab.go`. See `vtab/doc.go` for the contract (Updater/Renamer/Transactional optional interfaces, re-entrancy rules, ArgIndex/Omit semantics).
 - `vendor_libs/main.go` (build tag `none`) — regeneration tool. Reads transpiled `ccgo_<goos>_<goarch>.go` from sibling repos `../libsqlite3` and `../libsqlite_vec`, rewrites package names and imports, and writes `lib/sqlite_*.go` / `vec/vec_*.go`. Invoked by `make vendor`.
@@ -37,7 +37,8 @@ Single test: `go test -v -run TestScalar` (pattern is a regexp; tests live in `a
 Build/debug tags:
 - `-tags=sqlite.dmesg` — enables this package's `dmesg(...)` (writes to `/tmp/libc.log`); see `dmesg.go` / `nodmesg.go`.
 - `-tags=libc.dmesg` — enables debug logs from `modernc.org/libc` (must be combined with patching `libc` itself — see the worked example in `doc.go`).
-- `GO_GENERATE=-DSQLITE_DEBUG,-DSQLITE_MEM_DEBUG` for `go generate` to produce a debug-instrumented transpilation (requires `modernc.org/ccgo/v4` installed locally).
+
+There is no `go generate` in this repo — `generator.go` lives in `../libsqlite3`, which owns the transpilation and its SQLite compile-time options. To produce a debug-instrumented transpilation, change the options there, `make generate` in that repo, then `make vendor` here.
 
 ## Fragile `modernc.org/libc` coupling
 
