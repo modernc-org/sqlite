@@ -163,12 +163,39 @@ func newDriver() *Driver { return d }
 // https://www.sqlite.org/quirks.html#dblquote and
 // https://gitlab.com/cznic/sqlite/-/issues/61
 //
-// _defensive: Opt-in toggle for SQLite's defensive connection mode. Accepts
-// the values strconv.ParseBool understands. When true, the driver calls
-// sqlite3_db_config(SQLITE_DBCONFIG_DEFENSIVE) before any user-supplied PRAGMA
-// or statement is prepared. Duplicate or invalid values fail connection
-// creation. Absence or false preserves SQLite's default behavior. See:
-// https://www.sqlite.org/c3ref/c_dbconfig_defensive.html
+// _defensive: Opt-in toggle for SQLite's defensive connection mode, which
+// disables the SQL-level features that let ordinary statements deliberately
+// corrupt the database file. Accepts the values strconv.ParseBool understands
+// ("0"/"1", "false"/"true", "f"/"t", case-insensitive). When absent or set to
+// a false value SQLite's default is unchanged. When set to a true value the
+// driver calls sqlite3_db_config(SQLITE_DBCONFIG_DEFENSIVE) immediately after
+// sqlite3_open_v2 and before any other parameter is applied, so the PRAGMAs
+// this driver runs, the _pragma list, and every statement the caller prepares
+// are all subject to it. The parameter is parsed before sqlite3_open_v2, so an
+// invalid value fails the connection without creating the database file, and
+// it must appear at most once: a repeated _defensive is an error rather than
+// letting the first value silently win.
+//
+// On such a connection PRAGMA writable_schema=ON, PRAGMA journal_mode=OFF and
+// PRAGMA schema_version=N become silent no-ops, and writes to a virtual
+// table's shadow tables (fts5's _data, _idx and so on) and to sqlite_dbpage
+// fail with "table ... may not be modified". Reading those tables, ordinary
+// use of the virtual tables that own them, and VACUUM are unaffected.
+//
+// Because journal_mode=OFF is one of the operations defensive mode suppresses,
+// a true _defensive combined with _journal_mode=OFF (or _journal=OFF) is
+// rejected rather than silently honouring neither. The unvalidated _pragma
+// list is the exception, as always: _pragma=journal_mode(OFF) alongside
+// _defensive=1 runs and is silently ignored by SQLite.
+//
+// Defensive mode is a hardening measure, not a sandbox for hostile database
+// files. It is one of several steps SQLite recommends for that purpose (see
+// https://www.sqlite.org/security.html); this build compiles with neither
+// SQLITE_TRUSTED_SCHEMA=0 nor SQLITE_DQS=0 and the driver exposes no
+// authorizer, so _defensive=1 alone does not make opening an untrusted file
+// safe. It is also a property of the connection, not of the database: another
+// connection to the same file, opened without the parameter, is unrestricted.
+// See: https://www.sqlite.org/c3ref/c_dbconfig_defensive.html
 //
 // _error_rc: Opt-in error-string reporting mode for synthesised errors.
 // Accepts the values strconv.ParseBool understands ("0"/"1",

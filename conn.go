@@ -127,22 +127,28 @@ func newConn(dsn string) (*conn, error) {
 	defer libc.Xfree(c.tls, zMain)
 	c.inMemory = libc.GoString(sqlite3.Xsqlite3_db_filename(c.tls, c.db, zMain)) == ""
 
-	// Connection-level sqlite3_db_config options are applied before
-	// applyQueryParams because the SQLite contract
-	// requires sqlite3_db_config(SQLITE_DBCONFIG_DQS_*) to be set before
-	// any statement is prepared on the connection. applyQueryParams runs
-	// user-supplied PRAGMA statements, so it must come after.
+	// _defensive is applied first so that everything the driver and the
+	// caller run afterwards is already subject to the restriction: the
+	// PRAGMAs applyQueryParams executes, the _pragma list, and every
+	// statement prepared on the connection. Unlike the DBCONFIG_DQS_*
+	// flags below this ordering is a choice rather than an API contract;
+	// SQLITE_DBCONFIG_DEFENSIVE may be toggled at any point in a
+	// connection's life.
 	if err = applyDefensiveConfig(c, defensiveMode); err != nil {
 		c.Close()
 		return nil, err
 	}
 
+	// _dqs is applied before applyQueryParams because the SQLite contract
+	// requires sqlite3_db_config(SQLITE_DBCONFIG_DQS_*) to be set before
+	// any statement is prepared on the connection. applyQueryParams runs
+	// user-supplied PRAGMA statements, so it must come after.
 	if err = applyDQSConfig(c, query); err != nil {
 		c.Close()
 		return nil, err
 	}
 
-	if err = applyQueryParams(c, query); err != nil {
+	if err = applyQueryParams(c, query, defensiveMode); err != nil {
 		c.Close()
 		return nil, err
 	}

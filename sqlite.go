@@ -278,7 +278,11 @@ func dsnEnum(key, val string, allowed []string) error {
 	return fmt.Errorf("invalid %s %q, expecting one of: %s", key, val, strings.Join(allowed, " "))
 }
 
-func applyQueryParams(c *conn, query string) error {
+// applyQueryParams validates and applies the DSN query parameters. defensive
+// is the _defensive value newConn parsed and already acted on; the validation
+// phase below needs it to tell whether a parameter it is about to accept can
+// still take effect on the connection.
+func applyQueryParams(c *conn, query string, defensive bool) error {
 	q, err := url.ParseQuery(query)
 	if err != nil {
 		return err
@@ -325,6 +329,15 @@ func applyQueryParams(c *conn, query string) error {
 	if journalMode != "" {
 		if err := dsnEnum(journalModeKey, journalMode, []string{"DELETE", "TRUNCATE", "PERSIST", "MEMORY", "WAL", "OFF"}); err != nil {
 			return err
+		}
+		// PRAGMA journal_mode=OFF is one of the operations defensive mode
+		// suppresses, and SQLite suppresses it silently: the statement
+		// succeeds and reports the unchanged mode. Accepting the
+		// combination would mean honouring neither parameter without
+		// telling anyone, so reject it here, alongside the other checks
+		// that run before a single statement is executed.
+		if defensive && strings.EqualFold(journalMode, "OFF") {
+			return fmt.Errorf("conflicting DSN parameters: %s=%s cannot take effect under _defensive", journalModeKey, journalMode)
 		}
 	}
 
