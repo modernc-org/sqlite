@@ -83,6 +83,10 @@ func newConn(dsn string) (*conn, error) {
 	if err != nil {
 		return nil, err
 	}
+	defensiveMode, err := getDefensiveMode(query)
+	if err != nil {
+		return nil, err
+	}
 	c := &conn{tls: libc.NewTLS(), errorRcMode: errorRcMode}
 	// The withOpenGate wrapper marks the page-cache opened flag and holds
 	// pcacheState.openGate.RLock for the duration of sqlite3_open_v2, so
@@ -123,10 +127,16 @@ func newConn(dsn string) (*conn, error) {
 	defer libc.Xfree(c.tls, zMain)
 	c.inMemory = libc.GoString(sqlite3.Xsqlite3_db_filename(c.tls, c.db, zMain)) == ""
 
-	// _dqs is applied before applyQueryParams because the SQLite contract
+	// Connection-level sqlite3_db_config options are applied before
+	// applyQueryParams because the SQLite contract
 	// requires sqlite3_db_config(SQLITE_DBCONFIG_DQS_*) to be set before
 	// any statement is prepared on the connection. applyQueryParams runs
 	// user-supplied PRAGMA statements, so it must come after.
+	if err = applyDefensiveConfig(c, defensiveMode); err != nil {
+		c.Close()
+		return nil, err
+	}
+
 	if err = applyDQSConfig(c, query); err != nil {
 		c.Close()
 		return nil, err

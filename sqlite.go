@@ -174,6 +174,46 @@ func applyDQSConfig(c *conn, query string) error {
 	return nil
 }
 
+// getDefensiveMode validates the _defensive DSN query parameter before
+// sqlite3_open_v2 can create or mutate a database. Absence or a false value
+// preserves SQLite's default behavior for backwards compatibility.
+//
+// The parameter is intentionally single-valued. Accepting duplicate values
+// would make the security posture depend on url.Values.Get choosing the first
+// value, so duplicates fail the connection before any query parameter is
+// applied.
+func getDefensiveMode(query string) (bool, error) {
+	q, err := url.ParseQuery(query)
+	if err != nil {
+		return false, err
+	}
+	values, ok := q["_defensive"]
+	if !ok {
+		return false, nil
+	}
+	if len(values) != 1 {
+		return false, fmt.Errorf("_defensive must be specified exactly once, got %d values", len(values))
+	}
+	on, err := strconv.ParseBool(values[0])
+	if err != nil {
+		return false, fmt.Errorf("invalid _defensive value %q: %w", values[0], err)
+	}
+	return on, nil
+}
+
+// applyDefensiveConfig enables SQLite's defensive connection mode after
+// sqlite3_open_v2 and before any user-supplied PRAGMA or statement can run.
+// See https://www.sqlite.org/c3ref/c_dbconfig_defensive.html.
+func applyDefensiveConfig(c *conn, on bool) error {
+	if !on {
+		return nil
+	}
+	if rc := c.dbConfigBool(sqlite3.SQLITE_DBCONFIG_DEFENSIVE, true); rc != sqlite3.SQLITE_OK {
+		return fmt.Errorf("sqlite3_db_config(SQLITE_DBCONFIG_DEFENSIVE, on) returned %d", rc)
+	}
+	return nil
+}
+
 // getErrorRcMode reads the _error_rc DSN query parameter and returns
 // the parsed boolean. Called from newConn before sqlite3_open_v2 so
 // open-time failures get the conditional errmsg treatment too: the

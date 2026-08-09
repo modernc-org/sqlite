@@ -140,6 +140,13 @@ func newDriver() *Driver { return d }
 // https://www.sqlite.org/quirks.html#dblquote and
 // https://gitlab.com/cznic/sqlite/-/issues/61
 //
+// _defensive: Opt-in toggle for SQLite's defensive connection mode. Accepts
+// the values strconv.ParseBool understands. When true, the driver calls
+// sqlite3_db_config(SQLITE_DBCONFIG_DEFENSIVE) before any user-supplied PRAGMA
+// or statement is prepared. Duplicate or invalid values fail connection
+// creation. Absence or false preserves SQLite's default behavior. See:
+// https://www.sqlite.org/c3ref/c_dbconfig_defensive.html
+//
 // _error_rc: Opt-in error-string reporting mode for synthesised errors.
 // Accepts the values strconv.ParseBool understands ("0"/"1",
 // "false"/"true", "f"/"t", case-insensitive). When absent or set to a
