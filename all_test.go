@@ -751,6 +751,10 @@ func TestConcurrentGoroutines(t *testing.T) {
 			t.Logf("recursive test -race: PASS")
 		case
 			strings.Contains(s, "-race is not supported"),
+			// The race detector needs cgo. A CGo-free driver is a
+			// natural thing to test with CGO_ENABLED=0, and doing so
+			// must not fail the suite over a check that cannot run.
+			strings.Contains(s, "-race requires cgo"),
 			strings.Contains(s, "unsupported VMA range"):
 
 			t.Logf("recursive test -race: SKIP: %v", err)
