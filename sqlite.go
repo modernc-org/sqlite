@@ -621,7 +621,7 @@ func RegisterCollationUtf8(
 	zName string,
 	impl func(left, right string) int,
 ) error {
-	return registerCollation(zName, impl, sqlite3.SQLITE_UTF8)
+	return d.registerCollation(zName, impl, sqlite3.SQLITE_UTF8)
 }
 
 // MustRegisterCollationUtf8 is like RegisterCollationUtf8 but panics on error.
@@ -634,11 +634,24 @@ func MustRegisterCollationUtf8(
 	}
 }
 
-func registerCollation(
+// RegisterCollationUtf8 is like the package-level [RegisterCollationUtf8] but
+// registers the collation on d alone, so it reaches only the connections d
+// opens. See [Driver] for when to prefer this over the package-level form.
+func (d *Driver) RegisterCollationUtf8(
+	zName string,
+	impl func(left, right string) int,
+) error {
+	return d.registerCollation(zName, impl, sqlite3.SQLITE_UTF8)
+}
+
+func (d *Driver) registerCollation(
 	zName string,
 	impl func(left, right string) int,
 	enc int32,
 ) error {
+	if d.collations == nil {
+		d.collations = map[string]*collation{}
+	}
 	if _, ok := d.collations[zName]; ok {
 		return fmt.Errorf("a collation %q is already registered", zName)
 	}
@@ -702,7 +715,40 @@ func RegisterFunction(
 	zFuncName string,
 	impl *FunctionImpl,
 ) error {
-	return registerFunction(zFuncName, impl)
+	return d.registerFunction(zFuncName, impl)
+}
+
+// RegisterFunction is like the package-level [RegisterFunction] but registers
+// the function on d alone, so it reaches only the connections d opens. See
+// [Driver] for when to prefer this over the package-level form.
+func (d *Driver) RegisterFunction(
+	zFuncName string,
+	impl *FunctionImpl,
+) error {
+	return d.registerFunction(zFuncName, impl)
+}
+
+// RegisterScalarFunction is like the package-level [RegisterScalarFunction]
+// but registers the function on d alone, so it reaches only the connections d
+// opens. See [Driver] for when to prefer this over the package-level form.
+func (d *Driver) RegisterScalarFunction(
+	zFuncName string,
+	nArg int32,
+	xFunc func(ctx *FunctionContext, args []driver.Value) (driver.Value, error),
+) error {
+	return d.registerFunction(zFuncName, &FunctionImpl{NArgs: nArg, Scalar: xFunc, Deterministic: false})
+}
+
+// RegisterDeterministicScalarFunction is like the package-level
+// [RegisterDeterministicScalarFunction] but registers the function on d alone,
+// so it reaches only the connections d opens. See [Driver] for when to prefer
+// this over the package-level form.
+func (d *Driver) RegisterDeterministicScalarFunction(
+	zFuncName string,
+	nArg int32,
+	xFunc func(ctx *FunctionContext, args []driver.Value) (driver.Value, error),
+) error {
+	return d.registerFunction(zFuncName, &FunctionImpl{NArgs: nArg, Scalar: xFunc, Deterministic: true})
 }
 
 // MustRegisterFunction is like RegisterFunction but panics on error.
@@ -730,7 +776,7 @@ func RegisterScalarFunction(
 			dmesg("zFuncName %q, nArg %v, xFunc %p: err %v", zFuncName, nArg, xFunc, err)
 		}()
 	}
-	return registerFunction(zFuncName, &FunctionImpl{NArgs: nArg, Scalar: xFunc, Deterministic: false})
+	return d.registerFunction(zFuncName, &FunctionImpl{NArgs: nArg, Scalar: xFunc, Deterministic: false})
 }
 
 // MustRegisterScalarFunction is like RegisterScalarFunction but panics on
@@ -780,14 +826,16 @@ func RegisterDeterministicScalarFunction(
 			dmesg("zFuncName %q, nArg %v, xFunc %p: err %v", zFuncName, nArg, xFunc, err)
 		}()
 	}
-	return registerFunction(zFuncName, &FunctionImpl{NArgs: nArg, Scalar: xFunc, Deterministic: true})
+	return d.registerFunction(zFuncName, &FunctionImpl{NArgs: nArg, Scalar: xFunc, Deterministic: true})
 }
 
-func registerFunction(
+func (d *Driver) registerFunction(
 	zFuncName string,
 	impl *FunctionImpl,
 ) error {
-
+	if d.udfs == nil {
+		d.udfs = map[string]*userDefinedFunction{}
+	}
 	if _, ok := d.udfs[zFuncName]; ok {
 		return fmt.Errorf("a function named %q is already registered", zFuncName)
 	}

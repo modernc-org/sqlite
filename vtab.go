@@ -95,8 +95,23 @@ type cIndexConstraint = sqlite3.Tsqlite3_index_constraint
 type cIndexOrderBy = sqlite3.Tsqlite3_index_orderby
 type cConstraintUsage = sqlite3.Tsqlite3_index_constraint_usage
 
-// registerModule is installed as the hook for vtab.RegisterModule.
+// registerModule is installed as the hook for vtab.RegisterModule. It targets
+// the package-level driver, which is what a nil *sql.DB resolves to.
 func registerModule(name string, m vtab.Module) error {
+	return newDriver().RegisterModule(name, m)
+}
+
+// RegisterModule registers a virtual table module on d alone, so it reaches
+// only the connections d opens. It is the per-driver counterpart of
+// [modernc.org/sqlite/vtab.RegisterModule], which reaches it by way of the
+// *sql.DB passed as that function's first argument.
+//
+// Registration applies to new connections only; see
+// [modernc.org/sqlite/vtab.RegisterModule] for the full contract.
+func (d *Driver) RegisterModule(name string, m vtab.Module) error {
+	if d.modules == nil {
+		d.modules = map[string]vtab.Module{}
+	}
 	if _, exists := d.modules[name]; exists {
 		return fmt.Errorf("sqlite: module %q already registered", name)
 	}
@@ -104,10 +119,29 @@ func registerModule(name string, m vtab.Module) error {
 	return nil
 }
 
-// registerModules installs all globally registered vtab modules on this
-// connection by calling sqlite3_create_module_v2 for each one.
-func (c *conn) registerModules() error {
+// registerModules installs the vtab modules visible to d on this connection by
+// calling sqlite3_create_module_v2 for each one.
+//
+// The set is the union of the modules registered on the package-level driver
+// and those registered on d itself. The package-level set is included
+// unconditionally because that is what every connection has received since
+// module support was added, whichever Driver opened it; d's own set is what
+// [Driver.RegisterModule] adds on top. A name registered in both resolves to
+// the package-level implementation, matching the pre-existing behavior.
+func (c *conn) registerModules(d *Driver) error {
+	global := newDriver()
+	for name, mod := range global.modules {
+		if err := c.registerSingleModule(name, mod); err != nil {
+			return err
+		}
+	}
+	if d == nil || d == global {
+		return nil
+	}
 	for name, mod := range d.modules {
+		if _, done := global.modules[name]; done {
+			continue
+		}
 		if err := c.registerSingleModule(name, mod); err != nil {
 			return err
 		}

@@ -24,19 +24,30 @@ import (
 // [vtab.RegisterModule].
 //
 // A Driver a caller constructs is not equivalent to that one. Its fields are
-// unexported, so it starts out with no functions, collations or connection
-// hooks, and the only way to give it any is [Driver.RegisterConnectionHook];
-// the package-level registration functions always apply to the registered
-// driver, never to a constructed one. Connections it opens therefore run
-// without the package-level functions and collations -- and where such a
-// registration overrides a SQLite built-in of the same name, they run with
-// SQLite's built-in in force instead. Virtual table modules are the one
-// exception: they are held process-globally and reach every Driver.
+// unexported, so it starts out empty, and the package-level registration
+// functions always apply to the registered driver, never to a constructed one.
+// Connections it opens therefore run without the package-level functions and
+// collations -- and where such a registration overrides a SQLite built-in of
+// the same name, they run with SQLite's built-in in force instead. Virtual
+// table modules are the one exception: those registered through the
+// package-level path are held process-globally and reach every Driver.
 //
-// Constructing one is supported for the private-hook pattern: a driver
-// registered under a name of its own with sql.Register, so that its connection
-// hooks apply to its own connections rather than to every connection in the
-// process. Prefer sql.Open or NewConnector for anything else.
+// A constructed Driver is filled in through its own methods, each of which
+// registers on that Driver alone: [Driver.RegisterFunction],
+// [Driver.RegisterScalarFunction],
+// [Driver.RegisterDeterministicScalarFunction],
+// [Driver.RegisterCollationUtf8], [Driver.RegisterConnectionHook] and
+// [Driver.RegisterModule]. The zero Driver is ready to use; there is no
+// constructor. What it registers stays on it, so two constructed Drivers do
+// not see each other's registrations and neither leaks into the package-level
+// driver. Modules it registers itself are installed in addition to the
+// process-global ones, not instead of them.
+//
+// Constructing one is supported for the private-registration pattern: a driver
+// registered under a name of its own with sql.Register, so that its functions,
+// collations, modules and connection hooks apply to its own connections rather
+// than to every connection in the process. Prefer sql.Open or NewConnector for
+// anything else.
 type Driver struct {
 	// user defined functions that are added to every new connection on Open
 	udfs map[string]*userDefinedFunction
@@ -253,7 +264,7 @@ func (d *Driver) Open(name string) (conn driver.Conn, err error) {
 	// Note: vtab module registration applies to new connections only. If a
 	// module is registered after a connection has been opened, that existing
 	// connection will not see the module; open a new connection to use it.
-	if err := c.registerModules(); err != nil {
+	if err := c.registerModules(d); err != nil {
 		c.Close()
 		return nil, err
 	}
