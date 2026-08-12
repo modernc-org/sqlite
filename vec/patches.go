@@ -20,6 +20,15 @@
 // available:
 //
 //	CREATE VIRTUAL TABLE vec_examples USING vec0(embedding float[8])
+//
+// # License
+//
+// sqlite-vec is Copyright (c) 2024 Alex Garcia and is dual-licensed Apache-2.0
+// OR MIT; it is used here under the MIT license. That is a different license
+// from the rest of this module -- SQLite itself is public domain and this
+// module's own code is BSD-3-Clause -- and the MIT notice must accompany
+// redistribution of the sources in this package. It travels with them as
+// LICENSE-SQLITE_VEC in the module root.
 package vec
 
 import (

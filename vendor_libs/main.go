@@ -139,6 +139,26 @@ type Sqlite3_vtab_cursor = sqlite3_vtab_cursor
 	}
 
 	{
+		// Unlike SQLite, which is public domain, sqlite-vec is MIT-licensed and
+		// its notice must travel with the substantial portion of it vendored
+		// below. modernc.org/libsqlite_vec's generator extracts the notice from
+		// the upstream tarball as LICENSE-SQLITE_VEC; copy it verbatim next to
+		// this module's own LICENSE. Read errors are fatal on purpose: shipping
+		// the code without the notice is worse than not vendoring at all.
+		{
+			const licenseFile = "LICENSE-SQLITE_VEC"
+			ifn := filepath.Join("..", "libsqlite_vec", licenseFile)
+			fmt.Printf("license\t%s\n", ifn)
+			license, err := os.ReadFile(ifn)
+			if err != nil {
+				fail(1, "%s\n", err)
+			}
+
+			if err := os.WriteFile(licenseFile, license, 0660); err != nil {
+				fail(1, "%s\n", err)
+			}
+		}
+
 		for _, v := range []struct{ goos, goarch string }{
 			{"darwin", "amd64"},
 			{"darwin", "arm64"},
