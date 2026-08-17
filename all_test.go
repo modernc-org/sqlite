@@ -2547,10 +2547,16 @@ func checkPragmas(db *sql.DB, pragmas []pragmaCfg) error {
 	return nil
 }
 
+// connHookTestSeq keeps the driver name TestConnectionHook registers unique
+// across invocations. sql.Register panics on a name it has already seen and
+// offers no way to undo a registration, so a fixed name takes the whole test
+// binary down on the second iteration of -count>1.
+var connHookTestSeq atomic.Int64
+
 func TestConnectionHook(t *testing.T) {
 	callCount := 0
 	connStr := ":memory:?_connHookTest=1"
-	driverName := "sqlite_conn_hook_test"
+	driverName := fmt.Sprintf("sqlite_conn_hook_test_%d", connHookTestSeq.Add(1))
 
 	testDriver := Driver{}
 	testDriver.RegisterConnectionHook(func(conn ExecQuerierContext, dsn string) error {
@@ -2567,6 +2573,8 @@ func TestConnectionHook(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	defer db.Close()
 
 	_, err = db.Exec("SELECT 1")
 	if err != nil {
