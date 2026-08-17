@@ -4542,7 +4542,7 @@ func TestDBPageVtab(t *testing.T) {
 	}
 
 	// Query the sqlite_dbpage virtual table.
-	// If -DSQLITE_ENABLE_DBPAGE_VTAB was not enabled, this will return an error 
+	// If -DSQLITE_ENABLE_DBPAGE_VTAB was not enabled, this will return an error
 	// (e.g., "no such table: sqlite_dbpage").
 	var pgno int
 	var data []byte
