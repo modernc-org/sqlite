@@ -57,8 +57,9 @@ func main() {
 func main1() error {
 	// A function on the package-level driver, as an application registers it.
 	// Connections handed out by the Connector carry it; connections from a
-	// caller-constructed &sqlite.Driver{} would not, because that type's
-	// fields are unexported and hold none of the registrations.
+	// caller-constructed &sqlite.Driver{} would not, because the package-level
+	// registration functions always apply to the driver registered as
+	// "sqlite". Such a Driver has to be filled in through its own methods.
 	if err := sqlite.RegisterDeterministicScalarFunction("meaning", 0,
 		func(*sqlite.FunctionContext, []driver.Value) (driver.Value, error) {
 			return int64(42), nil

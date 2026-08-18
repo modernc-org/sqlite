@@ -7,14 +7,18 @@ package sqlite // import "modernc.org/sqlite"
 import (
 	"database/sql/driver"
 	"fmt"
+	"sync"
 
+	sqlite3 "modernc.org/sqlite/lib"
 	"modernc.org/sqlite/vtab"
 )
 
 // Driver implements database/sql/driver.Driver.
 //
 // Registration functions and methods must be called before the first call to
-// Open.
+// Open. The methods are safe to call concurrently with each other, so a
+// *Driver can be handed out for several packages to fill from their init
+// functions; the ordering requirement against Open still stands.
 //
 // Most code has no use for this type. sql.Open("sqlite", dsn) and
 // [NewConnector] both go through the driver this package registers as
@@ -23,21 +27,37 @@ import (
 // [RegisterCollationUtf8], [RegisterConnectionHook] and
 // [vtab.RegisterModule].
 //
-// A Driver a caller constructs is not equivalent to that one. Its fields are
-// unexported, so it starts out with no functions, collations or connection
-// hooks, and the only way to give it any is [Driver.RegisterConnectionHook];
-// the package-level registration functions always apply to the registered
-// driver, never to a constructed one. Connections it opens therefore run
-// without the package-level functions and collations -- and where such a
-// registration overrides a SQLite built-in of the same name, they run with
-// SQLite's built-in in force instead. Virtual table modules are the one
-// exception: they are held process-globally and reach every Driver.
+// A Driver a caller constructs is not equivalent to that one. It starts out
+// empty, and the package-level registration functions always apply to the
+// registered driver, never to a constructed one. Connections it opens
+// therefore run without the package-level functions and collations -- and
+// where such a registration overrides a SQLite built-in of the same name, they
+// run with SQLite's built-in in force instead. Virtual table modules are the
+// one exception: those registered through the package-level path are held
+// process-globally and reach every Driver.
 //
-// Constructing one is supported for the private-hook pattern: a driver
-// registered under a name of its own with sql.Register, so that its connection
-// hooks apply to its own connections rather than to every connection in the
-// process. Prefer sql.Open or NewConnector for anything else.
+// A constructed Driver is filled in through its own methods, each of which
+// registers on that Driver alone: [Driver.RegisterFunction],
+// [Driver.RegisterScalarFunction],
+// [Driver.RegisterDeterministicScalarFunction],
+// [Driver.RegisterCollationUtf8], [Driver.RegisterConnectionHook] and
+// [Driver.RegisterModule]. The zero Driver is ready to use; there is no
+// constructor. What it registers stays on it, so two constructed Drivers do
+// not see each other's registrations and neither leaks into the package-level
+// driver. Modules it registers itself are installed in addition to the
+// process-global ones, not instead of them, and where both registered the
+// same name the package-level implementation wins on its connections.
+//
+// Constructing one is supported for the private-registration pattern: a driver
+// registered under a name of its own with sql.Register, so that its functions,
+// collations, modules and connection hooks apply to its own connections rather
+// than to every connection in the process. Prefer sql.Open or NewConnector for
+// anything else.
 type Driver struct {
+	// mu guards the registration state below against concurrent
+	// registrations. Open reads that state without it, which the ordering
+	// requirement in the type documentation makes safe.
+	mu sync.Mutex
 	// user defined functions that are added to every new connection on Open
 	udfs map[string]*userDefinedFunction
 	// collations that are added to every new connection on Open
@@ -56,7 +76,7 @@ var d = &Driver{
 	modules:         make(map[string]vtab.Module, 0),
 }
 
-func newDriver() *Driver { return d }
+func defaultDriver() *Driver { return d }
 
 // Open returns a new connection to the database. The name is a string in a
 // driver-specific format.
@@ -253,7 +273,7 @@ func (d *Driver) Open(name string) (conn driver.Conn, err error) {
 	// Note: vtab module registration applies to new connections only. If a
 	// module is registered after a connection has been opened, that existing
 	// connection will not see the module; open a new connection to use it.
-	if err := c.registerModules(); err != nil {
+	if err := c.registerModules(d); err != nil {
 		c.Close()
 		return nil, err
 	}
@@ -268,5 +288,116 @@ func (d *Driver) Open(name string) (conn driver.Conn, err error) {
 // sql.Open and [NewConnector] hand out, use the package-level
 // [RegisterConnectionHook].
 func (d *Driver) RegisterConnectionHook(fn ConnectionHookFn) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
 	d.connectionHooks = append(d.connectionHooks, fn)
+}
+
+// RegisterFunction is like the package-level [RegisterFunction] but registers
+// the function on d alone, so it reaches only the connections d opens. See
+// [Driver] for when to prefer this over the package-level form.
+func (d *Driver) RegisterFunction(
+	zFuncName string,
+	impl *FunctionImpl,
+) (err error) {
+	if dmesgs {
+		defer func() {
+			dmesg("d %p, zFuncName %q, impl %p: err %v", d, zFuncName, impl, err)
+		}()
+	}
+	return d.registerFunction(zFuncName, impl)
+}
+
+// MustRegisterFunction is like [Driver.RegisterFunction] but panics on error.
+func (d *Driver) MustRegisterFunction(
+	zFuncName string,
+	impl *FunctionImpl,
+) {
+	if err := d.RegisterFunction(zFuncName, impl); err != nil {
+		panic(err)
+	}
+}
+
+// RegisterScalarFunction is like the package-level [RegisterScalarFunction]
+// but registers the function on d alone, so it reaches only the connections d
+// opens. See [Driver] for when to prefer this over the package-level form.
+func (d *Driver) RegisterScalarFunction(
+	zFuncName string,
+	nArg int32,
+	xFunc func(ctx *FunctionContext, args []driver.Value) (driver.Value, error),
+) (err error) {
+	if dmesgs {
+		defer func() {
+			dmesg("d %p, zFuncName %q, nArg %v, xFunc %p: err %v", d, zFuncName, nArg, xFunc, err)
+		}()
+	}
+	return d.registerFunction(zFuncName, &FunctionImpl{NArgs: nArg, Scalar: xFunc, Deterministic: false})
+}
+
+// MustRegisterScalarFunction is like [Driver.RegisterScalarFunction] but
+// panics on error.
+func (d *Driver) MustRegisterScalarFunction(
+	zFuncName string,
+	nArg int32,
+	xFunc func(ctx *FunctionContext, args []driver.Value) (driver.Value, error),
+) {
+	if err := d.RegisterScalarFunction(zFuncName, nArg, xFunc); err != nil {
+		panic(err)
+	}
+}
+
+// RegisterDeterministicScalarFunction is like the package-level
+// [RegisterDeterministicScalarFunction] but registers the function on d alone,
+// so it reaches only the connections d opens. See [Driver] for when to prefer
+// this over the package-level form.
+func (d *Driver) RegisterDeterministicScalarFunction(
+	zFuncName string,
+	nArg int32,
+	xFunc func(ctx *FunctionContext, args []driver.Value) (driver.Value, error),
+) (err error) {
+	if dmesgs {
+		defer func() {
+			dmesg("d %p, zFuncName %q, nArg %v, xFunc %p: err %v", d, zFuncName, nArg, xFunc, err)
+		}()
+	}
+	return d.registerFunction(zFuncName, &FunctionImpl{NArgs: nArg, Scalar: xFunc, Deterministic: true})
+}
+
+// MustRegisterDeterministicScalarFunction is like
+// [Driver.RegisterDeterministicScalarFunction] but panics on error.
+func (d *Driver) MustRegisterDeterministicScalarFunction(
+	zFuncName string,
+	nArg int32,
+	xFunc func(ctx *FunctionContext, args []driver.Value) (driver.Value, error),
+) {
+	if err := d.RegisterDeterministicScalarFunction(zFuncName, nArg, xFunc); err != nil {
+		panic(err)
+	}
+}
+
+// RegisterCollationUtf8 is like the package-level [RegisterCollationUtf8] but
+// registers the collation on d alone, so it reaches only the connections d
+// opens. See [Driver] for when to prefer this over the package-level form.
+func (d *Driver) RegisterCollationUtf8(
+	zName string,
+	impl func(left, right string) int,
+) (err error) {
+	if dmesgs {
+		defer func() {
+			dmesg("d %p, zName %q, impl %p: err %v", d, zName, impl, err)
+		}()
+	}
+	return d.registerCollation(zName, impl, sqlite3.SQLITE_UTF8)
+}
+
+// MustRegisterCollationUtf8 is like [Driver.RegisterCollationUtf8] but panics
+// on error.
+func (d *Driver) MustRegisterCollationUtf8(
+	zName string,
+	impl func(left, right string) int,
+) {
+	if err := d.RegisterCollationUtf8(zName, impl); err != nil {
+		panic(err)
+	}
 }
