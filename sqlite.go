@@ -53,7 +53,7 @@ const (
 )
 
 func init() {
-	sql.Register(driverName, newDriver())
+	sql.Register(driverName, defaultDriver())
 	sqlite3.PatchIssue199() // https://gitlab.com/cznic/sqlite/-/issues/199
 
 }
@@ -615,13 +615,13 @@ type collation struct {
 // - if A<B, then B>A
 // - if A<B and B<C, then A<C.
 //
-// The new collation will be available to all new connections opened after
-// executing RegisterCollationUtf8.
+// The new collation will be available to all new connections the driver
+// registered as "sqlite" opens after executing RegisterCollationUtf8.
 func RegisterCollationUtf8(
 	zName string,
 	impl func(left, right string) int,
 ) error {
-	return registerCollation(zName, impl, sqlite3.SQLITE_UTF8)
+	return d.registerCollation(zName, impl, sqlite3.SQLITE_UTF8)
 }
 
 // MustRegisterCollationUtf8 is like RegisterCollationUtf8 but panics on error.
@@ -634,11 +634,17 @@ func MustRegisterCollationUtf8(
 	}
 }
 
-func registerCollation(
+func (d *Driver) registerCollation(
 	zName string,
 	impl func(left, right string) int,
 	enc int32,
 ) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	if d.collations == nil {
+		d.collations = map[string]*collation{}
+	}
 	if _, ok := d.collations[zName]; ok {
 		return fmt.Errorf("a collation %q is already registered", zName)
 	}
@@ -696,13 +702,13 @@ const sqliteValPtrSize = unsafe.Sizeof(&sqlite3.Sqlite3_value{})
 // scalar function (when Scalar is defined) or an aggregate function (when
 // Scalar is not defined and MakeAggregate is defined).
 //
-// The new function will be available to all new connections opened after
-// executing RegisterFunction.
+// The new function will be available to all new connections the driver
+// registered as "sqlite" opens after executing RegisterFunction.
 func RegisterFunction(
 	zFuncName string,
 	impl *FunctionImpl,
 ) error {
-	return registerFunction(zFuncName, impl)
+	return d.registerFunction(zFuncName, impl)
 }
 
 // MustRegisterFunction is like RegisterFunction but panics on error.
@@ -718,8 +724,8 @@ func MustRegisterFunction(
 // RegisterScalarFunction registers a scalar function named zFuncName with nArg
 // arguments. Passing -1 for nArg indicates the function is variadic.
 //
-// The new function will be available to all new connections opened after
-// executing RegisterScalarFunction.
+// The new function will be available to all new connections the driver
+// registered as "sqlite" opens after executing RegisterScalarFunction.
 func RegisterScalarFunction(
 	zFuncName string,
 	nArg int32,
@@ -730,7 +736,7 @@ func RegisterScalarFunction(
 			dmesg("zFuncName %q, nArg %v, xFunc %p: err %v", zFuncName, nArg, xFunc, err)
 		}()
 	}
-	return registerFunction(zFuncName, &FunctionImpl{NArgs: nArg, Scalar: xFunc, Deterministic: false})
+	return d.registerFunction(zFuncName, &FunctionImpl{NArgs: nArg, Scalar: xFunc, Deterministic: false})
 }
 
 // MustRegisterScalarFunction is like RegisterScalarFunction but panics on
@@ -768,8 +774,9 @@ func MustRegisterDeterministicScalarFunction(
 // the function is variadic. A deterministic function means that the function
 // always gives the same output when the input parameters are the same.
 //
-// The new function will be available to all new connections opened after
-// executing RegisterDeterministicScalarFunction.
+// The new function will be available to all new connections the driver
+// registered as "sqlite" opens after executing
+// RegisterDeterministicScalarFunction.
 func RegisterDeterministicScalarFunction(
 	zFuncName string,
 	nArg int32,
@@ -780,14 +787,19 @@ func RegisterDeterministicScalarFunction(
 			dmesg("zFuncName %q, nArg %v, xFunc %p: err %v", zFuncName, nArg, xFunc, err)
 		}()
 	}
-	return registerFunction(zFuncName, &FunctionImpl{NArgs: nArg, Scalar: xFunc, Deterministic: true})
+	return d.registerFunction(zFuncName, &FunctionImpl{NArgs: nArg, Scalar: xFunc, Deterministic: true})
 }
 
-func registerFunction(
+func (d *Driver) registerFunction(
 	zFuncName string,
 	impl *FunctionImpl,
 ) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
 
+	if d.udfs == nil {
+		d.udfs = map[string]*userDefinedFunction{}
+	}
 	if _, ok := d.udfs[zFuncName]; ok {
 		return fmt.Errorf("a function named %q is already registered", zFuncName)
 	}
@@ -832,8 +844,10 @@ func registerFunction(
 	return nil
 }
 
-// RegisterConnectionHook registers a function to be called after each connection
-// is opened. This is called after all the connection has been set up.
+// RegisterConnectionHook registers a function to be called after each
+// connection the driver registered as "sqlite" opens. This is called after all
+// the connection has been set up. Use [Driver.RegisterConnectionHook] to hook
+// the connections of a caller-constructed Driver instead.
 func RegisterConnectionHook(fn ConnectionHookFn) {
 	d.RegisterConnectionHook(fn)
 }
