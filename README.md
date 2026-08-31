@@ -1,4 +1,4 @@
-### Pure-Go SQLite, no cgo.
+### Pure-Go SQLite, no cgo
 
 The repository you are currently viewing might be a mirror. Please review the guidelines below based on where you are viewing this:
 
