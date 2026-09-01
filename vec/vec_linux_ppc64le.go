@@ -72,8 +72,6 @@ const m___VEC_ELEMENT_REG_ORDER__ = "__ORDER_LITTLE_ENDIAN__"
 
 const m___VEC__ = 10206
 
-const m___VERSION__ = "14.2.0"
-
 const m___VSX__ = 1
 
 const m___builtin_vsx_vperm = "__builtin_vec_perm"

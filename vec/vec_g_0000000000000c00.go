@@ -6,10 +6,6 @@ package vec
 
 const m___FLOAT128_TYPE__ = 1
 
-const m___GNUC__ = 14
-
-const m___GXX_ABI_VERSION = 1019
-
 const m___builtin_copysignq = "__builtin_copysignf128"
 
 const m___builtin_fabsq = "__builtin_fabsf128"

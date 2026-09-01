@@ -58,6 +58,8 @@ const m___GCC_IEC_559 = 2
 
 const m___GCC_IEC_559_COMPLEX = 2
 
+const m___GNUC_PATCHLEVEL__ = 0
+
 const m___INT16_MAX__ = 0x7fff
 
 const m___INT32_MAX__ = 0x7fffffff

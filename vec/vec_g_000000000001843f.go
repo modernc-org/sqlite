@@ -4,4 +4,8 @@
 
 package vec
 
-const m___GNUC_PATCHLEVEL__ = 1
+const m___STDC_EMBED_EMPTY__ = 2
+
+const m___STDC_EMBED_FOUND__ = 1
+
+const m___STDC_EMBED_NOT_FOUND__ = 0

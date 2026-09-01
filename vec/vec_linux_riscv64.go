@@ -4,19 +4,7 @@
 
 package vec
 
-const m__FORTIFY_SOURCE = 3
-
 const m___FLT16_IS_IEC_60559__ = 1
-
-const m___GNUC_MINOR__ = 3
-
-const m___GNUC__ = 13
-
-const m___GXX_ABI_VERSION = 1018
-
-const m___SSP_STRONG__ = 3
-
-const m___VERSION__ = "13.3.0"
 
 const m___riscv = 1
 
@@ -49,6 +37,8 @@ const m___riscv_fsqrt = 1
 const m___riscv_i = 2001000
 
 const m___riscv_m = 2000000
+
+const m___riscv_misaligned_slow = 1
 
 const m___riscv_mul = 1
 

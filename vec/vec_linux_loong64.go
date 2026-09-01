@@ -22,7 +22,13 @@ const m__LOONGARCH_SZPTR = 64
 
 const m__LOONGARCH_TUNE = "generic"
 
-const m___GNUC_RH_RELEASE__ = 6
+const m___GCC_ATOMIC_CHAR8_T_LOCK_FREE = 2
+
+const m___GNUC_MINOR__ = 3
+
+const m___GNUC__ = 15
+
+const m___GXX_ABI_VERSION = 1020
 
 const m___LLACCUM_EPSILON__ = "0x1P-63LLK"
 
@@ -34,6 +40,8 @@ const m___LLACCUM_MAX__ = "0X7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFP-63LLK"
 
 const m___REGISTER_PREFIX__ = "$"
 
+const m___STDC_VERSION__ = 202311
+
 const m___ULLACCUM_EPSILON__ = "0x1P-64ULLK"
 
 const m___ULLACCUM_FBIT__ = 64
@@ -42,7 +50,7 @@ const m___ULLACCUM_IBIT__ = 64
 
 const m___ULLACCUM_MAX__ = "0XFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFP-64ULLK"
 
-const m___VERSION__ = "14.2.1 20241104 (Red Hat 14.2.1-6)"
+const m___VERSION__ = "15.3.0"
 
 const m___loongarch64 = 1
 
