@@ -19,6 +19,16 @@
 // and re-consults Cache.Fetch on every SQLite request, so a bounded
 // and evicting purgeable cache works as the C contract intends.
 //
+// # OFD locking (Linux)
+//
+// On Linux the library can take Open File Description (OFD) locks instead of
+// POSIX record locks on database files, which stops an unrelated os.File
+// close anywhere in the process from silently stripping SQLite's transaction
+// locks. The switch is process-wide, off by default, and must happen before
+// the first connection is opened: set MODERNC_SQLITE_OFD_LOCK=1 in the
+// environment the process starts with, or call [OFDLocking] from Go. See the
+// [OFDLocking] documentation for the full contract.
+//
 // # Fragile modernc.org/libc dependency
 //
 // When you import this package you should use in your go.mod file the exact
