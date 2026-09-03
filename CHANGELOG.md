@@ -1,5 +1,8 @@
 # Changelog
 
+ - Unreleased:
+     - Fix crash on Windows when accessing truncated *-shm mapping in WAL mode (#221). Emulate SQLite SEH handling via runtime/debug.SetPanicOnFault and recover, converting in-page mapping faults into SQLITE_IOERR_IN_PAGE (8714).
+
 Entries for v1.38.1 through v1.44.1 and for v1.49.1 were added on 2026-09-05, reconstructed from the git history and the merge requests they cite; they were missing at release time.
 
  - 2026-09-05 v1.59.0:
