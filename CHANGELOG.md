@@ -1,5 +1,7 @@
 # Changelog
 
+Entries for v1.38.1 through v1.44.1 and for v1.49.1 were added on 2026-09-05, reconstructed from the git history and the merge requests they cite; they were missing at release time.
+
  - 2026-09-01 v1.58.0:
      - Upgrade to [SQLite 3.53.4](https://sqlite.org/releaselog/3_53_4.html). Upstream's own fix for the journal-rollback data-corruption bug is part of this release, so the local super-journal patch v1.56.0 introduced — and promised to drop once upstream shipped theirs — is dropped; recovery behavior is unchanged. This also bumps the pinned `modernc.org/libc` to v1.75.6; as always, downstream modules must pin the exact `modernc.org/libc` version this module's `go.mod` pins (see [GitLab issue #177](https://gitlab.com/cznic/sqlite/-/issues/177)).
      - Add opt-in support for **Linux Open File Description (OFD) locks** on database files. A POSIX record lock is owned by the (process, inode) pair, so the kernel drops every lock the process holds on a database file whenever any descriptor of that file is closed: an `os.Open`/`Close` for a hash, a backup check or a metadata probe anywhere in the process — third-party libraries included — silently strips SQLite's transaction locks and leaves the file unprotected against other processes. With OFD locking enabled, the locks belong to the open file description that placed them and survive such a close. **Off by default, and staying off until the mode has real-world mileage**: without opting in, locking behavior is byte-for-byte that of previous releases. Enable it by setting `MODERNC_SQLITE_OFD_LOCK=1` in the environment the process starts with (any value but the empty string or one starting with `0`; read once, at library initialization), or from Go with the new `OFDLocking(true)`, which overrides the variable and must run before the first connection is opened; `OFDLockingEnabled` reports the mode in effect. The switch is deliberately **process-wide rather than a DSN parameter**: POSIX and OFD locks taken by one process are different owners to the kernel and genuinely conflict, so every connection to a database file inside one process must use the same kind, and a per-DSN knob would advertise a granularity the kernel does not offer (see the discussion in #255). Because the two kinds do not release one another, the mode is frozen at the process's first lock attempt: later attempts to change it return the new `ErrOFDLockingTooLate`, while querying, and setting the value already in effect, keep working. On kernels older than 3.15, and on filesystems that reject OFD locks, the first lock attempt falls back to POSIX locks for good and `OFDLocking` returns the new `ErrOFDLockingUnavailable` from then on, which is also how `OFDLockingEnabled` turning false reports the fallback; the same error is returned on every platform but Linux, where the API exists but OFD locks do not. Two boundaries to note: the immunity covers the locks on the database file itself, while WAL's `-shm` coordination stays on POSIX locks; and code in the same process that takes fcntl record locks of its own on a database file — which used to never conflict with SQLite's, while quietly destroying them — now conflicts with them loudly instead. The C side — `F_OFD_SETLK` routing through a designated per-inode locking descriptor that preserves upstream's `unixInodeInfo` semantics (last-unlocker release, PENDING piggybacking, `unix-excl`), guarded to `__linux__` — ships in the transpiled sources via [libsqlite3!3](https://gitlab.com/cznic/libsqlite3/-/merge_requests/3) and its follow-up hardening, with the OFD lock constants from [libc!33](https://gitlab.com/cznic/libc/-/merge_requests/33); the review rounds, the `/proc/locks` measurements behind the design, and the Tcl lock/WAL gate that runs both modes are recorded in [GitLab issue #255](https://gitlab.com/cznic/sqlite/-/issues/255) and those merge requests.
@@ -93,6 +95,8 @@
      - This feature is exposed via the idiomatic `database/sql` escape hatch `(*sql.Conn).Raw()`, avoiding custom statement handles and keeping the standard library workflow intact.
      - See [GitLab merge request #113](https://gitlab.com/cznic/sqlite/-/merge_requests/113), thanks Josh Bleecher Snyder!
  
+ - 2026-04-17 v1.49.1: Documentation only: update the per-platform SQLite version table in `doc.go` to 3.53.0, the version shipped since v1.49.0. No code changes.
+
  - 2026-04-17 v1.49.0: Upgrade to [SQLite 3.53.0](https://sqlite.org/releaselog/3_53_0.html).
      - Added `-DSQLITE_ENABLE_DBPAGE_VTAB` to the transpilation. See ["The SQLITE_DBPAGE Virtual Table"](https://www.sqlite.org/dbpage.html) for details.
 
@@ -183,9 +187,42 @@
 
  - 2026-01-18 v1.44.2: Upgrade to  [SQLite 3.51.2](https://sqlite.org/releaselog/3_51_2.html).
 
+ - 2026-01-15 v1.44.1: Bump the pinned `modernc.org/libc` to v1.67.6. Its memory-safe `strlen` fixes the AddressSanitizer global-buffer-overflow in the transpiled window-function name arrays reported in [GitLab merge request #88](https://gitlab.com/cznic/sqlite/-/merge_requests/88), which was closed in favour of that upstream fix, thanks Matt Topol!
+
  - 2026-01-13 v1.44.0: Upgrade to SQLite 3.51.1.
 
+ - 2026-01-08 v1.43.0:
+     - Add `IsReadOnly(schema string) (bool, error)` on the driver connection, a wrapper around `sqlite3_db_readonly`, reachable through `(*sql.Conn).Raw()`. Resolves [GitLab issue #242](https://gitlab.com/cznic/sqlite/-/issues/242).
+     - Honour `_time_integer_format=unix_micro` and `unix_nano` when reading integer time values back with `_inttotime=true`; previously only the seconds/milliseconds heuristic applied. Resolves [GitLab issue #240](https://gitlab.com/cznic/sqlite/-/issues/240).
+     - Make the mutex implementation in `lib/mutex.go` more robust.
+     - Re-vendor the transpiled library from `modernc.org/libsqlite3` v1.11.0; the SQLite version stays 3.50.4.
+     - Add openbsd/amd64 and openbsd/arm64 to the targets exercised by the builders (see [GitLab issue #237](https://gitlab.com/cznic/sqlite/-/issues/237)).
+
+ - 2025-12-28 v1.42.2: Fix a TOCTOU race in query interruption: a cancelled context could interrupt an unrelated, later query on the same connection. Resolves [GitLab issue #241](https://gitlab.com/cznic/sqlite/-/issues/241). See [GitLab merge request #86](https://gitlab.com/cznic/sqlite/-/merge_requests/86), thanks Josh Bleecher Snyder!
+
+ - 2025-12-27 v1.42.1: Revert to the v1.41.0 state (SQLite 3.50.4) and retract v1.42.0 in `go.mod`.
+
+ - 2025-12-27 v1.42.0: Upgrade to SQLite 3.51.1. **Retracted** the same day as accidentally broken, see the `retract` directive in `go.mod`; v1.42.1 reverts it and v1.44.0 carries the working 3.51.1 upgrade.
+
+ - 2025-12-08 v1.41.0:
+     - Add the `modernc.org/sqlite/vtab` subpackage, a Go virtual-table API (`Module`, `Table`, `Cursor`, `IndexInfo`, `vtab.RegisterModule`) bridged to the engine and validated by an in-tree dummy module. See [GitLab merge request #84](https://gitlab.com/cznic/sqlite/-/merge_requests/84), thanks Adrian Witas!
+     - Optimize prepared statements: reuse the prepared SQLite statement handle across executions instead of preparing it again. Updates [GitLab issue #236](https://gitlab.com/cznic/sqlite/-/issues/236).
+     - Fix the build on 32-bit targets.
+
+ - 2025-11-12 v1.40.1: Close the `Rows` of a query whose context was cancelled after the statement had already produced them; such `Rows` were previously leaked, which kept a read transaction open, starved WAL checkpoints and let the WAL grow without bound. See [GitLab merge request #81](https://gitlab.com/cznic/sqlite/-/merge_requests/81), thanks Silvio Moioli!
+
+ - 2025-10-17 v1.40.0: Add pre-update, commit and rollback hooks: `RegisterPreUpdateHook`, `RegisterCommitHook` and `RegisterRollbackHook` on the driver connection, plus the `SQLitePreUpdateData` type (`Depth`, `Count`, `Old`, `New`), reachable through `(*sql.Conn).Raw()`. Updates [GitLab issue #125](https://gitlab.com/cznic/sqlite/-/issues/125). See [GitLab merge request #80](https://gitlab.com/cznic/sqlite/-/merge_requests/80), thanks Walter Wanderley!
+
  - 2025-10-10 v1.39.1: Upgrade to SQLite 3.50.4.
+
+ - 2025-08-11 v1.39.0:
+     - Add the `_time_integer_format` DSN parameter (`unix`, `unix_milli`, `unix_micro`, `unix_nano`): `time.Time` values are bound as integers in that unit instead of as text, so timestamps fit `INTEGER` columns, `STRICT` tables included. Resolves [GitLab issue #216](https://gitlab.com/cznic/sqlite/-/issues/216). See [GitLab merge request #77](https://gitlab.com/cznic/sqlite/-/merge_requests/77), thanks Guénaël Muller!
+     - Add the `_inttotime` DSN parameter: when enabled, `INTEGER` values read from columns declared `DATE`, `DATETIME` or `TIMESTAMP` are converted to `time.Time` (seconds, or milliseconds for magnitudes above 1e12), matching mattn/go-sqlite3, so scanning them into a `*time.Time` no longer fails. Resolves [GitLab issue #214](https://gitlab.com/cznic/sqlite/-/issues/214). See [GitLab merge request #76](https://gitlab.com/cznic/sqlite/-/merge_requests/76), thanks Harald Albrecht!
+     - Add a VFS unit test. See [GitLab merge request #78](https://gitlab.com/cznic/sqlite/-/merge_requests/78), thanks Harald Albrecht!
+
+ - 2025-07-28 v1.38.2: Upgrade to SQLite 3.50.3, this time including the regenerated library that v1.38.1 lacked.
+
+ - 2025-07-25 v1.38.1: Update dependencies. Intended as the upgrade to SQLite 3.50.3, but the regenerated library was not included, so the shipped SQLite version is still 3.50.1. Superseded by v1.38.2.
 
  - 2025-06-09 v1.38.0: Upgrade to SQLite 3.50.1.
 
