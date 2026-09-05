@@ -37,6 +37,11 @@
 //
 // See the discussion at https://gitlab.com/cznic/sqlite/-/issues/177 for more details.
 //
+// # Changelog
+//
+// Release notes are kept in CHANGELOG.md in the repository root, see
+// https://gitlab.com/cznic/sqlite/-/blob/master/CHANGELOG.md.
+//
 // # Thanks
 //
 // This project is sponsored by Schleibinger Geräte Teubert u. Greim GmbH by
