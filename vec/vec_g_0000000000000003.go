@@ -2922,7 +2922,7 @@ func _int8_vec_from_value(tls *libc.TLS, value uintptr, vector uintptr, dimensio
 				}
 				goto done
 			}
-			if result < int64(-libc.Int32FromInt32(127)-libc.Int32FromInt32(1)) || result > int64(127) {
+			if result < int64(-int32(128)) || result > int64(m_INT8_MAX) {
 				libsqlite3.Xsqlite3_free(tls, (**(**TArray)(__ccgo_up(bp))).Fz)
 				**(**uintptr)(__ccgo_up(pzErr)) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+341, 0)
 				return int32(m_SQLITE_ERROR)
@@ -4410,6 +4410,8 @@ const m_BUS_OBJERR = 3
 
 const m_BYTE_ORDER = "__DARWIN_BYTE_ORDER"
 
+const m_CHILD_MAX = 266
+
 const m_CLD_CONTINUED = 6
 
 const m_CLD_DUMPED = 3
@@ -4423,6 +4425,8 @@ const m_CLD_NOOP = 0
 const m_CLD_STOPPED = 5
 
 const m_CLD_TRAPPED = 4
+
+const m_CLK_TCK = "__DARWIN_CLK_TCK"
 
 const m_CPUMON_MAKE_FATAL = 0x1000
 
@@ -4483,6 +4487,8 @@ const m_EPROTO = 100
 const m_EPWROFF = 82
 
 const m_EQFULL = 106
+
+const m_EQUIV_CLASS_MAX = 2
 
 const m_ESHLIBVERS = 87
 
@@ -4548,37 +4554,7 @@ const m_ILL_PRVOPC = 3
 
 const m_ILL_PRVREG = 6
 
-const m_INT_FAST16_MAX = "__INT_LEAST16_MAX"
-
-const m_INT_FAST16_MIN = "__INT_LEAST16_MIN"
-
-const m_INT_FAST32_MAX = "__INT_LEAST32_MAX"
-
-const m_INT_FAST32_MIN = "__INT_LEAST32_MIN"
-
-const m_INT_FAST64_MAX = "__INT_LEAST64_MAX"
-
-const m_INT_FAST64_MIN = "__INT_LEAST64_MIN"
-
-const m_INT_FAST8_MAX = "__INT_LEAST8_MAX"
-
-const m_INT_FAST8_MIN = "__INT_LEAST8_MIN"
-
-const m_INT_LEAST16_MAX = "__INT_LEAST16_MAX"
-
-const m_INT_LEAST16_MIN = "__INT_LEAST16_MIN"
-
-const m_INT_LEAST32_MAX = "__INT_LEAST32_MAX"
-
-const m_INT_LEAST32_MIN = "__INT_LEAST32_MIN"
-
-const m_INT_LEAST64_MAX = "__INT_LEAST64_MAX"
-
-const m_INT_LEAST64_MIN = "__INT_LEAST64_MIN"
-
-const m_INT_LEAST8_MAX = "__INT_LEAST8_MAX"
-
-const m_INT_LEAST8_MIN = "__INT_LEAST8_MIN"
+const m_INTPTR_MAX = 9223372036854775807
 
 const m_IOPOL_APPLICATION = "IOPOL_STANDARD"
 
@@ -4862,7 +4838,9 @@ const m_MAC_OS_X_VERSION_10_9 = "__MAC_10_9"
 
 const m_MAXFLOAT = "0x1.fffffep+127f"
 
-const m_MB_LEN_MAX = 1
+const m_MAX_CANON = 1024
+
+const m_MAX_INPUT = 1024
 
 const m_MINSIGSTKSZ = 32768
 
@@ -4895,6 +4873,12 @@ const m_M_SQRT2 = 1.41421356237309504880168872420969808
 const m_NSIG = "__DARWIN_NSIG"
 
 const m_NULL = "__DARWIN_NULL"
+
+const m_OFF_MAX = "LLONG_MAX"
+
+const m_OFF_MIN = "LLONG_MIN"
+
+const m_OPEN_MAX = 10240
 
 const m_PDP_ENDIAN = "__DARWIN_PDP_ENDIAN"
 
@@ -5010,7 +4994,17 @@ const m_PRIxLEAST32 = "PRIx32"
 
 const m_PRIxLEAST8 = "PRIx8"
 
+const m_PTHREAD_KEYS_MAX = 512
+
+const m_PTRDIFF_MAX = "INTMAX_MAX"
+
+const m_PTRDIFF_MIN = "INTMAX_MIN"
+
 const m_P_tmpdir = "/var/tmp/"
+
+const m_QUAD_MAX = "LLONG_MAX"
+
+const m_QUAD_MIN = "LLONG_MIN"
 
 const m_RENAME_EXCL = 0x00000004
 
@@ -5340,21 +5334,13 @@ const m_TRAP_BRKPT = 1
 
 const m_TRAP_TRACE = 2
 
-const m_UINT_FAST16_MAX = "__UINT_LEAST16_MAX"
+const m_UINT32_MAX = 4294967295
 
-const m_UINT_FAST32_MAX = "__UINT_LEAST32_MAX"
+const m_UINT64_MAX = "18446744073709551615U"
 
-const m_UINT_FAST64_MAX = "__UINT_LEAST64_MAX"
+const m_UINTPTR_MAX = 18446744073709551615
 
-const m_UINT_FAST8_MAX = "__UINT_LEAST8_MAX"
-
-const m_UINT_LEAST16_MAX = "__UINT_LEAST16_MAX"
-
-const m_UINT_LEAST32_MAX = "__UINT_LEAST32_MAX"
-
-const m_UINT_LEAST64_MAX = "__UINT_LEAST64_MAX"
-
-const m_UINT_LEAST8_MAX = "__UINT_LEAST8_MAX"
+const m_UQUAD_MAX = "ULLONG_MAX"
 
 const m_WAIT_MYPGRP = 0
 
@@ -5536,6 +5522,8 @@ const m___DARWIN_BIG_ENDIAN = 4321
 
 const m___DARWIN_BYTE_ORDER = "__DARWIN_LITTLE_ENDIAN"
 
+const m___DARWIN_CLK_TCK = 100
+
 const m___DARWIN_C_ANSI = 010000
 
 const m___DARWIN_C_FULL = 900000
@@ -5623,10 +5611,6 @@ const m___ENABLE_LEGACY_MAC_AVAILABILITY = 1
 const m___ENVIRONMENT_MAC_OS_X_VERSION_MIN_REQUIRED__ = 260000
 
 const m___ENVIRONMENT_OS_VERSION_MIN_REQUIRED__ = 260000
-
-const m___INT_LEAST64_MAX = "INT64_MAX"
-
-const m___INT_LEAST64_MIN = "INT64_MIN"
 
 const m___IPHONE_10_0 = 100000
 
@@ -6131,8 +6115,6 @@ const m___TVOS_9_0 = 90000
 const m___TVOS_9_1 = 90100
 
 const m___TVOS_9_2 = 90200
-
-const m___UINT_LEAST64_MAX = "UINT64_MAX"
 
 const m___VERSION__ = "Apple LLVM 21.0.0 (clang-2100.1.1.101)"
 

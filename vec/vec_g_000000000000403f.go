@@ -6,6 +6,10 @@ package vec
 
 const m_EOVERFLOW = 84
 
+const m_NL_NMAX = 1
+
+const m_PASS_MAX = 128
+
 const m_TMP_MAX = 308915776
 
 const m___SALC = 0x4000

@@ -12,15 +12,9 @@ const m_EOPNOTSUPP = 45
 
 const m_GETENTROPY_MAX = 256
 
-const m_LINE_MAX = 2048
-
 const m_MAX_CANON = 255
 
 const m_MAX_INPUT = 255
-
-const m_PATH_MAX = 1024
-
-const m_PIPE_BUF = 512
 
 const m_P_tmpdir = "/tmp/"
 

@@ -146,8 +146,6 @@ const m_PTRDIFF_MIN = "INTPTR_MIN"
 
 const m_SEM_VALUE_MAX = "UINT_MAX"
 
-const m_SIZE_MAX = "UINTPTR_MAX"
-
 const m_SYMLINK_MAX = "PATH_MAX"
 
 const m_SYMLOOP_MAX = 32

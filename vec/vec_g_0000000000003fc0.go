@@ -49,8 +49,6 @@ type cookie_io_functions_t = Tcookie_io_functions_t
 
 const m_ARG_MAX = 131072
 
-const m_CHAR_MAX = 255
-
 const m_DBL_EPSILON = 2.22044604925031308085e-16
 
 const m_DBL_MAX = 1.79769313486231570815e+308
@@ -320,8 +318,6 @@ const m_NL_NMAX = 16
 const m_PATH_MAX = 4096
 
 const m_PIPE_BUF = 4096
-
-const m_PTHREAD_DESTRUCTOR_ITERATIONS = 4
 
 const m_PTHREAD_KEYS_MAX = 128
 

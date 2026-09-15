@@ -58,9 +58,7 @@ const m_FLT_MIN_EXP = "__FLT_MIN_EXP__"
 
 const m_FLT_RADIX = "__FLT_RADIX__"
 
-const m_INTMAX_MAX = "__INTMAX_MAX__"
-
-const m_INTPTR_MAX = "__INTPTR_MAX__"
+const m_GID_MAX = 2147483647
 
 const m_MB_CUR_MAX = "__mb_cur_max"
 
@@ -68,17 +66,11 @@ const m_OVERFLOW = 3
 
 const m_PLOSS = 6
 
-const m_PTRDIFF_MAX = "__PTRDIFF_MAX__"
-
 const m_SING = 2
-
-const m_SIZE_MAX = "__SIZE_MAX__"
 
 const m_TLOSS = 5
 
-const m_UINTMAX_MAX = "__UINTMAX_MAX__"
-
-const m_UINTPTR_MAX = "__UINTPTR_MAX__"
+const m_UID_MAX = 2147483647
 
 const m_UNDERFLOW = 4
 

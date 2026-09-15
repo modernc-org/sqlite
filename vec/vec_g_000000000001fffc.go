@@ -12,16 +12,6 @@ type Tuint_fast16_t = uint32
 
 type locale_t = Tlocale_t
 
-const m_EXPR_NEST_MAX = 32
-
-const m_IOV_MAX = 1024
-
-const m_NL_MSGMAX = 32767
-
-const m_NL_SETMAX = 255
-
-const m_RE_DUP_MAX = 255
-
 const m_SCNdFAST16 = "d"
 
 const m_SCNiFAST16 = "i"
@@ -31,68 +21,6 @@ const m_SCNoFAST16 = "o"
 const m_SCNuFAST16 = "u"
 
 const m_SCNxFAST16 = "x"
-
-const m__POSIX2_BC_BASE_MAX = 99
-
-const m__POSIX2_BC_DIM_MAX = 2048
-
-const m__POSIX2_BC_SCALE_MAX = 99
-
-const m__POSIX2_BC_STRING_MAX = 1000
-
-const m__POSIX2_CHARCLASS_NAME_MAX = 14
-
-const m__POSIX2_COLL_WEIGHTS_MAX = 2
-
-const m__POSIX2_EXPR_NEST_MAX = 32
-
-const m__POSIX2_LINE_MAX = 2048
-
-const m__POSIX_ARG_MAX = 4096
-
-const m__POSIX_CHILD_MAX = 25
-
-const m__POSIX_HOST_NAME_MAX = 255
-
-const m__POSIX_LINK_MAX = 8
-
-const m__POSIX_LOGIN_NAME_MAX = 9
-
-const m__POSIX_MAX_CANON = 255
-
-const m__POSIX_MAX_INPUT = 255
-
-const m__POSIX_NAME_MAX = 14
-
-const m__POSIX_NGROUPS_MAX = 8
-
-const m__POSIX_OPEN_MAX = 20
-
-const m__POSIX_PATH_MAX = 256
-
-const m__POSIX_PIPE_BUF = 512
-
-const m__POSIX_SEM_NSEMS_MAX = 256
-
-const m__POSIX_SSIZE_MAX = 32767
-
-const m__POSIX_STREAM_MAX = 8
-
-const m__POSIX_SYMLINK_MAX = 255
-
-const m__POSIX_SYMLOOP_MAX = 8
-
-const m__POSIX_THREAD_DESTRUCTOR_ITERATIONS = 4
-
-const m__POSIX_THREAD_KEYS_MAX = 128
-
-const m__POSIX_TTY_NAME_MAX = 9
-
-const m__POSIX_TZNAME_MAX = 6
-
-const m__XOPEN_IOV_MAX = 16
-
-const m__XOPEN_PATH_MAX = 1024
 
 const m___ELF__ = 1
 

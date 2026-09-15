@@ -4,4 +4,26 @@
 
 package vec
 
+const m_CHARCLASS_NAME_MAX = 14
+
+const m_NL_TEXTMAX = 2048
+
+const m__POSIX2_RE_DUP_MAX = 255
+
+const m__POSIX_AIO_LISTIO_MAX = 2
+
+const m__POSIX_AIO_MAX = 1
+
+const m__POSIX_DELAYTIMER_MAX = 32
+
+const m__POSIX_MQ_OPEN_MAX = 8
+
+const m__POSIX_MQ_PRIO_MAX = 32
+
+const m__POSIX_SIGQUEUE_MAX = 32
+
+const m__POSIX_THREAD_THREADS_MAX = 64
+
+const m__POSIX_TIMER_MAX = 32
+
 const m___restrict = "restrict"

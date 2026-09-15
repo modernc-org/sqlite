@@ -24,6 +24,14 @@ type dev_t = Tdev_t
 
 type id_t = Tid_t
 
+const m_LINK_MAX = 32767
+
+const m_NGROUPS_MAX = 16
+
+const m_NL_LANGMAX = 14
+
+const m_SIZE_T_MAX = "ULONG_MAX"
+
 const m__QUAD_HIGHWORD = 1
 
 const m__QUAD_LOWWORD = 0

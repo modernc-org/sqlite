@@ -365,19 +365,11 @@ const m_BYTE_ORDER = "_BYTE_ORDER"
 
 const m_FP_ILOGBNAN = "INT_MAX"
 
-const m_LINK_MAX = 32767
-
 const m_LONG_MAX = 9223372036854775807
-
-const m_NGROUPS_MAX = 16
-
-const m_NL_LANGMAX = 14
 
 const m_QUAD_MAX = 0x7fffffffffffffff
 
 const m_SCHAR_MAX = 0x7f
-
-const m_SIZE_T_MAX = "ULONG_MAX"
 
 const m_SQLITE_VEC_DATE = ""
 

@@ -5,3 +5,5 @@
 package vec
 
 const m_FP_NORMAL = 4
+
+const m_PTHREAD_DESTRUCTOR_ITERATIONS = 4

@@ -9,3 +9,5 @@ type Tfpos_t = struct {
 	F__align  [0]float64
 	F__opaque [16]int8
 }
+
+const m_CHAR_MAX = 127

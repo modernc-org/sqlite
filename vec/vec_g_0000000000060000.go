@@ -1591,16 +1591,6 @@ const m_FP_SNAN = "_FPCLASS_SNAN"
 
 const m_HUGE = "_HUGE"
 
-const m_INT16_MAX = 32767
-
-const m_INT32_MAX = 2147483647
-
-const m_INT64_MAX = 9223372036854775807
-
-const m_INT_FAST16_MAX = "INT16_MAX"
-
-const m_INT_FAST16_MIN = "INT16_MIN"
-
 const m_L_tmpnam_s = "L_tmpnam"
 
 const m_MB_LEN_MAX = 5
@@ -1710,12 +1700,6 @@ const m_TLOSS = "_TLOSS"
 const m_TMP_MAX = 32767
 
 const m_TMP_MAX_S = "TMP_MAX"
-
-const m_UINT16_MAX = 65535
-
-const m_UINT8_MAX = 255
-
-const m_UINT_FAST16_MAX = "UINT16_MAX"
 
 const m_UNDERFLOW = "_UNDERFLOW"
 

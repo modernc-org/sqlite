@@ -26,6 +26,16 @@ func Xbitmap_set(tls *libc.TLS, bitmap uintptr, position Ti32, value int32) {
 	}
 }
 
+const m_INT16_MAX = 32767
+
+const m_INT32_MAX = 2147483647
+
+const m_INT64_MAX = 9223372036854775807
+
+const m_INT_FAST16_MAX = "INT16_MAX"
+
+const m_INT_FAST16_MIN = "INT16_MIN"
+
 const m_PRIXFAST64 = "PRIX64"
 
 const m_PRIXLEAST64 = "PRIX64"
@@ -49,3 +59,9 @@ const m_PRIuLEAST64 = "PRIu64"
 const m_PRIxFAST64 = "PRIx64"
 
 const m_PRIxLEAST64 = "PRIx64"
+
+const m_UINT16_MAX = 65535
+
+const m_UINT8_MAX = 255
+
+const m_UINT_FAST16_MAX = "UINT16_MAX"

@@ -369,10 +369,6 @@ const m_WCHAR_MIN = "__WCHAR_MIN"
 
 const m_WORD_BIT = "__WORD_BIT"
 
-const m__POSIX2_EQUIV_CLASS_MAX = 2
-
-const m__POSIX_RE_DUP_MAX = "_POSIX2_RE_DUP_MAX"
-
 const m___CC_SUPPORTS___INLINE = 1
 
 const m___CHAR_BIT = 8

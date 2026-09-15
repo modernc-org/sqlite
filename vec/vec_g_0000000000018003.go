@@ -31,6 +31,8 @@ func _distance_hamming_u64(tls *libc.TLS, a uintptr, b uintptr, n Tsize_t) (r Tf
 	return float32(same)
 }
 
+const m_SIZE_MAX = "UINTPTR_MAX"
+
 const m___STDC_NO_THREADS__ = 1
 
 type register_t = Tregister_t

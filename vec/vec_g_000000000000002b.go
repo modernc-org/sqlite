@@ -21,3 +21,5 @@ const m___UINTMAX_FMTu__ = "lu"
 const m___UINTMAX_FMTx__ = "lx"
 
 const m___UINTMAX_MAX__ = 18446744073709551615
+
+const m___WORDSIZE = 64

@@ -42,10 +42,6 @@ const m_SCNxMAX = "jx"
 
 const m_UID_MAX = "UINT_MAX"
 
-const m_WINT_MAX = "INT32_MAX"
-
-const m_WINT_MIN = "INT32_MIN"
-
 const m___BOOL_WIDTH__ = 8
 
 const m___BSD_VISIBLE = 1

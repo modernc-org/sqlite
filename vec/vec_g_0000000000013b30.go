@@ -128,4 +128,6 @@ var _vecJsonIsSpaceX = [256]uint8{
 	32: uint8(1),
 }
 
+const m_CHAR_MIN = 0
+
 const m___CHAR_UNSIGNED__ = 1

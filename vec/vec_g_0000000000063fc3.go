@@ -7,3 +7,9 @@ package vec
 type Tint_fast8_t = int8
 
 type Tuint_fast8_t = uint8
+
+const m_INT_FAST8_MAX = "INT8_MAX"
+
+const m_INT_FAST8_MIN = "INT8_MIN"
+
+const m_UINT_FAST8_MAX = "UINT8_MAX"

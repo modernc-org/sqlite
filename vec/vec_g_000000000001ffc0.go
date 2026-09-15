@@ -205,24 +205,14 @@ func _vec_eachColumn(tls *libc.TLS, cur uintptr, context uintptr, i int32) (r in
 
 const m_CHAR_BIT = 8
 
-const m_COLL_WEIGHTS_MAX = 2
-
 const m_INT_MAX = 0x7fffffff
 
 const m_LLONG_MAX = 0x7fffffffffffffff
 
-const m_NL_ARGMAX = 9
-
-const m_NZERO = 20
-
 const m_SHRT_MAX = 0x7fff
-
-const m_SSIZE_MAX = "LONG_MAX"
 
 const m_UINT_MAX = 0xffffffff
 
 const m_USHRT_MAX = 0xffff
-
-const m_WORD_BIT = 32
 
 const m__POSIX_RE_DUP_MAX = 255

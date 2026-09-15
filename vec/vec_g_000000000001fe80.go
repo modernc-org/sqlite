@@ -1254,5 +1254,3 @@ done:
 	;
 	(*(*func(*libc.TLS, uintptr))(unsafe.Pointer(bp + 16)))(tls, **(**uintptr)(__ccgo_up(bp)))
 }
-
-const m_LONG_BIT = 64

@@ -4,6 +4,8 @@
 
 package vec
 
+const m_PTHREAD_STACK_MIN = 16384
+
 const m_TARGET_OS_ARROW = 1
 
 const m__ARM_SIGNAL_ = 1

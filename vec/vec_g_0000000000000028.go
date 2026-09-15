@@ -1361,8 +1361,6 @@ const m___ULONG_MAX = 0xffffffffffffffff
 
 const m___UQUAD_MAX = "__ULONG_MAX"
 
-const m___WORDSIZE = 64
-
 type t__clock_t = int32
 
 type t__critical_t = int64

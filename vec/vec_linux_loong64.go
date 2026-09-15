@@ -79,3 +79,7 @@ const m___loongarch_tune = "generic"
 const m___loongarch_version_major = 1
 
 const m___loongarch_version_minor = 0
+
+const m_unix = 1
+
+/* C23 keywords, no longer defined as macros by <stdbool.h> and <stddef.h>. */

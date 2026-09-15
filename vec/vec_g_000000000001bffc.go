@@ -10,18 +10,8 @@ const m_INT32_MAX = 0x7fffffff
 
 const m_INT64_MAX = 0x7fffffffffffffff
 
-const m_NAME_MAX = 255
-
 const m_UINT16_MAX = 0xffff
 
 const m_UINT8_MAX = 0xff
 
-const m__POSIX_CLOCKRES_MIN = 20000000
-
-const m__POSIX_SEM_VALUE_MAX = 32767
-
-const m__XOPEN_NAME_MAX = 255
-
 const m___unix = 1
-
-const m_unix = 1

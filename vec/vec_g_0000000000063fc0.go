@@ -6,10 +6,6 @@ package vec
 
 const m_EAGAIN = 11
 
-const m_INT_FAST8_MAX = "INT8_MAX"
-
-const m_INT_FAST8_MIN = "INT8_MIN"
-
 const m_SCNdFAST8 = "hhd"
 
 const m_SCNiFAST8 = "hhi"
@@ -19,8 +15,6 @@ const m_SCNoFAST8 = "hho"
 const m_SCNuFAST8 = "hhu"
 
 const m_SCNxFAST8 = "hhx"
-
-const m_UINT_FAST8_MAX = "UINT8_MAX"
 
 const m_WINT_MIN = 0
 

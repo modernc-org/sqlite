@@ -4,6 +4,10 @@
 
 package vec
 
+const m_WINT_MAX = "INT32_MAX"
+
+const m_WINT_MIN = "INT32_MIN"
+
 const m___CLANG_ATOMIC_BOOL_LOCK_FREE = 2
 
 const m___CLANG_ATOMIC_CHAR16_T_LOCK_FREE = 2

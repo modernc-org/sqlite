@@ -102,9 +102,15 @@ const m_FILENAME_MAX = 1024
 
 const m_HUGE = "MAXFLOAT"
 
+const m_LINE_MAX = 2048
+
 const m_L_ctermid = 1024
 
 const m_L_tmpnam = 1024
+
+const m_PATH_MAX = 1024
+
+const m_PIPE_BUF = 512
 
 const m___INT8_MAX__ = 127
 

@@ -6,6 +6,10 @@ package vec
 
 type Tmode_t = uint16
 
+const m__POSIX2_EQUIV_CLASS_MAX = 2
+
+const m__POSIX_RE_DUP_MAX = "_POSIX2_RE_DUP_MAX"
+
 const m___SIGN = 0x8000
 
 const m_stderr = "__stderrp"

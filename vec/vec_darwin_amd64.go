@@ -20,6 +20,8 @@ const m_FP_RND_UP = 2
 
 const m_FP_STATE_BYTES = 512
 
+const m_PTHREAD_STACK_MIN = 8192
+
 const m_TARGET_OS_ARROW = 0
 
 const m__I386_SIGNAL_H_ = 1

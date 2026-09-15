@@ -6,4 +6,30 @@ package vec
 
 type fts5_api = Tfts5_api
 
+const m_INT8_MAX = 127
+
+const m_INT_LEAST16_MAX = "INT16_MAX"
+
+const m_INT_LEAST16_MIN = "INT16_MIN"
+
+const m_INT_LEAST32_MAX = "INT32_MAX"
+
+const m_INT_LEAST32_MIN = "INT32_MIN"
+
+const m_INT_LEAST64_MAX = "INT64_MAX"
+
+const m_INT_LEAST64_MIN = "INT64_MIN"
+
+const m_INT_LEAST8_MAX = "INT8_MAX"
+
+const m_INT_LEAST8_MIN = "INT8_MIN"
+
+const m_UINT_LEAST16_MAX = "UINT16_MAX"
+
+const m_UINT_LEAST32_MAX = "UINT32_MAX"
+
+const m_UINT_LEAST64_MAX = "UINT64_MAX"
+
+const m_UINT_LEAST8_MAX = "UINT8_MAX"
+
 const m___INT_FAST8_WIDTH__ = 8

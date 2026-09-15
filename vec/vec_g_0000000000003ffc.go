@@ -11,14 +11,6 @@ type Tcookie_io_functions_t = struct {
 	Fclose1 uintptr
 }
 
-const m_BC_BASE_MAX = 99
-
-const m_BC_DIM_MAX = 2048
-
-const m_BC_SCALE_MAX = 99
-
-const m_BC_STRING_MAX = 1000
-
 const m_DBL_DECIMAL_DIG = 17
 
 const m_DBL_DIG = 15
@@ -54,15 +46,3 @@ const m_INT_FAST16_MIN = "INT32_MIN"
 const m_LONG_MAX = "__LONG_MAX"
 
 const m_UINT_FAST16_MAX = "UINT32_MAX"
-
-const m__POSIX_RTSIG_MAX = 8
-
-const m__POSIX_SS_REPL_MAX = 4
-
-const m__POSIX_TRACE_EVENT_NAME_MAX = 30
-
-const m__POSIX_TRACE_NAME_MAX = 8
-
-const m__POSIX_TRACE_SYS_MAX = 8
-
-const m__POSIX_TRACE_USER_EVENT_MAX = 32

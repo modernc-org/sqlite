@@ -365,8 +365,6 @@ const m_FP_SUBNORMAL = 0x03
 
 const m_FP_ZERO = 0x04
 
-const m_GID_MAX = 2147483647
-
 const m_HN_AUTOSCALE = 0x20
 
 const m_HN_B = 0x04
@@ -386,6 +384,10 @@ const m_INT32_MAX = "__INT32_MAX__"
 const m_INT64_MAX = "__INT64_MAX__"
 
 const m_INT8_MAX = "__INT8_MAX__"
+
+const m_INTMAX_MAX = "__INTMAX_MAX__"
+
+const m_INTPTR_MAX = "__INTPTR_MAX__"
 
 const m_INT_FAST16_MAX = "__INT_FAST16_MAX__"
 
@@ -441,6 +443,8 @@ const m_PTHREAD_STACK_MIN = 4096
 
 const m_PTHREAD_THREADS_MAX = "_POSIX_THREAD_THREADS_MAX"
 
+const m_PTRDIFF_MAX = "__PTRDIFF_MAX__"
+
 const m_RANDOM_MAX = 0x7fffffff
 
 const m_SCNdMAX = "ld"
@@ -455,9 +459,9 @@ const m_SCNxMAX = "lx"
 
 const m_SIG_ATOMIC_MAX = "__SIG_ATOMIC_MAX__"
 
-const m_SSIZE_MIN = "LONG_MIN"
+const m_SIZE_MAX = "__SIZE_MAX__"
 
-const m_UID_MAX = 2147483647
+const m_SSIZE_MIN = "LONG_MIN"
 
 const m_UINT16_MAX = "__UINT16_MAX__"
 
@@ -466,6 +470,10 @@ const m_UINT32_MAX = "__UINT32_MAX__"
 const m_UINT64_MAX = "__UINT64_MAX__"
 
 const m_UINT8_MAX = "__UINT8_MAX__"
+
+const m_UINTMAX_MAX = "__UINTMAX_MAX__"
+
+const m_UINTPTR_MAX = "__UINTPTR_MAX__"
 
 const m_UINT_FAST16_MAX = "__UINT_FAST16_MAX__"
 

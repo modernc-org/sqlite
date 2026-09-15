@@ -130,4 +130,16 @@ var _aMod = [2]struct {
 	},
 }
 
+const m_INT_FAST32_MAX = "INT32_MAX"
+
+const m_INT_FAST32_MIN = "INT32_MIN"
+
+const m_INT_FAST64_MAX = "INT64_MAX"
+
+const m_INT_FAST64_MIN = "INT64_MIN"
+
 const m_SQLITE_VEC_DATE = "2026-03-31T09:59:06Z+0200"
+
+const m_UINT_FAST32_MAX = "UINT32_MAX"
+
+const m_UINT_FAST64_MAX = "UINT64_MAX"

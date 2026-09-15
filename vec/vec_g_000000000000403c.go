@@ -7,7 +7,3 @@ package vec
 const m_EIDRM = 82
 
 const m_ENOMSG = 83
-
-const m_NL_NMAX = 1
-
-const m_PASS_MAX = 128
