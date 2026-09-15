@@ -146,6 +146,11 @@
 //
 //	...
 //
+// The dsnURI is a plain file name or a "file:" URI, either optionally followed
+// by '?' and query parameters. [Driver.Open] documents the parameters the
+// driver interprets and how SQLite's own URI parameters, such as mode=ro,
+// reach SQLite.
+//
 // [NewConnector] is an alternative entry point returning a
 // [driver.Connector] for use with [sql.OpenDB]. It opens the same
 // connections sql.Open does, from the same driver, and exists for callers that
