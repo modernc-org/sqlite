@@ -49,6 +49,19 @@ Downstream `go.mod` files **must pin the exact `modernc.org/libc` version that t
 
 When debugging into `libc`, use `make work` (or a manual `go work init && go work use . <path-to-libc>`) — `doc.go` has a worked example showing how to enable `Xwrite` dmesg logging in a local `libc` checkout.
 
+## Security policy
+
+`SECURITY.md` is the published policy; keep answers consistent with it. In short: reports go
+through GitHub private vulnerability reporting (enabled on the mirror), a **confidential**
+GitLab issue, or the project's GitLab Service Desk address (tickets on a public project are
+always confidential, verified in the UI 2026-09-20), never a public issue; acknowledgement is aimed at 7 days with **no fix deadline
+promised**; **only the latest release is supported** -- no maintenance branches; transpilation
+faults in `lib/`, `vec/` and `vfs/` are explicitly in scope and are this project's own bug
+class, while flaws in SQLite's C are reported here *and* upstream. On a confirmed report the
+fix ships in a new release, a GitHub advisory is published, **the advisory is filed with the
+Go vulnerability database** (`https://go.dev/s/vulndb-report-new`) so `govulncheck` sees it,
+and the CHANGELOG says what was wrong and who found it.
+
 ## Repository / release workflow
 
 - The canonical repo is GitLab `cznic/sqlite`. The GitHub `modernc-org/sqlite` mirror **does accept** issues and PRs, but PRs land via a manual cross-merge into GitLab — there can be a delay. The PRs listed in `CHANGELOG.md` (e.g. "merge request #113") are GitLab MR numbers, not GitHub PRs.

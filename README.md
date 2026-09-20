@@ -40,6 +40,16 @@ Changelog
 
 Release notes are kept in [CHANGELOG.md](CHANGELOG.md).
 
+Security
+--------
+
+Please report a vulnerability privately rather than in a public issue.
+[SECURITY.md](SECURITY.md) names three private channels, says what is in scope
+-- including transpilation faults, the bug class unique to a project that ships
+SQLite's C as generated Go -- and describes the disclosure path, which includes
+filing the advisory with the Go vulnerability database so that `govulncheck`
+reports it.
+
 Licensing
 ---------
 

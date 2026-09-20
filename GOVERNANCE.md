@@ -8,4 +8,4 @@
 
  * **Community Hub:** GitHub ([modernc-org/sqlite](https://github.com/modernc-org/sqlite))
 
- * **Security Policy:** We utilize GitHub Security Advisories for vulnerability reporting. Security patches are developed on GitLab and prioritized for immediate mirroring to GitHub to ensure downstream users are protected via Dependabot.
+ * **Security Policy:** See [SECURITY.md](SECURITY.md). Report privately -- GitHub private vulnerability reporting, a confidential GitLab issue, or the project's GitLab Service Desk address, whose tickets are confidential by default -- never in a public issue. Patches are developed on GitLab and prioritized for immediate mirroring to GitHub. A confirmed report is published as a GitHub Security Advisory, so downstream Dependabot users are alerted, and filed with the Go vulnerability database, so `govulncheck` reports it.
