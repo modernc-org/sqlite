@@ -50,6 +50,13 @@ picking the right one.
 - We will credit you in the advisory and in the release notes unless you would
   rather not be named.
 
+## What happens on our side
+
+[IRP.md](IRP.md) is the incident response plan: how a confirmed report is triaged,
+scoped, fixed across the layers this module is built from, disclosed, and -- if a
+released version turns out to be the problem -- retracted. It is published so that
+the process is inspectable rather than asserted.
+
 ## Supported versions
 
 **The latest release only.** Fixes land on `master` and ship in a new tag;

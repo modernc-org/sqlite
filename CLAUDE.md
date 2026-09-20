@@ -62,6 +62,12 @@ fix ships in a new release, a GitHub advisory is published, **the advisory is fi
 Go vulnerability database** (`https://go.dev/s/vulndb-report-new`) so `govulncheck` sees it,
 and the CHANGELOG says what was wrong and who found it.
 
+`IRP.md` is the incident response plan and the procedural companion to `SECURITY.md`: triage,
+scoping by layer (hand-written Go / generated Go / SQLite's own C), the fix paths and the four
+rules that do not bend (never merge on the mirror, never bump `libc` alone, tag only on green
+builders, `make sbom` after dependency changes), disclosure, and Phase 5 -- **a published Go
+module version cannot be recalled**, so `retract` plus a new release is the only remedy.
+
 ## Repository / release workflow
 
 - The canonical repo is GitLab `cznic/sqlite`. The GitHub `modernc-org/sqlite` mirror **does accept** issues and PRs, but PRs land via a manual cross-merge into GitLab — there can be a delay. The PRs listed in `CHANGELOG.md` (e.g. "merge request #113") are GitLab MR numbers, not GitHub PRs.
