@@ -40,6 +40,19 @@ Changelog
 
 Release notes are kept in [CHANGELOG.md](CHANGELOG.md).
 
+Licensing
+---------
+
+This package is BSD-3-Clause ([LICENSE](LICENSE)). It also carries a large body of
+third-party code: SQLite itself, which is public domain ([LICENSE-SQLITE](LICENSE-SQLITE)),
+the `sqlite-vec` extension, MIT ([LICENSE-SQLITE_VEC](LICENSE-SQLITE_VEC)), and the Go
+module dependency graph.
+
+[LICENSE-3RD-PARTY.md](LICENSE-3RD-PARTY.md) accounts for all of it, transitively and
+in full text, and separates what is linked into your binary from what merely appears in
+the module graph. It is generated from the tree by `make licenses`; do not edit it by
+hand.
+
 Virtual Tables (vtab)
 ---------------------
 

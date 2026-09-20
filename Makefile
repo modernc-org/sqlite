@@ -2,7 +2,7 @@
 # Use of this source code is governed by a BSD-style
 # license that can be found in the LICENSE file.
 
-.PHONY:	all build_all_targets clean edit editor test vendor work
+.PHONY:	all build_all_targets clean edit editor licenses test vendor work
 
 # Pinned deduplicator. undup folds byte-identical declarations shared across the
 # per-target generated files in lib/ and vec/ into build-tagged shared files,
@@ -57,7 +57,7 @@ build_all_targets:
 	echo done
 
 clean:
-	rm -f log-* cpu.test mem.test *.out go.work*
+	rm -f log-* cpu.test mem.test *.out go.work* licgen
 	go clean
 
 edit:
@@ -67,6 +67,15 @@ editor:
 	go test -c -o /dev/null
 	go build -v  -o /dev/null ./...
 	cd vendor_libs && go build -o /dev/null main.go
+	cd licensegen && go build -o /dev/null main.go
+
+# Regenerate LICENSE-3RD-PARTY.md from the module graph and the vendored C.
+# Run after any dependency bump or re-vendoring. `./licgen -check` writes
+# nothing and fails if the committed file is stale.
+licenses:
+	cd licensegen && go build -o ../licgen main.go
+	./licgen
+	rm -f licgen
 
 test:
 	go test -v -timeout 24h
