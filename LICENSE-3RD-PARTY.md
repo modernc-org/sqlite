@@ -40,14 +40,14 @@ and license texts it points at are the ones you have to carry with you.
 | [github.com/dustin/go-humanize](https://pkg.go.dev/github.com/dustin/go-humanize) | v1.0.1 | MIT | modernc.org/libc, `go.mod` | [L1](#L1) |
 | [github.com/google/uuid](https://pkg.go.dev/github.com/google/uuid) | v1.6.0 | BSD-3-Clause | modernc.org/libc, `go.mod` | [L2](#L2) |
 | [github.com/remyoudompheng/bigfft](https://pkg.go.dev/github.com/remyoudompheng/bigfft) | v0.0.0-20230129092748-24d4a6f8daec | BSD-3-Clause | modernc.org/fileutil, modernc.org/libc, modernc.org/mathutil, modernc.org/memory, `go.mod` | [L2](#L2) |
-| Go | -- | see notices | modernc.org/libc | [N1](#N1) |
-| go-netdb | -- | see notices | modernc.org/libc | [N1](#N1) |
+| [Go](https://github.com/golang/go) | -- | BSD-3-Clause | modernc.org/libc | [N1](#N1) |
+| [go-netdb](https://github.com/dominikh/go-netdb) | -- | MIT | modernc.org/libc | [N1](#N1) |
 | [golang.org/x/sys](https://pkg.go.dev/golang.org/x/sys) | v0.47.0 | BSD-3-Clause | github.com/google/pprof, github.com/mattn/go-isatty, modernc.org/libc, modernc.org/memory, `go.mod` | [L3](#L3) |
 | [modernc.org/libc](https://pkg.go.dev/modernc.org/libc) | v1.75.7 | BSD-3-Clause | `go.mod` | [L4](#L4) |
 | [modernc.org/mathutil](https://pkg.go.dev/modernc.org/mathutil) | v1.7.1 | BSD-3-Clause | modernc.org/fileutil, modernc.org/libc, modernc.org/memory, `go.mod` | [L4](#L4) |
 | [modernc.org/memory](https://pkg.go.dev/modernc.org/memory) | v1.12.1 | BSD-3-Clause, attribution reference | modernc.org/libc, `go.mod` | [L4](#L4), [L2](#L2), [L5](#L5), [L6](#L6) |
-| musl libc | -- | see notices | modernc.org/libc | [N1](#N1) |
-| NixOS/nixpkgs | -- | see notices | modernc.org/libc | [N1](#N1) |
+| [musl libc](https://musl.libc.org/) | -- | MIT | modernc.org/libc | [N1](#N1) |
+| [NixOS/nixpkgs](https://github.com/NixOS/nixpkgs) | -- | MIT | modernc.org/libc | [N1](#N1) |
 | [SQLite](https://sqlite.org/) | 3.53.4 | public domain | transpiled into `lib/` | [L7](#L7) |
 | [sqlite-vec](https://github.com/asg017/sqlite-vec) | v0.1.9 | MIT | transpiled into `vec/` | [L8](#L8) |
 | [SQLite `test_demovfs.c`](https://www.sqlite.org/src/doc/trunk/src/test_demovfs.c) | -- | public domain | `vfs/c/vfs.c`, transpiled into `vfs/` | [L7](#L7) |
@@ -1301,7 +1301,7 @@ Markdown heading levels shifted so they nest inside this file.
 
 ### N1: `LICENSE-3RD-PARTY.md` from modernc.org/libc
 
-Covers: Go, musl libc, go-netdb, NixOS/nixpkgs.
+Covers: Go (BSD-3-Clause), musl libc (MIT), go-netdb (MIT), NixOS/nixpkgs (MIT).
 
 ---
 

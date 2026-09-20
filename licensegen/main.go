@@ -52,7 +52,10 @@ const (
 
 var (
 	oC     = flag.String("C", ".", "directory of the modernc.org/sqlite checkout")
-	oOut   = flag.String("o", defaultOut, "output file, relative to -C")
+	oOut   = flag.String("o", defaultOut, "license document, relative to -C")
+	oMD    = flag.String("sbom-md", "SBOM.md", "SBOM overview document, relative to -C")
+	oCDX   = flag.String("sbom-cdx", "sbom.cdx.json", "CycloneDX SBOM, relative to -C")
+	oSPDX  = flag.String("sbom-spdx", "sbom.spdx.json", "SPDX SBOM, relative to -C")
 	oCheck = flag.Bool("check", false, "do not write; exit non-zero if the file is stale")
 
 	root string
@@ -98,9 +101,10 @@ var sectionIntro = [numModSections]string{
 
 // A licFile is one license or notice file found in the tree.
 type licFile struct {
-	label string // path as shown to the reader, e.g. "simplelru/LICENSE_list"
-	text  string
-	grp   *licGroup
+	label   string // path as shown to the reader, e.g. "simplelru/LICENSE_list"
+	text    string
+	notices []string
+	grp     *licGroup
 }
 
 // A licGroup is a set of licFiles sharing one license text, modulo the
@@ -126,7 +130,11 @@ type component struct {
 	url     string
 	via     string
 	note    string
+	sec     sectionID
+	kind    string // module, vendored, inherited
+	purl    string
 	files   []*licFile
+	inh     *inheritEntry
 }
 
 func (c *component) display() string {
@@ -144,7 +152,51 @@ type inherited struct {
 	owner   string // module path
 	label   string // file name within the module
 	body    string
-	entries []string // its own "##" headings
+	entries []*inheritEntry
+}
+
+// An inheritEntry is one upstream named by a dependency's notices document.
+// These are the transitive tail: musl libc reaches this module this way, and
+// nothing in the module graph names it.
+type inheritEntry struct {
+	name string
+	url  string
+	body string
+	spdx string
+	doc  *inherited
+}
+
+var urlLineRE = regexp.MustCompile(`(?m)^\s*\*\s+\*\*URL:\*\*\s+(\S+)`)
+
+// parse splits a notices document into one entry per "##" heading and reads the
+// license out of each, so the upstreams get real SPDX identifiers instead of a
+// pointer at a wall of prose.
+func (inh *inherited) parse() {
+	var cur *inheritEntry
+	var buf []string
+	flush := func() {
+		if cur == nil {
+			return
+		}
+
+		cur.body = strings.Trim(strings.Join(buf, "\n"), "\n")
+		cur.spdx = spdxOf(cur.body)
+		if m := urlLineRE.FindStringSubmatch(cur.body); m != nil {
+			cur.url = m[1]
+		}
+		inh.entries = append(inh.entries, cur)
+		buf = nil
+	}
+	for _, line := range strings.Split(inh.body, "\n") {
+		if strings.HasPrefix(line, "## ") {
+			flush()
+			cur = &inheritEntry{name: strings.TrimSpace(line[3:]), doc: inh}
+			continue
+		}
+
+		buf = append(buf, line)
+	}
+	flush()
 }
 
 // A repoItem is third-party material living in this repository that is not a Go
@@ -161,6 +213,7 @@ var (
 	sections  [numModSections][]*component
 	inherits  []*inherited
 	repoItems []*repoItem
+	repoComps []*component
 	groups    []*licGroup
 	byMasked  = map[string]*licGroup{}
 )
@@ -249,9 +302,14 @@ func modSet(args ...string) map[string]bool {
 	return r
 }
 
+// modDeps maps a module path to the module paths it requires directly. It is
+// the module graph as the SBOM's dependency section reports it.
+var modDeps = map[string][]string{}
+
 // requirers maps a module path to the module paths requiring it directly.
 func requirers() map[string][]string {
 	r := map[string]map[string]bool{}
+	d := map[string]map[string]bool{}
 	for _, line := range strings.Split(run("mod", "graph"), "\n") {
 		f := strings.Fields(line)
 		if len(f) != 2 {
@@ -267,6 +325,18 @@ func requirers() map[string][]string {
 			r[to] = map[string]bool{}
 		}
 		r[to][from] = true
+		if d[from] == nil {
+			d[from] = map[string]bool{}
+		}
+		d[from][to] = true
+	}
+	for from, tos := range d {
+		var s []string
+		for to := range tos {
+			s = append(s, to)
+		}
+		sort.Strings(s)
+		modDeps[from] = s
 	}
 	m := map[string][]string{}
 	for to, froms := range r {
@@ -384,7 +454,7 @@ func newLicFile(label, owner, text string) *licFile {
 	if !seen {
 		g.members = append(g.members, grpMember{name: m, notices: notices})
 	}
-	return &licFile{label: label, text: text, grp: g}
+	return &licFile{label: label, text: text, notices: notices, grp: g}
 }
 
 func contains(s []string, v string) bool {
@@ -509,6 +579,9 @@ func collect() {
 			version: m.Version,
 			url:     "https://pkg.go.dev/" + m.Path,
 			via:     viaOf(m.Path, req),
+			sec:     sec,
+			kind:    "module",
+			purl:    "pkg:golang/" + m.Path + "@" + m.Version,
 		}
 		lic, not := scan(m.Dir)
 		for _, v := range lic {
@@ -521,19 +594,18 @@ func collect() {
 				label: filepath.ToSlash(v),
 				body:  mustRead(filepath.Join(m.Dir, v)),
 			}
-			for _, line := range strings.Split(inh.body, "\n") {
-				if strings.HasPrefix(line, "## ") {
-					inh.entries = append(inh.entries, strings.TrimSpace(line[3:]))
-				}
-			}
+			inh.parse()
 			inherits = append(inherits, inh)
 			// The upstreams reached through that module belong in the same
 			// section as the module itself: they are as linked as it is.
 			for _, e := range inh.entries {
 				sections[sec] = append(sections[sec], &component{
-					name: e,
+					name: e.name,
+					url:  e.url,
 					via:  m.Path,
-					note: "inh:" + inh.label,
+					sec:  sec,
+					kind: "inherited",
+					inh:  e,
 				})
 			}
 		}
@@ -576,13 +648,18 @@ func collectVendored() {
 	vecVer := grep(filepath.Join(root, "vec", "vec.go"), `(?m)^const m_SQLITE_VEC_VERSION = "([^"]+)"`)
 	sqliteText := mustRead(filepath.Join(root, "LICENSE-SQLITE"))
 
-	add := func(c *component) { sections[secLinked] = append(sections[secLinked], c) }
+	add := func(c *component) {
+		c.sec = secLinked
+		c.kind = "vendored"
+		sections[secLinked] = append(sections[secLinked], c)
+	}
 
 	c := &component{
 		name:    "SQLite",
 		version: sqliteVer,
 		url:     "https://sqlite.org/",
 		via:     "transpiled into `lib/`",
+		purl:    "pkg:generic/sqlite@" + sqliteVer,
 		note:    "The SQLite C amalgamation, translated to Go by `modernc.org/ccgo`. Local copy of the upstream dedication: `LICENSE-SQLITE`.",
 	}
 	c.files = append(c.files, newLicFile("LICENSE-SQLITE", "SQLite "+sqliteVer, sqliteText))
@@ -593,6 +670,7 @@ func collectVendored() {
 		version: vecVer,
 		url:     "https://github.com/asg017/sqlite-vec",
 		via:     "transpiled into `vec/`",
+		purl:    "pkg:github/asg017/sqlite-vec@" + vecVer,
 		note:    "Vector-search extension, linked only when `modernc.org/sqlite/vec` is imported. Local copy: `LICENSE-SQLITE_VEC`.",
 	}
 	c.files = append(c.files, newLicFile("LICENSE-SQLITE_VEC", "sqlite-vec "+vecVer, mustRead(filepath.Join(root, "LICENSE-SQLITE_VEC"))))
@@ -611,13 +689,14 @@ func collectVendored() {
 
 func collectRepo() {
 	sqliteText := mustRead(filepath.Join(root, "LICENSE-SQLITE"))
+	suite := newLicFile("", "SQLite test suite (`testdata/`)", sqliteText)
 	repoItems = append(repoItems,
 		&repoItem{
 			material: "SQLite TCL test suite",
 			location: "`testdata/tcl/`, `testdata/overlay/`, `testdata/mptest.c`",
 			origin:   "SQLite",
 			url:      "https://sqlite.org/",
-			file:     newLicFile("", "SQLite test suite (`testdata/`)", sqliteText),
+			file:     suite,
 		},
 		&repoItem{
 			material: "Sponsor logos and word marks",
@@ -626,6 +705,20 @@ func collectRepo() {
 			url:      "",
 		},
 	)
+	// The test suite is third-party code in the tree, so it is an SBOM
+	// component too, scoped as compiled into nothing. Criticizing module-graph
+	// SBOMs for omitting what they cannot see is only honest if this one omits
+	// nothing it can see.
+	repoComps = append(repoComps, &component{
+		name:    "SQLite TCL test suite",
+		version: "",
+		url:     "https://sqlite.org/",
+		via:     "`testdata/`",
+		note:    "SQLite's own TCL and C test suite, vendored under `testdata/`. Present in a clone and in the module zip; compiled into nothing.",
+		sec:     secGraph,
+		kind:    "repo",
+		files:   []*licFile{suite},
+	})
 }
 
 // ------------------------------------------------------------------ rendering
@@ -663,12 +756,8 @@ func demote(body string) string {
 }
 
 func (c *component) textRef() string {
-	if strings.HasPrefix(c.note, "inh:") {
-		for _, inh := range inherits {
-			if inh.owner == c.via && inh.label == strings.TrimPrefix(c.note, "inh:") {
-				return fmt.Sprintf("[%s](#%s)", inh.id, inh.id)
-			}
-		}
+	if c.inh != nil {
+		return fmt.Sprintf("[%s](#%s)", c.inh.doc.id, c.inh.doc.id)
 	}
 	var s []string
 	for _, f := range c.files {
@@ -684,8 +773,8 @@ func (c *component) textRef() string {
 }
 
 func (c *component) licenses() string {
-	if strings.HasPrefix(c.note, "inh:") {
-		return "see notices"
+	if c.inh != nil {
+		return c.inh.spdx
 	}
 
 	var s []string
@@ -781,7 +870,7 @@ func generate() string {
 		}
 		var notes []*component
 		for _, c := range sections[i] {
-			if c.note != "" && !strings.HasPrefix(c.note, "inh:") {
+			if c.note != "" {
 				notes = append(notes, c)
 			}
 		}
@@ -867,7 +956,11 @@ func generate() string {
 			p("")
 			p("### %s: `%s` from %s", inh.id, inh.label, inh.owner)
 			p("")
-			p("Covers: %s.", strings.Join(inh.entries, ", "))
+			var names []string
+			for _, e := range inh.entries {
+				names = append(names, fmt.Sprintf("%s (%s)", e.name, e.spdx))
+			}
+			p("Covers: %s.", strings.Join(names, ", "))
 			p("")
 			p("---")
 			p("")
@@ -935,29 +1028,47 @@ func main() {
 	}
 
 	collect()
-	s := generate()
-	out := *oOut
-	if !filepath.IsAbs(out) {
-		out = filepath.Join(root, out)
+	// generate() assigns the appendix identifiers the SBOM's LicenseRef names
+	// are built from, so it runs first.
+	outs := []struct{ name, content string }{
+		{*oOut, generate()},
+		{*oMD, generateSBOMmd()},
+		{*oCDX, generateCDX()},
+		{*oSPDX, generateSPDX()},
+	}
+	stale := false
+	for _, o := range outs {
+		path := o.name
+		if !filepath.IsAbs(path) {
+			path = filepath.Join(root, path)
+		}
+		if *oCheck {
+			old, err := os.ReadFile(path)
+			switch {
+			case err != nil:
+				log.Printf("%v", err)
+				stale = true
+			case string(old) != o.content:
+				log.Printf("%s is stale", o.name)
+				stale = true
+			}
+			continue
+		}
+
+		if err := os.WriteFile(path, []byte(o.content), 0o644); err != nil {
+			log.Fatal(err)
+		}
 	}
 	if *oCheck {
-		old, err := os.ReadFile(out)
-		if err != nil {
-			log.Fatalf("%v (run `make licenses`)", err)
+		if stale {
+			log.Fatal("run `make sbom`")
 		}
 
-		if string(old) != s {
-			log.Fatalf("%s is stale, run `make licenses`", *oOut)
-		}
-
-		fmt.Printf("%s is up to date\n", *oOut)
+		fmt.Println("license and SBOM documents are up to date")
 		return
 	}
 
-	if err := os.WriteFile(out, []byte(s), 0o644); err != nil {
-		log.Fatal(err)
-	}
-
-	fmt.Printf("%s: %d components, %d license texts, %d inherited notice files\n",
-		*oOut, len(sections[0])+len(sections[1])+len(sections[2])+len(repoItems), len(groups), len(inherits))
+	fmt.Printf("%d components, %d license texts, %d inherited notice files -> %s, %s, %s, %s\n",
+		len(sections[0])+len(sections[1])+len(sections[2])+len(repoItems), len(groups), len(inherits),
+		*oOut, *oMD, *oCDX, *oSPDX)
 }

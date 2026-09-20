@@ -50,8 +50,14 @@ module dependency graph.
 
 [LICENSE-3RD-PARTY.md](LICENSE-3RD-PARTY.md) accounts for all of it, transitively and
 in full text, and separates what is linked into your binary from what merely appears in
-the module graph. It is generated from the tree by `make licenses`; do not edit it by
-hand.
+the module graph.
+
+A machine-readable SBOM ships beside it: [`sbom.cdx.json`](sbom.cdx.json) (CycloneDX 1.6)
+and [`sbom.spdx.json`](sbom.spdx.json) (SPDX 2.3), with [SBOM.md](SBOM.md) explaining
+what they cover. They name the transpiled SQLite and `sqlite-vec` C that no Go module
+graph reports, which is the part a stock SBOM tool gets wrong about this project.
+
+All four are generated from the tree by `make sbom`; do not edit them by hand.
 
 Virtual Tables (vtab)
 ---------------------

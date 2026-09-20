@@ -2,7 +2,7 @@
 # Use of this source code is governed by a BSD-style
 # license that can be found in the LICENSE file.
 
-.PHONY:	all build_all_targets clean edit editor licenses test vendor work
+.PHONY:	all build_all_targets clean edit editor licenses sbom test vendor work
 
 # Pinned deduplicator. undup folds byte-identical declarations shared across the
 # per-target generated files in lib/ and vec/ into build-tagged shared files,
@@ -67,13 +67,16 @@ editor:
 	go test -c -o /dev/null
 	go build -v  -o /dev/null ./...
 	cd vendor_libs && go build -o /dev/null main.go
-	cd licensegen && go build -o /dev/null main.go
+	cd licensegen && go build -tags none -o /dev/null .
 
-# Regenerate LICENSE-3RD-PARTY.md from the module graph and the vendored C.
-# Run after any dependency bump or re-vendoring. `./licgen -check` writes
-# nothing and fails if the committed file is stale.
-licenses:
-	cd licensegen && go build -o ../licgen main.go
+# Regenerate LICENSE-3RD-PARTY.md, SBOM.md and the two machine-readable SBOMs
+# from the module graph and the vendored C. Run after any dependency bump or
+# re-vendoring. `./licgen -check` writes nothing and fails if any of the four
+# committed files is stale; that is the form for CI.
+licenses: sbom
+
+sbom:
+	cd licensegen && go build -tags none -o ../licgen .
 	./licgen
 	rm -f licgen
 
