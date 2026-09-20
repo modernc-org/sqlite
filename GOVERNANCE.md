@@ -4,6 +4,8 @@
 
  * **Maintainer:** Ian Chechin, GitLab @Deln0r, GitHub @Deln0r
 
+ * **Contributing:** See [CONTRIBUTING.md](CONTRIBUTING.md) for where to send changes, how to build and test, and which files are generated. [HACKING.md](HACKING.md) covers the maintainer side.
+
  * **Canonical Source:** GitLab ([cznic/sqlite](https://gitlab.com/cznic/sqlite))
 
  * **Community Hub:** GitHub ([modernc-org/sqlite](https://github.com/modernc-org/sqlite))

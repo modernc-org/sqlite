@@ -40,6 +40,14 @@ Changelog
 
 Release notes are kept in [CHANGELOG.md](CHANGELOG.md).
 
+Contributing
+------------
+
+[CONTRIBUTING.md](CONTRIBUTING.md) covers where to send a merge request or pull
+request, how to build and test, and the one thing that is not obvious from the
+tree: most of the Go here is generated from C and edits to it are lost at the
+next re-vendoring.
+
 Security
 --------
 
