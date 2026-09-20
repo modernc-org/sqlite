@@ -68,7 +68,10 @@ make build_all_targets   # cross-build every supported GOOS/GOARCH
 
 `gofmt -s` is expected. `make all` should be clean before you send anything.
 
-There is **no CI on merge requests**. Platform coverage is checked by the
+CI here is deliberately one job, in `.gitlab-ci.yml`: it rebuilds the generated
+licence and SBOM documents and fails if what is committed differs. It runs only
+when something that feeds them changes. **Nothing else runs in CI** -- no tests,
+no cross-builds, so run those yourself. Platform coverage is checked by the
 [modernc.org builder](https://modern-c.appspot.com/-/builder/?importpath=modernc.org%2fsqlite)
 farm across the targets declared in `builder.json`, and the maintainer runs it
 before tagging a release. If your change touches anything platform-specific,
