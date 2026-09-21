@@ -79,6 +79,9 @@ In scope, with a security consequence:
   project.
 - Flaws in the driver layer: DSN parsing, connection hooks, user-defined
   functions, virtual tables, the VFS bridge, and the file-locking integration.
+- The page cache in `pcache/`: hand-written Go that SQLite calls for every
+  page it reads. A fault there -- a page returned for the wrong key, or freed
+  while SQLite still holds it -- is silent corruption, not a crash.
 
 Out of scope:
 
