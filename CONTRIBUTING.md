@@ -32,13 +32,17 @@ The canonical repository is GitLab
 **Most of the Go in this repository is generated, and edits to it are silently
 lost at the next re-vendoring.** The SQLite C amalgamation, the `sqlite-vec`
 extension and the C side of the VFS bridge are transpiled to Go by
-`modernc.org/ccgo`. A generated file starts with a long
+`modernc.org/ccgo`. A generated file carries Go's standard marker, a comment line
+of the form
 
 ```
-// Code generated for <goos>/<goarch> by 'generator ...', DO NOT EDIT.
+// Code generated ... DO NOT EDIT.
 ```
 
-line. That marker is what the tooling keys on.
+near the top. What comes between those words varies -- the transpiler's command
+line, or `modernc.org/undup` for the per-target files it deduplicated -- so match
+the convention, not any one wording. `grep -L 'DO NOT EDIT\.' lib/*.go` lists the
+hand-written files.
 
 | Path | Status |
 | --- | --- |
