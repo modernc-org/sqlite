@@ -57,14 +57,15 @@ GitLab issue, or the project's GitLab Service Desk address (tickets on a public 
 always confidential, verified in the UI 2026-09-20), never a public issue; acknowledgement is aimed at 7 days with **no fix deadline
 promised**; **only the latest release is supported** -- no maintenance branches; transpilation
 faults in `lib/`, `vec/` and `vfs/` are explicitly in scope and are this project's own bug
-class, while flaws in SQLite's C are reported here *and* upstream. On a confirmed report the
+class, so is the hand-written page cache in `pcache/` (a fault there is silent corruption), while flaws in SQLite's C are reported here *and* upstream. On a confirmed report the
 fix ships in a new release, a GitHub advisory is published, **the advisory is filed with the
 Go vulnerability database** (`https://go.dev/s/vulndb-report-new`) so `govulncheck` sees it,
 and the CHANGELOG says what was wrong and who found it.
 
 `IRP.md` is the incident response plan and the procedural companion to `SECURITY.md`: triage,
-scoping by layer (hand-written Go / generated Go / SQLite's own C), the fix paths and the four
-rules that do not bend (never merge on the mirror, never bump `libc` alone, tag only on green
+scoping by layer (hand-written Go / generated Go / SQLite's own C), the fix paths -- including
+the fixed four-release order when a fix moves `libc` (libc -> libsqlite3 -> libsqlite_vec -> here)
+-- and the four rules that do not bend (never merge on the mirror, never bump `libc` alone, tag only on green
 builders, `make sbom` after dependency changes), disclosure, and Phase 5 -- **a published Go
 module version cannot be recalled**, so `retract` plus a new release is the only remedy.
 

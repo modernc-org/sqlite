@@ -19,6 +19,10 @@ private notes, not here.
 - A released version that is broken, wrong, or malicious.
 - Compromise of a maintainer account, an access token, or the push mirror.
 - A secret committed to the repository or exposed in logs.
+- A builder result that cannot be trusted: a target reported green that did not
+  build or pass. The builder dashboard is what a release is tagged on, so a false
+  green is a release decision made on bad data. Every tag made on it is suspect
+  until the affected targets are re-run; if one then fails, Phase 5 applies.
 
 An ordinary bug, however severe, is not an incident. It goes through the normal
 issue and release process.
@@ -61,9 +65,22 @@ The path depends on the layer, and only the first is quick:
 
 | Layer | Path |
 | --- | --- |
-| Hand-written Go (driver, `vtab/`, `vfs/` Go side) | Fix on GitLab, release. |
-| Generated Go in `lib/`, `vec/`, `vfs/` | The fix belongs in `modernc.org/libsqlite3`, which owns the transpilation and the patch set. Re-transpile there, `make vendor` here, `make build_all_targets`, release. |
+| Hand-written Go (driver, `vtab/`, `pcache/`, `vfs/` Go side) | Fix on GitLab, release. |
+| Generated Go in `lib/`, `vec/` | The fix belongs in `modernc.org/libsqlite3` (and `modernc.org/libsqlite_vec` for `vec/`), which own the transpilation and the patch set. Re-transpile there, `make vendor` here, `make build_all_targets`, release. |
+| Generated Go in `vfs/` | The C is `vfs/c/vfs.c`, in this repository. Fix the C and re-transpile it here; each generated file's first line records the `ccgo` command that produced it. |
 | SQLite's own C | Report upstream at [sqlite.org](https://www.sqlite.org/support.html). Upstream owns the fix; we own shipping it. If the wait is unacceptable, a local patch can go into the `libsqlite3` patch set and be dropped when upstream lands theirs -- there is precedent in the v1.56.0 journal-rollback fix. |
+
+**When the fix moves `modernc.org/libc`**, it is four releases in one incident, in
+this order, and none can be skipped or reordered, because each pins the one before:
+
+1. `modernc.org/libc`, released with the fix.
+2. `modernc.org/libsqlite3`, its `go.mod` bumped to that libc, re-transpiled, tagged.
+3. `modernc.org/libsqlite_vec`, bumped to both, re-transpiled, tagged.
+4. Here: both sibling checkouts at those tags, `go.mod` on the new libc, `make vendor`,
+   the builders green on all 20 targets, then the tag.
+
+`lib/` and `vec/` must come from the same libc. Do not re-vendor one while the other
+stays on the old version.
 
 Four rules that do not bend under time pressure:
 
@@ -119,6 +136,10 @@ Assume the worst ordering: revoke first, investigate second.
 
 1. **Revoke before diagnosing.** Sessions, then tokens, then keys. A token that
    might be compromised is compromised.
+   **The mirror push credential is a case of its own.** It can rewrite what GitHub
+   users see while GitLab looks fine, so nothing on the canonical side reveals its
+   misuse. Revoke it with the rest, and compare the mirror's branches and tags
+   against GitLab's rather than assuming they match.
 2. **Check what was done with it**, not only what it could do: recent commits on
    both hosts, tags created, releases published, mirror settings, workflow changes,
    and whether any release artifact changed after it was tagged.
