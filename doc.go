@@ -157,6 +157,24 @@
 // need to interpose on them -- tracing, metrics, or connection-scoped setup --
 // which sql.Open gives no access to. See its docstring for an example.
 //
+// Connection-scoped state outlives the caller that set it. A [sql.DB] is a
+// pool, and a physical connection returned to it keeps whatever was done on
+// it: PRAGMAs set with Exec, ATTACHed databases, temporary tables, and
+// anything registered through [sql.Conn.Raw]. The next caller to borrow that
+// connection inherits it; the driver does not reset it between borrowers. For
+// state every connection should have, use DSN parameters or a connection hook,
+// which apply to each connection as it is opened. For state only one caller
+// should see, hold a [sql.Conn] for as long as it is needed and undo it, or
+// close that connection, before releasing it.
+//
+// A driver connection reached through [sql.Conn.Raw] is not safe for
+// concurrent use, and must not be used after the function passed to Raw
+// returns. Every connection is opened with SQLITE_OPEN_FULLMUTEX, but that
+// serializes access only inside SQLite: the driver's own per-connection
+// state, including the [modernc.org/libc.TLS] every call into SQLite runs
+// on, is used before that mutex is reached, and two goroutines using one
+// connection can corrupt memory.
+//
 // # Debug and development versions
 //
 // The transpiled SQLite sources under lib/, and the sqlite-vec sources under
