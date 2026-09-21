@@ -109,8 +109,9 @@ func defaultDriver() *Driver { return d }
 //
 // The parameters this driver interprets are:
 //
-// _pragma: Each value will be run as a "PRAGMA ..." statement (with the PRAGMA
-// keyword added for you). May be specified more than once, '&'-separated. For more
+// _pragma: Each value is run with the PRAGMA keyword prepended, as SQL text; see
+// below for why that is not limited to one PRAGMA statement. May be specified
+// more than once, '&'-separated. For more
 // information on supported PRAGMAs see: https://www.sqlite.org/pragma.html
 //
 // The following shorthand keys set common PRAGMAs for easier DSN compatibility
@@ -140,9 +141,15 @@ func defaultDriver() *Driver { return d }
 // or with auto_vacuum already set.
 //
 // Unlike these validated shorthand keys, each _pragma value is executed verbatim
-// (with PRAGMA prepended) and is not validated, so a DSN that includes _pragma
-// must come from a trusted source. It is also the one case that can still fail
-// partway: a bad _pragma is only rejected by SQLite as it runs, after any
+// (with PRAGMA prepended) and is not validated. It is executed as SQL text, not
+// as a single PRAGMA: anything after a ';' runs too, so
+// "_pragma=foreign_keys(1);ATTACH 'x.db' AS x" also attaches, and creates,
+// x.db. A DSN therefore carries the authority of the SQL it can run and of the
+// file paths it names, and one that includes _pragma must come from a trusted
+// source. An application whose DSN is not a compile-time constant should call
+// [StrictPragmas](true), which rejects a _pragma value holding more than one
+// statement before anything is applied. It is also the one case that can still
+// fail partway: a bad _pragma is only rejected by SQLite as it runs, after any
 // earlier _pragma in the list has taken effect.
 //
 // _time_format: The name of a format to use when writing time values to the database.

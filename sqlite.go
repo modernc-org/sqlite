@@ -304,6 +304,16 @@ func applyQueryParams(c *conn, query string, defensive bool) error {
 	//
 	// _pragma values are the one exception: they are executed verbatim and
 	// cannot be checked here, so a malformed _pragma can still fail partway.
+	// What can be checked, when StrictPragmas is on, is that each is a single
+	// statement; that check compiles nothing.
+	if strictPragmas.Load() {
+		for _, v := range q["_pragma"] {
+			if !singleStatement(v) {
+				return fmt.Errorf("%w: _pragma=%q", ErrMultiStatementPragma, v)
+			}
+		}
+	}
+
 	busyKey, busyTimeout := dsnPick(q, "_busy_timeout", "_timeout")
 	if busyTimeout != "" {
 		if _, err := strconv.ParseInt(busyTimeout, 10, 64); err != nil {
