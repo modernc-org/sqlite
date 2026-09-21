@@ -87,6 +87,13 @@ Out of scope:
 
 - SQL injection in an application that concatenates untrusted input into
   statements. Use placeholders.
+- What an attacker can do by writing the DSN. A DSN names the file to open
+  or create, selects the VFS, and can run SQL through `_pragma`: it carries
+  the authority of the application that opens it, and one taken from an
+  untrusted source is equivalent to untrusted SQL plus file system access.
+  [`StrictPragmas`](https://pkg.go.dev/modernc.org/sqlite#StrictPragmas)
+  narrows it, and a way around `StrictPragmas`, or around the rule that a
+  rejected DSN applies nothing, is in scope.
 - Resource exhaustion from queries that are simply expensive. SQLite's own
   limits are the tool for that.
 - Anything reproducible only after modifying the generated sources by hand.

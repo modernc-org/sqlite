@@ -57,7 +57,7 @@ GitLab issue, or the project's GitLab Service Desk address (tickets on a public 
 always confidential, verified in the UI 2026-09-20), never a public issue; acknowledgement is aimed at 7 days with **no fix deadline
 promised**; **only the latest release is supported** -- no maintenance branches; transpilation
 faults in `lib/`, `vec/` and `vfs/` are explicitly in scope and are this project's own bug
-class, so is the hand-written page cache in `pcache/` (a fault there is silent corruption), while flaws in SQLite's C are reported here *and* upstream. On a confirmed report the
+class, so is the hand-written page cache in `pcache/` (a fault there is silent corruption), an attacker-controlled DSN is explicitly **out** of scope (it is untrusted SQL plus file system access) while a bypass of `StrictPragmas` or of the rejected-DSN-applies-nothing rule is in, while flaws in SQLite's C are reported here *and* upstream. On a confirmed report the
 fix ships in a new release, a GitHub advisory is published, **the advisory is filed with the
 Go vulnerability database** (`https://go.dev/s/vulndb-report-new`) so `govulncheck` sees it,
 and the CHANGELOG says what was wrong and who found it.
