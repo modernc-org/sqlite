@@ -732,7 +732,16 @@ func (c *conn) interrupt(pdb uintptr) (err error) {
 	defer c.Unlock()
 
 	if c.tls != nil {
-		sqlite3.Xsqlite3_interrupt(c.tls, pdb)
+		// Not c.tls. This runs on the goroutine watching the context,
+		// while the query it interrupts may be running on c.tls, and a
+		// libc.TLS is not safe for concurrent use. The transpiled
+		// sqlite3_interrupt is a single atomic store today and never
+		// touches the TLS, but nothing guarantees a future SQLite or ccgo
+		// keeps it so. A fresh TLS costs ~140 ns and is paid only when a
+		// query is actually interrupted.
+		tls := libc.NewTLS()
+		sqlite3.Xsqlite3_interrupt(tls, pdb)
+		tls.Close()
 	}
 	return nil
 }
