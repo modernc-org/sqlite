@@ -79,9 +79,13 @@ In scope, with a security consequence:
   project.
 - Flaws in the driver layer: DSN parsing, connection hooks, user-defined
   functions, virtual tables, the VFS bridge, and the file-locking integration.
-- The page cache in `pcache/`: hand-written Go that SQLite calls for every
-  page it reads. A fault there -- a page returned for the wrong key, or freed
-  while SQLite still holds it -- is silent corruption, not a crash.
+- The pluggable page cache, when an application registers one with
+  `RegisterPageCache`: the binding in `pagecache.go` and
+  `pagecache_trampolines.go`, which SQLite then calls for every page it
+  reads, and the reference implementation in `pcache/`. A fault there -- a
+  page returned for the wrong key, or freed while SQLite still holds it -- is
+  silent corruption, not a crash. Without `RegisterPageCache` SQLite uses its
+  own page cache and none of this code runs.
 
 Out of scope:
 
@@ -131,7 +135,7 @@ public, and we will coordinate timing with you.
 
 ## Hardening you can use today
 
-Independent of any report, two opt-in measures exist:
+Independent of any report, three opt-in measures exist:
 
 - `_defensive=1` in the DSN turns on SQLite's defensive mode for the
   connection, making `PRAGMA writable_schema=ON`, `PRAGMA journal_mode=OFF`
@@ -143,5 +147,9 @@ Independent of any report, two opt-in measures exist:
   connection, switches Linux file locking to Open File Description locks,
   which survive a `Close` of any descriptor of the database file elsewhere in
   the process. Off by default.
+- `StrictPragmas(true)`, called once from Go, makes every connection reject
+  a `_pragma` DSN value holding more than one SQL statement, before anything
+  is applied. Recommended for any application whose DSN is not a
+  compile-time constant. Off by default.
 
-Both are documented on `Driver.Open` and in the package documentation.
+All three are documented on `Driver.Open` and in the package documentation.
