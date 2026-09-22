@@ -1,4 +1,6 @@
-//go:build linux || darwin || freebsd || netbsd || openbsd || windows
+//go:build (linux || darwin || freebsd || netbsd || openbsd || windows) && !pcachepool
+
+// Excluded under the pcachepool tag: see pcachepool_test.go.
 
 package sqlite
 

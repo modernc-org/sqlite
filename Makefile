@@ -2,7 +2,7 @@
 # Use of this source code is governed by a BSD-style
 # license that can be found in the LICENSE file.
 
-.PHONY:	all build_all_targets clean edit editor licenses sbom test vendor work
+.PHONY:	all build_all_targets clean edit editor licenses sbom test test_pcache vendor work
 
 # Pinned deduplicator. undup folds byte-identical declarations shared across the
 # per-target generated files in lib/ and vec/ into build-tagged shared files,
@@ -82,6 +82,11 @@ sbom:
 
 test:
 	go test -v -timeout 24h
+
+# The whole suite through the pluggable page cache binding, with
+# modernc.org/sqlite/pcache registered. See pcachepool_test.go.
+test_pcache:
+	go test -v -timeout 24h -tags pcachepool
 	
 vendor:
 	# Reconstruct full per-target files (a no-op the first time), so the freshly

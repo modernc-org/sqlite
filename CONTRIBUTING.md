@@ -66,6 +66,7 @@ Do not hand-edit those either; regenerate them if a dependency changes.
 make editor              # quick check: compiles tests, builds everything
 go test -v -run TestFoo  # a single test; the suite is long
 make test                # the whole suite; it is long
+make test_pcache         # the suite again, through the pluggable page cache
 make all                 # editor plus golint and staticcheck
 make build_all_targets   # cross-build every supported GOOS/GOARCH
 ```

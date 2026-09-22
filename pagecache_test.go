@@ -268,15 +268,11 @@ func TestPCacheIDGen(t *testing.T) {
 	}
 }
 
-// An end-to-end test that actually opens a sqlite database and routes
-// it through a custom PageCache cannot live in this package: the
-// modernc.org/sqlite/vec package's init() calls
-// Xsqlite3_auto_extension, which itself calls Xsqlite3_initialize
-// (lib/sqlite_darwin_arm64.go: Xsqlite3_auto_extension), and vec is
-// loaded by vec_test.go in this same test binary. By the time any test
-// here runs, sqlite3_initialize has already fired and
-// Xsqlite3_config(SQLITE_CONFIG_PCACHE2) returns SQLITE_MISUSE. The
-// wiring has been exercised end-to-end by the maintainer with a
-// minimal page cache (see MR thread); we defer adding an in-tree
-// end-to-end test to a follow-up MR that can isolate the binary from
-// vec's init path.
+// An end-to-end test that opens a database through a custom PageCache
+// cannot run in the default test binary: vec_test.go imports
+// modernc.org/sqlite/vec, whose init calls Xsqlite3_auto_extension, which
+// initializes SQLite, after which Xsqlite3_config(SQLITE_CONFIG_PCACHE2)
+// returns SQLITE_MISUSE. The end-to-end coverage is instead the whole
+// suite, built with -tags pcachepool (make test_pcache): that build drops
+// vec_test.go and registers modernc.org/sqlite/pcache in an init, so every
+// test runs through the binding. See pcachepool_test.go.
