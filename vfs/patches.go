@@ -26,7 +26,8 @@
 //
 // Registration is process-global, as SQLite's own VFS registry is. Each [New]
 // registers a separate VFS under a fresh name, and [FS.Close] unregisters it
-// again.
+// again. Close every database opened through an [FS] before closing it: while
+// any is open, [FS.Close] refuses with an error wrapping [ErrInUse].
 package vfs
 
 import (
@@ -43,6 +44,10 @@ import (
 	sqlite3 "modernc.org/sqlite/lib"
 )
 
+// ErrInUse is returned, wrapped, by [FS.Close] while a database opened through
+// the file system is still open.
+var ErrInUse = errors.New("vfs: file system is in use")
+
 var (
 	fToken uintptr
 
@@ -53,35 +58,56 @@ var (
 	objects  = map[uintptr]interface{}{}
 )
 
+// fsEntry is what a registered VFS's pAppData refers to.
+type fsEntry struct {
+	fsys fs.FS
+	open atomic.Int32 // files currently open through fsys
+}
+
+// fileEntry is what an open VFSFile's fsFile refers to.
+type fileEntry struct {
+	f  fs.File
+	fs *fsEntry
+}
+
 func token() uintptr { return atomic.AddUintptr(&fToken, 1) }
 
+// addObject files o under a fresh handle. Handles come from one counter for
+// file systems and files alike, so on 32-bit targets it wraps after 2^32
+// opens; a handle still in use, such as that of a file system registered at
+// start-up, is skipped rather than overwritten. So is 0.
 func addObject(o interface{}) uintptr {
-	t := token()
 	objectMu.Lock()
-	objects[t] = o
-	objectMu.Unlock()
-	return t
+	defer objectMu.Unlock()
+
+	for {
+		t := token()
+		if _, busy := objects[t]; t != 0 && !busy {
+			objects[t] = o
+			return t
+		}
+	}
 }
 
 func getObject(t uintptr) interface{} {
 	objectMu.Lock()
 	o := objects[t]
+	objectMu.Unlock()
 	if o == nil {
-		panic("internal error")
+		panic(fmt.Sprintf("vfs: unknown handle %#x", t))
 	}
 
-	objectMu.Unlock()
 	return o
 }
 
 func removeObject(t uintptr) {
 	objectMu.Lock()
-	if _, ok := objects[t]; !ok {
-		panic("internal error")
-	}
-
+	_, ok := objects[t]
 	delete(objects, t)
 	objectMu.Unlock()
+	if !ok {
+		panic(fmt.Sprintf("vfs: removing unknown handle %#x", t))
+	}
 }
 
 var vfsio = sqlite3_io_methods{
@@ -99,13 +125,14 @@ func vfsOpen(tls *libc.TLS, pVfs uintptr, zName uintptr, pFile uintptr, flags in
 
 	p := pFile
 	*(*VFSFile)(unsafe.Pointer(p)) = VFSFile{}
-	fsys := getObject((*sqlite3_vfs)(unsafe.Pointer(pVfs)).pAppData).(fs.FS)
-	f, err := fsys.Open(libc.GoString(zName))
+	e := getObject((*sqlite3_vfs)(unsafe.Pointer(pVfs)).pAppData).(*fsEntry)
+	f, err := e.fsys.Open(libc.GoString(zName))
 	if err != nil {
 		return sqlite3.SQLITE_CANTOPEN
 	}
 
-	h := addObject(f)
+	e.open.Add(1)
+	h := addObject(&fileEntry{f: f, fs: e})
 	(*VFSFile)(unsafe.Pointer(p)).fsFile = h
 	if pOutFlags != 0 {
 		*(*int32)(unsafe.Pointer(pOutFlags)) = int32(os.O_RDONLY)
@@ -116,7 +143,7 @@ func vfsOpen(tls *libc.TLS, pVfs uintptr, zName uintptr, pFile uintptr, flags in
 
 func vfsRead(tls *libc.TLS, pFile uintptr, zBuf uintptr, iAmt int32, iOfst sqlite_int64) int32 {
 	p := pFile
-	f := getObject((*VFSFile)(unsafe.Pointer(p)).fsFile).(fs.File)
+	f := getObject((*VFSFile)(unsafe.Pointer(p)).fsFile).(*fileEntry).f
 	seeker, ok := f.(io.Seeker)
 	if !ok {
 		return sqlite3.SQLITE_IOERR_READ
@@ -147,7 +174,7 @@ func vfsAccess(tls *libc.TLS, pVfs uintptr, zPath uintptr, flags int32, pResOut 
 	}
 
 	fn := libc.GoString(zPath)
-	fsys := getObject((*sqlite3_vfs)(unsafe.Pointer(pVfs)).pAppData).(fs.FS)
+	fsys := getObject((*sqlite3_vfs)(unsafe.Pointer(pVfs)).pAppData).(*fsEntry).fsys
 	if _, err := fs.Stat(fsys, fn); err != nil {
 		*(*int32)(unsafe.Pointer(pResOut)) = 0
 		return sqlite3.SQLITE_OK
@@ -159,7 +186,7 @@ func vfsAccess(tls *libc.TLS, pVfs uintptr, zPath uintptr, flags int32, pResOut 
 
 func vfsFileSize(tls *libc.TLS, pFile uintptr, pSize uintptr) int32 {
 	p := pFile
-	f := getObject((*VFSFile)(unsafe.Pointer(p)).fsFile).(fs.File)
+	f := getObject((*VFSFile)(unsafe.Pointer(p)).fsFile).(*fileEntry).f
 	fi, err := f.Stat()
 	if err != nil {
 		return sqlite3.SQLITE_IOERR_FSTAT
@@ -172,9 +199,10 @@ func vfsFileSize(tls *libc.TLS, pFile uintptr, pSize uintptr) int32 {
 func vfsClose(tls *libc.TLS, pFile uintptr) int32 {
 	p := pFile
 	h := (*VFSFile)(unsafe.Pointer(p)).fsFile
-	f := getObject(h).(fs.File)
-	f.Close()
+	e := getObject(h).(*fileEntry)
+	e.f.Close()
 	removeObject(h)
+	e.fs.open.Add(-1)
 	return sqlite3.SQLITE_OK
 }
 
@@ -182,11 +210,12 @@ func vfsClose(tls *libc.TLS, pFile uintptr) int32 {
 type FS struct {
 	cname    uintptr
 	cvfs     uintptr
+	entry    *fsEntry
 	fsHandle uintptr
 	name     string
 	tls      *libc.TLS
 
-	closed int32
+	closed bool // under mu
 }
 
 // New creates a new sqlite VFS and registers it. If successful, the
@@ -201,7 +230,8 @@ func New(fs fs.FS) (name string, _ *FS, _ error) {
 	defer mu.Unlock()
 
 	tls := libc.NewTLS()
-	h := addObject(fs)
+	e := &fsEntry{fsys: fs}
+	h := addObject(e)
 
 	name = fmt.Sprintf("vfs%x", h)
 	cname, err := libc.CString(name)
@@ -225,19 +255,32 @@ func New(fs fs.FS) (name string, _ *FS, _ error) {
 		return "", nil, fmt.Errorf("registering VFS %s: %d", name, rc)
 	}
 
-	return name, &FS{name: name, cname: cname, cvfs: vfs, fsHandle: h, tls: tls}, nil
+	return name, &FS{name: name, cname: cname, cvfs: vfs, entry: e, fsHandle: h, tls: tls}, nil
 }
 
 // Close unregisters f and releases its resources.
+//
+// Every database opened through f must be closed first. SQLite keeps a
+// pointer to the VFS in each connection and calls through it for as long as
+// the connection is open, so while any file is open through f, Close does
+// nothing and returns an error wrapping [ErrInUse]; close the databases and
+// call it again. Close must also not run concurrently with opening a database
+// through f: SQLite looks the VFS up before it opens the file, and nothing
+// can tell Close about an open that is between the two.
 func (f *FS) Close() error {
-	if atomic.SwapInt32(&f.closed, 1) != 0 {
-		return nil
-	}
-
 	mu.Lock()
 
 	defer mu.Unlock()
 
+	if f.closed {
+		return nil
+	}
+
+	if n := f.entry.open.Load(); n != 0 {
+		return fmt.Errorf("%w: closing VFS %s with %d file(s) still open", ErrInUse, f.name, n)
+	}
+
+	f.closed = true
 	rc := sqlite3.Xsqlite3_vfs_unregister(f.tls, f.cvfs)
 	libc.Xfree(f.tls, f.cname)
 	libc.Xfree(f.tls, f.cvfs)
