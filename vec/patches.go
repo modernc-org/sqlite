@@ -21,6 +21,11 @@
 //
 //	CREATE VIRTUAL TABLE vec_examples USING vec0(embedding float[8])
 //
+// Importing this package rules out [modernc.org/sqlite.RegisterPageCache].
+// sqlite3_auto_extension initializes SQLite, which then refuses the page
+// cache configuration, and this package's init runs before any code in a
+// package importing it.
+//
 // # License
 //
 // sqlite-vec is Copyright (c) 2024 Alex Garcia and is dual-licensed Apache-2.0

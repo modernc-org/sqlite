@@ -32,6 +32,9 @@
 // compare unequal and would trip [sqlite.ErrPageCacheConflict] if both
 // were registered.
 //
+// A program that imports modernc.org/sqlite/vec cannot register any page
+// cache, this one included; see [sqlite.RegisterPageCache].
+//
 // Cross-connection sharing (one Pool serving multiple databases from
 // a shared page set) is not in scope for this package today; each
 // [sqlite.PageCache.Create] returns a fresh per-database cache. The
