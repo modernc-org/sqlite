@@ -1,14 +1,21 @@
 # The only CI this repository has, and deliberately small.
 #
 # Cross-platform building and the test suite run on the modernc.org/builder
-# farm, not here; see HACKING.md. This pipeline exists for one thing that
-# nothing else would notice: LICENSE-3RD-PARTY.md, SBOM.md, sbom.cdx.json and
-# sbom.spdx.json are generated from the module graph and the vendored C, so a
-# dependency bump or a re-vendoring silently makes all four wrong. licgen
-# -check regenerates them in memory and fails if what is committed differs.
+# farm, not here; see HACKING.md. This pipeline exists for two things that
+# need no build of the transpiled code and fail fast:
 #
-# It runs only when something that feeds those documents changes, so ordinary
-# commits cost no CI minutes.
+# - LICENSE-3RD-PARTY.md, SBOM.md, sbom.cdx.json and sbom.spdx.json are
+#   generated from the module graph and the vendored C, so a dependency bump or
+#   a re-vendoring silently makes all four wrong. licgen -check regenerates them
+#   in memory and fails if what is committed differs.
+# - vendor.json records where lib/ and vec/ came from and a digest of them; see
+#   internal/vendorstamp. It fails when a re-vendoring was not stamped, a
+#   stamp says a sibling checkout was dirty, or generated files were edited by
+#   hand. The test suite runs the same check, so the builders refuse such a
+#   commit as well, and a release is tagged only when they are green.
+#
+# Each job runs only when something that feeds it changes, so ordinary commits
+# cost no CI minutes.
 
 stages:
   - check
@@ -61,3 +68,26 @@ generated-docs:
       fi
   after_script:
     - rm -f "$CI_PROJECT_DIR/licgen"
+
+.vendor-stamp-inputs: &vendor-stamp-inputs
+  - vendor.json
+  - go.mod
+  - lib/**/*
+  - vec/**/*
+  - LICENSE-SQLITE_VEC
+  - internal/vendorstamp/**/*
+  - vendor_libs/**/*
+  - Makefile
+  - .gitlab-ci.yml
+
+vendor-stamp:
+  stage: check
+  image: golang:1.27
+  interruptible: true
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes: *vendor-stamp-inputs
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      changes: *vendor-stamp-inputs
+  script:
+    - go test ./internal/vendorstamp/
