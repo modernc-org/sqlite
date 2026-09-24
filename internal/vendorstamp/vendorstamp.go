@@ -314,7 +314,7 @@ func Check(root string) error {
 	}
 
 	if n != s.Output.Files || sum != s.Output.SHA256 {
-		return fmt.Errorf("%s: lib/ and vec/ differ from what make vendor produced (%d files, sha256 %s; on disk %d files, sha256 %s); generated files must not be edited by hand, run make vendor instead", FileName, s.Output.Files, s.Output.SHA256, n, sum)
+		return fmt.Errorf("%s: lib/ and vec/ differ from what make vendor produced (%d files, sha256 %s; on disk %d files, sha256 %s); generated files must not be edited by hand, run make vendor instead; if the tree was expanded for reading with undup -expand, git checkout -- lib vec restores it", FileName, s.Output.Files, s.Output.SHA256, n, sum)
 	}
 
 	return nil

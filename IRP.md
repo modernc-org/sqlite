@@ -80,8 +80,11 @@ this order, and none can be skipped or reordered, because each pins the one befo
 3. `modernc.org/libsqlite_vec`, bumped to both, re-transpiled, tagged.
 4. Here: both sibling checkouts at those tags, `go.mod` on the new libc, `make vendor`,
    the builders green on all 20 targets, then the tag. `make vendor` refuses a dirty
-   checkout and two checkouts on different libc versions, and records what it used in
-   `vendor.json`.
+   checkout, two checkouts on different libc versions, and a `libsqlite_vec` that
+   requires another `libsqlite3` commit than `../libsqlite3` is at, and records what it
+   used in `vendor.json`. The test suite fails when the libc in `go.mod` differs from
+   the one in `vendor.json`, so the `go.mod` bump goes in the same push as
+   `make vendor`, or every builder is red until it does.
 
 `lib/` and `vec/` must come from the same libc. Do not re-vendor one while the other
 stays on the old version.

@@ -188,7 +188,14 @@
 // which reads them from checkouts of those two repositories placed next to
 // this one. To build a debug or otherwise modified version, adjust the
 // compile-time options in modernc.org/libsqlite3, regenerate there with 'make
-// generate', and vendor the result here.
+// generate', and vendor the result here with
+//
+//	$ make vendor VENDORFLAGS=-allow-dirty
+//
+// since plain 'make vendor' refuses a checkout with uncommitted changes. The
+// vendor.json it writes records the checkout as dirty, so the last step of
+// make vendor and TestVendorStamp both fail, by design: such a tree is for
+// local use and must not be committed or released.
 //
 // # Hacking
 //

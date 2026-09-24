@@ -9,6 +9,13 @@
 # keeping each tag's module download under Go's 500MB cap. Bump deliberately.
 UNDUP = modernc.org/undup@v0.0.5
 
+# Extra flags for the vendor tool's -preflight and -stamp steps. The one there
+# is: make vendor VENDORFLAGS=-allow-dirty vendors from a sibling checkout with
+# uncommitted changes, such as a debug build of libsqlite3 (see doc.go), and
+# records that in vendor.json. The recipe's last step then fails, as does
+# TestVendorStamp, so such a tree is never committed or released.
+VENDORFLAGS =
+
 all: editor
 	golint 2>&1
 	staticcheck 2>&1
@@ -98,7 +105,7 @@ vendor:
 	# Before anything is touched: refuse a dirty checkout, two checkouts on
 	# different libc versions, or a libsqlite_vec built against another
 	# libsqlite3 than ../libsqlite3, and remember what was seen. See stamp.go.
-	./vendor -preflight -undup=$(UNDUP)
+	./vendor -preflight -undup=$(UNDUP) $(VENDORFLAGS)
 	# Reconstruct full per-target files (a no-op the first time), so the freshly
 	# vendored transpiles overwrite a clean tree with no stale shared files.
 	go run $(UNDUP) -expand -dir lib
@@ -118,7 +125,7 @@ vendor:
 	make build_all_targets
 	# Last, once everything above has succeeded: record the sources, the
 	# toolchain and a digest of the output in vendor.json, then check it.
-	./vendor -stamp -undup=$(UNDUP)
+	./vendor -stamp -undup=$(UNDUP) $(VENDORFLAGS)
 	rm -f vendor
 	go test ./internal/vendorstamp/
 

@@ -35,8 +35,9 @@ var (
 	libsqliteVecDir = flag.String("libsqlite_vec", filepath.Join("..", "libsqlite_vec"), "modernc.org/libsqlite_vec checkout to vendor from")
 
 	// The provenance stamp; see stamp.go. make vendor runs -preflight first and
-	// -stamp last, and never passes -allow-dirty, which exists for experiments:
-	// it records "dirty": true, and a stamp saying so fails the test suite.
+	// -stamp last, and passes -allow-dirty only when asked to through
+	// VENDORFLAGS, for a local debug build: it records "dirty": true, and a
+	// stamp saying so fails the test suite.
 	preflightFlag  = flag.Bool("preflight", false, "inspect the source checkouts and refuse if they cannot be vendored from, then exit")
 	stampFlag      = flag.Bool("stamp", false, "write vendor.json after a successful make vendor, then exit")
 	allowDirtyFlag = flag.Bool("allow-dirty", false, "with -preflight or -stamp, record a dirty checkout instead of refusing it")
