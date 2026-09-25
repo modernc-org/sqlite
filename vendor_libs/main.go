@@ -34,6 +34,14 @@ var (
 	libsqlite3Dir   = flag.String("libsqlite3", filepath.Join("..", "libsqlite3"), "modernc.org/libsqlite3 checkout to vendor from")
 	libsqliteVecDir = flag.String("libsqlite_vec", filepath.Join("..", "libsqlite_vec"), "modernc.org/libsqlite_vec checkout to vendor from")
 
+	// The provenance stamp; see stamp.go. make vendor runs -preflight first and
+	// -stamp last, and passes -allow-dirty only when asked to through
+	// VENDORFLAGS, for a local debug build: it records "dirty": true, and a
+	// stamp saying so fails the test suite.
+	preflightFlag  = flag.Bool("preflight", false, "inspect the source checkouts and refuse if they cannot be vendored from, then exit")
+	stampFlag      = flag.Bool("stamp", false, "write vendor.json after a successful make vendor, then exit")
+	allowDirtyFlag = flag.Bool("allow-dirty", false, "with -preflight or -stamp, record a dirty checkout instead of refusing it")
+
 	// tempDirs is drained by cleanup, which both fail and the end of main run:
 	// fail exits the process, so a defer would not be enough.
 	tempDirs []string
@@ -167,6 +175,17 @@ func srcDir(dir, base string) string {
 func main() {
 	flag.Parse()
 	defer cleanup()
+
+	switch {
+	case *preflightFlag && *stampFlag:
+		fail(2, "-preflight and -stamp are separate steps of make vendor\n")
+	case *preflightFlag:
+		preflight(*allowDirtyFlag)
+		return
+	case *stampFlag:
+		writeStamp(*allowDirtyFlag)
+		return
+	}
 
 	// Both source checkouts may ship in either form; resolve each once, before
 	// the per-target loops that read them by name.

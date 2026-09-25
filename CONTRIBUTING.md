@@ -49,6 +49,7 @@ hand-written files.
 | `lib/sqlite_*.go`, `lib/sqlite_g_*.go` | Generated from SQLite's C. Do not edit. |
 | `vec/vec*.go` | Generated from `sqlite-vec`. Do not edit. |
 | `vfs/vfs_*.go` | Generated from `vfs/c/vfs.c`. Edit the C, not the Go. |
+| `vendor.json` | Written by `make vendor`: the sibling commits and Go toolchain `lib/` and `vec/` were vendored with, and a digest of them. Do not edit; the test suite fails when it does not match. |
 | `lib/defs.go`, `lib/hooks*.go`, `lib/mutex.go`, `lib/libsqlite3_*.go` | Hand-written, no marker. Edit freely. |
 | Everything at the top level, `vtab/`, `pcache/`, `examples/` | Hand-written. Edit freely. |
 

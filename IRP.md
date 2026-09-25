@@ -56,6 +56,8 @@ Answer these before writing any fix; they determine who fixes what, and where.
 - **Which targets?** The module supports 20 `GOOS`/`GOARCH` combinations and the
   generated code differs per target. A fault may exist on some and not others.
 - **Which versions?** When was it introduced, and is the current release affected.
+  For generated code, `git show vX.Y.Z:vendor.json` names the `libsqlite3` and
+  `libsqlite_vec` commits a release was vendored from.
 - **Does the fix move `modernc.org/libc`?** If so it cannot ship from this
   repository alone; see [issue #177](https://gitlab.com/cznic/sqlite/-/issues/177).
 
@@ -77,7 +79,12 @@ this order, and none can be skipped or reordered, because each pins the one befo
 2. `modernc.org/libsqlite3`, its `go.mod` bumped to that libc, re-transpiled, tagged.
 3. `modernc.org/libsqlite_vec`, bumped to both, re-transpiled, tagged.
 4. Here: both sibling checkouts at those tags, `go.mod` on the new libc, `make vendor`,
-   the builders green on all 20 targets, then the tag.
+   the builders green on all 20 targets, then the tag. `make vendor` refuses a dirty
+   checkout, two checkouts on different libc versions, and a `libsqlite_vec` that
+   requires another `libsqlite3` commit than `../libsqlite3` is at, and records what it
+   used in `vendor.json`. The test suite fails when the libc in `go.mod` differs from
+   the one in `vendor.json`, so the `go.mod` bump goes in the same push as
+   `make vendor`, or every builder is red until it does.
 
 `lib/` and `vec/` must come from the same libc. Do not re-vendor one while the other
 stays on the old version.
