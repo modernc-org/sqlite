@@ -71,6 +71,8 @@ var parseTimeFormats = []string{
 	"2006-01-02",
 }
 
+var cancellationFlags sync.Map // SQLite connection handle -> *int32
+
 // interruptOnDone sets up a goroutine to interrupt the provided db when the
 // context is canceled, and returns a function the caller must defer so it
 // doesn't interrupt after the caller finishes.
@@ -83,6 +85,10 @@ func interruptOnDone(
 		var d int32
 		done = &d
 	}
+	// SQLite clears an interrupt delivered before the first active VM starts.
+	// Keep cancellation observable by that VM even if the interrupt was cleared.
+	cancellationFlags.Store(c.db, done)
+	sqlite3.Xsqlite3_progress_handler(c.tls, c.db, 1000, cFuncPointer(canceledProgress), c.db)
 	// donemu prevents a TOCTOU logical race between checking the done flag and
 	// calling interrupt in the select statement below.
 	var donemu sync.Mutex
@@ -112,7 +118,14 @@ func interruptOnDone(
 		atomic.StoreInt32(done, 1)
 		donemu.Unlock()
 		close(donech)
+		sqlite3.Xsqlite3_progress_handler(c.tls, c.db, 0, 0, 0)
+		cancellationFlags.Delete(c.db)
 	}
+}
+
+func canceledProgress(_ *libc.TLS, db uintptr) int32 {
+	flag, _ := cancellationFlags.Load(db)
+	return atomic.LoadInt32(flag.(*int32))
 }
 
 func getVFSName(query string) (r string, err error) {
