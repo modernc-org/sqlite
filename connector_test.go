@@ -12,6 +12,8 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+
+	sqlite3 "modernc.org/sqlite/lib"
 )
 
 // The registrations below go on the package-level driver and therefore affect
@@ -177,6 +179,105 @@ func TestConnectorWrapping(t *testing.T) {
 	}
 	if g, e := n, 42; g != e {
 		t.Fatalf("got %v, expected %v", g, e)
+	}
+}
+
+// unwrappingConn is the connection wrapper the NewConnector documentation
+// asks for: it offers the wrapped connection through Unwrap, so a helper that
+// needs the driver's own connection, such as Limit, reaches it. It forwards
+// none of the optional interfaces, which this test does not need.
+type unwrappingConn struct {
+	driver.Conn
+}
+
+func (c unwrappingConn) Unwrap() driver.Conn { return c.Conn }
+
+// opaqueConn is a wrapper without Unwrap. Limit cannot see through it.
+type opaqueConn struct {
+	driver.Conn
+}
+
+// nilUnwrapConn is a broken wrapper whose Unwrap returns nothing.
+type nilUnwrapConn struct {
+	driver.Conn
+}
+
+func (nilUnwrapConn) Unwrap() driver.Conn { return nil }
+
+// wrappingConnector wraps every connection it opens with wrap.
+type wrappingConnector struct {
+	driver.Connector
+
+	wrap func(driver.Conn) driver.Conn
+}
+
+func (c *wrappingConnector) Connect(ctx context.Context) (driver.Conn, error) {
+	conn, err := c.Connector.Connect(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return c.wrap(conn), nil
+}
+
+// TestLimitWrappedConn checks that Limit reaches the driver connection through
+// a wrapper that has an Unwrap method, and through two of them, and that it
+// still reports a wrapper it cannot see through instead of panicking.
+func TestLimitWrappedConn(t *testing.T) {
+	base, err := NewConnector("file:" + filepath.Join(t.TempDir(), "limit.db"))
+	if err != nil {
+		t.Fatalf("NewConnector: %v", err)
+	}
+
+	for _, tc := range []struct {
+		name string
+		wrap func(driver.Conn) driver.Conn
+		ok   bool
+	}{
+		{"unwrap", func(c driver.Conn) driver.Conn { return unwrappingConn{c} }, true},
+		{"unwrap twice", func(c driver.Conn) driver.Conn { return unwrappingConn{unwrappingConn{c}} }, true},
+		{"opaque", func(c driver.Conn) driver.Conn { return opaqueConn{c} }, false},
+		{"opaque inside unwrap", func(c driver.Conn) driver.Conn { return unwrappingConn{opaqueConn{c}} }, false},
+		{"unwrap to nil", func(c driver.Conn) driver.Conn { return nilUnwrapConn{c} }, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			db := sql.OpenDB(&wrappingConnector{Connector: base, wrap: tc.wrap})
+			defer db.Close()
+
+			conn, err := db.Conn(context.Background())
+			if err != nil {
+				t.Fatalf("Conn: %v", err)
+			}
+
+			defer conn.Close()
+
+			n, err := Limit(conn, sqlite3.SQLITE_LIMIT_COLUMN, 100)
+			if !tc.ok {
+				if err == nil || !strings.Contains(err.Error(), "unexpected driverConn type") {
+					t.Fatalf("got err %v, expected the unexpected driverConn type error", err)
+				}
+
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("Limit: %v", err)
+			}
+
+			if n <= 0 {
+				t.Fatalf("got previous limit %v, expected a positive value", n)
+			}
+
+			// The call reached the driver connection: the new limit is in
+			// force on it.
+			if n, err = Limit(conn, sqlite3.SQLITE_LIMIT_COLUMN, -1); err != nil {
+				t.Fatalf("Limit: %v", err)
+			}
+
+			if g, e := n, 100; g != e {
+				t.Fatalf("got limit %v, expected %v", g, e)
+			}
+		})
 	}
 }
 

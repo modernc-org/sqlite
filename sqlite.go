@@ -1367,18 +1367,44 @@ func collationTrampoline(tls *libc.TLS, pApp uintptr, nLeft int32, zLeft uintptr
 // the particular instance of 'c', so getting a new connection only to pass it
 // to Limit is possibly not useful above querying what are the various
 // configured default values.
+//
+// The connection may come from a [driver.Connector] that wraps the
+// connections [NewConnector] opens. Limit reaches the driver's own connection
+// through the wrapper's Unwrap method, unwrapping for as long as the value
+// implements
+//
+//	interface{ Unwrap() driver.Conn }
+//
+// A wrapper without that method, or one whose chain does not end at a
+// connection this driver opened, fails with an error naming its type.
 func Limit(c *sql.Conn, id int, newVal int) (r int, err error) {
 	err = c.Raw(func(driverConn any) error {
-		switch dc := driverConn.(type) {
-		case *conn:
-			r = dc.limit(id, newVal)
-			return nil
-		default:
+		dc := unwrapConn(driverConn)
+		if dc == nil {
 			return fmt.Errorf("unexpected driverConn type: %T", driverConn)
 		}
+
+		r = dc.limit(id, newVal)
+		return nil
 	})
 	return r, err
+}
 
+// unwrapConn returns the connection this driver opened behind v, the value
+// sql.Conn.Raw passes to its function, seeing through every wrapper that
+// implements interface{ Unwrap() driver.Conn }. It returns nil when v is not
+// such a connection and does not wrap one.
+func unwrapConn(v any) *conn {
+	for {
+		switch x := v.(type) {
+		case *conn:
+			return x
+		case interface{ Unwrap() driver.Conn }:
+			v = x.Unwrap()
+		default:
+			return nil
+		}
+	}
 }
 
 // ColumnInfo describes one output column of a prepared SQL statement.

@@ -2,6 +2,9 @@
 
 Entries for v1.38.1 through v1.44.1 and for v1.49.1 were added on 2026-09-05, reconstructed from the git history and the merge requests they cite; they were missing at release time.
 
+ - 2026-11-02 v1.61.2:
+     - `Limit` now works on a connection handed out by a `driver.Connector` that wraps the ones `NewConnector` opens, provided the wrapper has an `Unwrap() driver.Conn` method; it used to fail with `unexpected driverConn type`. `NewConnector` now also says which optional interfaces such a wrapper must forward. Resolves [GitHub issue #11](https://github.com/modernc-org/sqlite/issues/11), thanks Andres Morey (@amorey)!
+
  - 2026-10-31 v1.61.1:
      - **Prepared statements are no longer parsed and planned again on every execution.** Since v1.61.0, SQLite 3.54 expired a cached statement that has a `col = ?` term in a join or an `ORDER BY` query whenever the driver cleared its bindings after a run, so a statement prepared with `db.Prepare` or `tx.Prepare` cost about twice what it did in v1.60.1. Integer bindings now stay in place between executions, so a parameter bound to 0 or 1 does not re-prepare it either. Resolves [GitLab issue #264](https://gitlab.com/cznic/sqlite/-/issues/264). See [GitLab merge request #147](https://gitlab.com/cznic/sqlite/-/merge_requests/147), thanks Roman Khafizianov (@requilence)!
      - **Fix a panic reachable from SQL through a VFS made by `vfs.New`.** It reported its files as writable, so with `PRAGMA journal_mode=OFF` a write reached a write method the VFS does not have and the process panicked, as did closing a WAL database shipped with its `-wal` file; with the journal on, the write failed with a misleading `SQLITE_NOMEM`. Such files are now read-only to SQLite, and every write fails with `SQLITE_READONLY`. See [GitLab merge request #145](https://gitlab.com/cznic/sqlite/-/merge_requests/145), thanks Ian Chechin!
