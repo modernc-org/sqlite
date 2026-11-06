@@ -63,34 +63,6 @@ type Tptrdiff_t = int32
 
 type Ttime_t = int32
 
-// C documentation
-//
-//	/**
-//	 * @brief Initial an array with the given element size and capacity.
-//	 *
-//	 * @param array
-//	 * @param element_size
-//	 * @param init_capacity
-//	 * @return SQLITE_OK on success, error code on failure. Only error is
-//	 * SQLITE_NOMEM
-//	 */
-func Xarray_init(tls *libc.TLS, array uintptr, element_size Tsize_t, init_capacity Tsize_t) (r int32) {
-	var sz int32
-	var z uintptr
-	_, _ = sz, z
-	sz = int32(element_size * init_capacity)
-	z = libsqlite3.Xsqlite3_malloc(tls, sz)
-	if !(z != 0) {
-		return int32(m_SQLITE_NOMEM)
-	}
-	libc.Xmemset(tls, z, 0, uint32(sz))
-	(*TArray)(unsafe.Pointer(array)).Felement_size = element_size
-	(*TArray)(unsafe.Pointer(array)).Flength = uint32(0)
-	(*TArray)(unsafe.Pointer(array)).Fcapacity = init_capacity
-	(*TArray)(unsafe.Pointer(array)).Fz = z
-	return m_SQLITE_OK
-}
-
 func Xbitmap_clear(tls *libc.TLS, bitmap uintptr, n Ti32) {
 	libc.Xmemset(tls, bitmap, 0, uint32(n/int32(m___CHAR_BIT__)))
 }
@@ -123,65 +95,18 @@ func Xbitmap_new_from(tls *libc.TLS, n Ti32, from uintptr) (r uintptr) {
 	return p
 }
 
-func Xparse_npy_buffer(tls *libc.TLS, pVTab uintptr, buffer uintptr, bufferLength int32, data uintptr, numElements uintptr, numDimensions uintptr, element_type uintptr) (r int32) {
-	bp := tls.Alloc(32)
-	defer tls.Free(32)
-	var dataSize, expectedDataSize, totalHeaderLength Ti32
-	var header uintptr
-	var major, minor Tu8
-	var rc int32
-	var _ /* fortran_order at bp+4 */ int32
-	var _ /* headerLength at bp+0 */ Tuint16_t
-	_, _, _, _, _, _, _ = dataSize, expectedDataSize, header, major, minor, rc, totalHeaderLength
-	if bufferLength < int32(10) {
-		// IMP: V03312_20150
-		Xvtab_set_error(tls, pVTab, __ccgo_ts+3171, 0)
-		return int32(m_SQLITE_ERROR)
-	}
-	if libc.Xmemcmp(tls, uintptr(unsafe.Pointer(&_NPY_MAGIC)), buffer, uint32(6)) != 0 {
-		// V11954_28792
-		Xvtab_set_error(tls, pVTab, __ccgo_ts+3193, 0)
-		return int32(m_SQLITE_ERROR)
-	}
-	major = **(**uint8)(__ccgo_up(buffer + 6))
-	minor = **(**uint8)(__ccgo_up(buffer + 7))
-	**(**Tuint16_t)(__ccgo_up(bp)) = uint16(0)
-	libc.Xmemcpy(tls, bp, buffer+8, uint32(2))
-	totalHeaderLength = int32(libc.Uint32FromInt64(6) + libc.Uint32FromInt64(1) + libc.Uint32FromInt64(1) + libc.Uint32FromInt64(2) + uint32(**(**Tuint16_t)(__ccgo_up(bp))))
-	dataSize = bufferLength - totalHeaderLength
-	if dataSize < 0 {
-		Xvtab_set_error(tls, pVTab, __ccgo_ts+3241, 0)
-		return int32(m_SQLITE_ERROR)
-	}
-	header = buffer + 10
-	rc = Xparse_npy_header(tls, pVTab, header, uint32(**(**Tuint16_t)(__ccgo_up(bp))), element_type, bp+4, numElements, numDimensions)
-	if rc != m_SQLITE_OK {
-		return rc
-	}
-	expectedDataSize = int32(**(**Tsize_t)(__ccgo_up(numElements)) * Xvector_byte_size(tls, **(**_VectorElementType)(__ccgo_up(element_type)), **(**Tsize_t)(__ccgo_up(numDimensions))))
-	if expectedDataSize != dataSize {
-		Xvtab_set_error(tls, pVTab, __ccgo_ts+3278, libc.VaList(bp+16, expectedDataSize, dataSize))
-		return int32(m_SQLITE_ERROR)
-	}
-	**(**uintptr)(__ccgo_up(data)) = buffer + uintptr(totalHeaderLength)
-	return m_SQLITE_OK
-}
-
 func Xparse_npy_file(tls *libc.TLS, pVTab uintptr, file uintptr, pCur uintptr) (r int32) {
-	bp := tls.Alloc(64)
-	defer tls.Free(64)
+	bp := tls.Alloc(48)
+	defer tls.Free(48)
 	var dataSize, expectedDataSize Ti32
-	var fileSize, n, rc int32
+	var element_type _VectorElementType
+	var fileSize, fortran_order, n, rc int32
 	var headerX uintptr
 	var major, minor Tu8
-	var totalHeaderLength Tsize_t
-	var _ /* element_type at bp+16 */ _VectorElementType
-	var _ /* fortran_order at bp+12 */ int32
+	var numDimensions, numElements, totalHeaderLength Tsize_t
 	var _ /* header at bp+0 */ [10]uint8
 	var _ /* headerLength at bp+10 */ Tuint16_t
-	var _ /* numDimensions at bp+24 */ Tsize_t
-	var _ /* numElements at bp+20 */ Tsize_t
-	_, _, _, _, _, _, _, _, _ = dataSize, expectedDataSize, fileSize, headerX, major, minor, n, rc, totalHeaderLength
+	_, _, _, _, _, _, _, _, _, _, _, _, _ = dataSize, element_type, expectedDataSize, fileSize, fortran_order, headerX, major, minor, n, numDimensions, numElements, rc, totalHeaderLength
 	libc.Xfseek(tls, file, 0, int32(m_SEEK_END))
 	fileSize = libc.Xftell(tls, file)
 	libc.Xfseek(tls, file, 0, m_SEEK_SET)
@@ -194,602 +119,52 @@ func Xparse_npy_file(tls *libc.TLS, pVTab uintptr, file uintptr, pCur uintptr) (
 		Xvtab_set_error(tls, pVTab, __ccgo_ts+3015, 0)
 		return int32(m_SQLITE_ERROR)
 	}
-	major = (**(**[10]uint8)(__ccgo_up(bp)))[int32(6)]
-	minor = (**(**[10]uint8)(__ccgo_up(bp)))[int32(7)]
-	**(**Tuint16_t)(__ccgo_up(bp + 10)) = uint16(0)
+	major = (*(*[10]uint8)(__ccgo_ptr(bp)))[int32(6)]
+	minor = (*(*[10]uint8)(__ccgo_ptr(bp)))[int32(7)]
+	*(*Tuint16_t)(__ccgo_ptr(bp + 10)) = uint16(0)
 	libc.Xmemcpy(tls, bp+10, bp+8, uint32(2))
-	totalHeaderLength = libc.Uint32FromInt64(6) + libc.Uint32FromInt64(1) + libc.Uint32FromInt64(1) + libc.Uint32FromInt64(2) + uint32(**(**Tuint16_t)(__ccgo_up(bp + 10)))
+	totalHeaderLength = libc.Uint32FromInt64(6) + libc.Uint32FromInt64(1) + libc.Uint32FromInt64(1) + libc.Uint32FromInt64(2) + uint32(*(*Tuint16_t)(__ccgo_ptr(bp + 10)))
 	dataSize = int32(uint32(fileSize) - totalHeaderLength)
 	if dataSize < 0 {
 		Xvtab_set_error(tls, pVTab, __ccgo_ts+3068, 0)
 		return int32(m_SQLITE_ERROR)
 	}
-	headerX = libsqlite3.Xsqlite3_malloc(tls, int32(**(**Tuint16_t)(__ccgo_up(bp + 10))))
-	if **(**Tuint16_t)(__ccgo_up(bp + 10)) != 0 && !(headerX != 0) {
+	headerX = libsqlite3.Xsqlite3_malloc(tls, int32(*(*Tuint16_t)(__ccgo_ptr(bp + 10))))
+	if *(*Tuint16_t)(__ccgo_ptr(bp + 10)) != 0 && !(headerX != 0) {
 		return int32(m_SQLITE_NOMEM)
 	}
-	n = int32(libc.Xfread(tls, headerX, uint32(1), uint32(**(**Tuint16_t)(__ccgo_up(bp + 10))), file))
-	if n != int32(**(**Tuint16_t)(__ccgo_up(bp + 10))) {
+	n = int32(libc.Xfread(tls, headerX, uint32(1), uint32(*(*Tuint16_t)(__ccgo_ptr(bp + 10))), file))
+	if n != int32(*(*Tuint16_t)(__ccgo_ptr(bp + 10))) {
 		libsqlite3.Xsqlite3_free(tls, headerX)
 		Xvtab_set_error(tls, pVTab, __ccgo_ts+3068, 0)
 		return int32(m_SQLITE_ERROR)
 	}
-	rc = Xparse_npy_header(tls, pVTab, headerX, uint32(**(**Tuint16_t)(__ccgo_up(bp + 10))), bp+16, bp+12, bp+20, bp+24)
+	rc = _parse_npy_header__ccgo_gp(tls, pVTab, headerX, uint32(*(*Tuint16_t)(__ccgo_ptr(bp + 10))), unsafe.Pointer(&element_type), unsafe.Pointer(&fortran_order), unsafe.Pointer(&numElements), unsafe.Pointer(&numDimensions))
 	libsqlite3.Xsqlite3_free(tls, headerX)
 	if rc != m_SQLITE_OK {
 		// parse_npy_header already attackes an error emssage
 		return rc
 	}
-	expectedDataSize = int32(**(**Tsize_t)(__ccgo_up(bp + 20)) * Xvector_byte_size(tls, **(**_VectorElementType)(__ccgo_up(bp + 16)), **(**Tsize_t)(__ccgo_up(bp + 24))))
+	expectedDataSize = int32(numElements * Xvector_byte_size(tls, element_type, numDimensions))
 	if expectedDataSize != dataSize {
-		Xvtab_set_error(tls, pVTab, __ccgo_ts+3110, libc.VaList(bp+40, expectedDataSize, dataSize))
+		Xvtab_set_error(tls, pVTab, __ccgo_ts+3110, libc.VaList(bp+24, expectedDataSize, dataSize))
 		return int32(m_SQLITE_ERROR)
 	}
 	(*Tvec_npy_each_cursor)(unsafe.Pointer(pCur)).FmaxChunks = uint32(1024)
-	(*Tvec_npy_each_cursor)(unsafe.Pointer(pCur)).FchunksBufferSize = Xvector_byte_size(tls, **(**_VectorElementType)(__ccgo_up(bp + 16)), **(**Tsize_t)(__ccgo_up(bp + 24))) * (*Tvec_npy_each_cursor)(unsafe.Pointer(pCur)).FmaxChunks
+	(*Tvec_npy_each_cursor)(unsafe.Pointer(pCur)).FchunksBufferSize = Xvector_byte_size(tls, element_type, numDimensions) * (*Tvec_npy_each_cursor)(unsafe.Pointer(pCur)).FmaxChunks
 	(*Tvec_npy_each_cursor)(unsafe.Pointer(pCur)).FchunksBuffer = libsqlite3.Xsqlite3_malloc(tls, int32((*Tvec_npy_each_cursor)(unsafe.Pointer(pCur)).FchunksBufferSize))
 	if (*Tvec_npy_each_cursor)(unsafe.Pointer(pCur)).FchunksBufferSize != 0 && !((*Tvec_npy_each_cursor)(unsafe.Pointer(pCur)).FchunksBuffer != 0) {
 		return int32(m_SQLITE_NOMEM)
 	}
-	(*Tvec_npy_each_cursor)(unsafe.Pointer(pCur)).FcurrentChunkSize = libc.Xfread(tls, (*Tvec_npy_each_cursor)(unsafe.Pointer(pCur)).FchunksBuffer, Xvector_byte_size(tls, **(**_VectorElementType)(__ccgo_up(bp + 16)), **(**Tsize_t)(__ccgo_up(bp + 24))), (*Tvec_npy_each_cursor)(unsafe.Pointer(pCur)).FmaxChunks, file)
+	(*Tvec_npy_each_cursor)(unsafe.Pointer(pCur)).FcurrentChunkSize = libc.Xfread(tls, (*Tvec_npy_each_cursor)(unsafe.Pointer(pCur)).FchunksBuffer, Xvector_byte_size(tls, element_type, numDimensions), (*Tvec_npy_each_cursor)(unsafe.Pointer(pCur)).FmaxChunks, file)
 	(*Tvec_npy_each_cursor)(unsafe.Pointer(pCur)).FcurrentChunkIndex = uint32(0)
-	(*Tvec_npy_each_cursor)(unsafe.Pointer(pCur)).FelementType = **(**_VectorElementType)(__ccgo_up(bp + 16))
-	(*Tvec_npy_each_cursor)(unsafe.Pointer(pCur)).FnElements = **(**Tsize_t)(__ccgo_up(bp + 20))
-	(*Tvec_npy_each_cursor)(unsafe.Pointer(pCur)).FnDimensions = **(**Tsize_t)(__ccgo_up(bp + 24))
+	(*Tvec_npy_each_cursor)(unsafe.Pointer(pCur)).FelementType = element_type
+	(*Tvec_npy_each_cursor)(unsafe.Pointer(pCur)).FnElements = numElements
+	(*Tvec_npy_each_cursor)(unsafe.Pointer(pCur)).FnDimensions = numDimensions
 	(*Tvec_npy_each_cursor)(unsafe.Pointer(pCur)).Finput_type = int32(_VEC_NPY_EACH_INPUT_FILE)
 	(*Tvec_npy_each_cursor)(unsafe.Pointer(pCur)).Feof = libc.BoolInt32((*Tvec_npy_each_cursor)(unsafe.Pointer(pCur)).FcurrentChunkSize == uint32(0))
 	(*Tvec_npy_each_cursor)(unsafe.Pointer(pCur)).Ffile = file
 	return m_SQLITE_OK
-}
-
-func Xparse_npy_header(tls *libc.TLS, pVTab uintptr, header uintptr, headerLength Tsize_t, out_element_type uintptr, fortran_order uintptr, numElements uintptr, numDimensions uintptr) (r int32) {
-	bp := tls.Alloc(32)
-	defer tls.Free(32)
-	var first Tsize_t
-	var key uintptr
-	var rc, v1 int32
-	var _ /* scanner at bp+0 */ TNpyScanner
-	var _ /* token at bp+12 */ TNpyToken
-	_, _, _, _ = first, key, rc, v1
-	Xnpy_scanner_init(tls, bp, header, int32(headerLength))
-	if Xnpy_scanner_next(tls, bp, bp+12) != int32(m_VEC0_TOKEN_RESULT_SOME) && (**(**TNpyToken)(__ccgo_up(bp + 12))).Ftoken_type != int32(_NPY_TOKEN_TYPE_LBRACE) {
-		Xvtab_set_error(tls, pVTab, __ccgo_ts+1922, 0)
-		return int32(m_SQLITE_ERROR)
-	}
-	for int32(1) != 0 {
-		rc = Xnpy_scanner_next(tls, bp, bp+12)
-		if rc != int32(m_VEC0_TOKEN_RESULT_SOME) {
-			Xvtab_set_error(tls, pVTab, __ccgo_ts+1985, 0)
-			return int32(m_SQLITE_ERROR)
-		}
-		if (**(**TNpyToken)(__ccgo_up(bp + 12))).Ftoken_type == int32(_NPY_TOKEN_TYPE_RBRACE) {
-			break
-		}
-		if (**(**TNpyToken)(__ccgo_up(bp + 12))).Ftoken_type != int32(_NPY_TOKEN_TYPE_STRING) {
-			Xvtab_set_error(tls, pVTab, __ccgo_ts+2041, 0)
-			return int32(m_SQLITE_ERROR)
-		}
-		key = (**(**TNpyToken)(__ccgo_up(bp + 12))).Fstart
-		rc = Xnpy_scanner_next(tls, bp, bp+12)
-		if rc != int32(m_VEC0_TOKEN_RESULT_SOME) || (**(**TNpyToken)(__ccgo_up(bp + 12))).Ftoken_type != int32(_NPY_TOKEN_TYPE_COLON) {
-			Xvtab_set_error(tls, pVTab, __ccgo_ts+2109, 0)
-			return int32(m_SQLITE_ERROR)
-		}
-		if libc.Xstrncmp(tls, key, __ccgo_ts+2177, libc.Xstrlen(tls, __ccgo_ts+2177)) == 0 {
-			rc = Xnpy_scanner_next(tls, bp, bp+12)
-			if rc != int32(m_VEC0_TOKEN_RESULT_SOME) || (**(**TNpyToken)(__ccgo_up(bp + 12))).Ftoken_type != int32(_NPY_TOKEN_TYPE_STRING) {
-				Xvtab_set_error(tls, pVTab, __ccgo_ts+2185, 0)
-				return int32(m_SQLITE_ERROR)
-			}
-			if libc.Xstrncmp(tls, (**(**TNpyToken)(__ccgo_up(bp + 12))).Fstart, __ccgo_ts+2254, libc.Xstrlen(tls, __ccgo_ts+2254)) != 0 {
-				Xvtab_set_error(tls, pVTab, __ccgo_ts+2260, 0)
-				return int32(m_SQLITE_ERROR)
-			}
-			**(**_VectorElementType)(__ccgo_up(out_element_type)) = int32(_SQLITE_VEC_ELEMENT_TYPE_FLOAT32)
-		} else {
-			if libc.Xstrncmp(tls, key, __ccgo_ts+2349, libc.Xstrlen(tls, __ccgo_ts+2349)) == 0 {
-				rc = Xnpy_scanner_next(tls, bp, bp+12)
-				if rc != int32(m_VEC0_TOKEN_RESULT_SOME) || (**(**TNpyToken)(__ccgo_up(bp + 12))).Ftoken_type != int32(_NPY_TOKEN_TYPE_FALSE) {
-					Xvtab_set_error(tls, pVTab, __ccgo_ts+2365, 0)
-					return int32(m_SQLITE_ERROR)
-				}
-				**(**int32)(__ccgo_up(fortran_order)) = 0
-			} else {
-				if libc.Xstrncmp(tls, key, __ccgo_ts+2462, libc.Xstrlen(tls, __ccgo_ts+2462)) == 0 {
-					rc = Xnpy_scanner_next(tls, bp, bp+12)
-					if rc != int32(m_VEC0_TOKEN_RESULT_SOME) || (**(**TNpyToken)(__ccgo_up(bp + 12))).Ftoken_type != int32(_NPY_TOKEN_TYPE_LPAREN) {
-						Xvtab_set_error(tls, pVTab, __ccgo_ts+2470, 0)
-						return int32(m_SQLITE_ERROR)
-					}
-					rc = Xnpy_scanner_next(tls, bp, bp+12)
-					if rc != int32(m_VEC0_TOKEN_RESULT_SOME) || (**(**TNpyToken)(__ccgo_up(bp + 12))).Ftoken_type != int32(_NPY_TOKEN_TYPE_NUMBER) {
-						Xvtab_set_error(tls, pVTab, __ccgo_ts+2543, 0)
-						return int32(m_SQLITE_ERROR)
-					}
-					first = uint32(libc.Xstrtol(tls, (**(**TNpyToken)(__ccgo_up(bp + 12))).Fstart, libc.UintptrFromInt32(0), int32(10)))
-					rc = Xnpy_scanner_next(tls, bp, bp+12)
-					if rc != int32(m_VEC0_TOKEN_RESULT_SOME) || (**(**TNpyToken)(__ccgo_up(bp + 12))).Ftoken_type != int32(_NPY_TOKEN_TYPE_COMMA) {
-						Xvtab_set_error(tls, pVTab, __ccgo_ts+2612, 0)
-						return int32(m_SQLITE_ERROR)
-					}
-					rc = Xnpy_scanner_next(tls, bp, bp+12)
-					if rc != int32(m_VEC0_TOKEN_RESULT_SOME) {
-						Xvtab_set_error(tls, pVTab, __ccgo_ts+2678, 0)
-						return int32(m_SQLITE_ERROR)
-					}
-					if (**(**TNpyToken)(__ccgo_up(bp + 12))).Ftoken_type == int32(_NPY_TOKEN_TYPE_NUMBER) {
-						**(**Tsize_t)(__ccgo_up(numElements)) = first
-						**(**Tsize_t)(__ccgo_up(numDimensions)) = uint32(libc.Xstrtol(tls, (**(**TNpyToken)(__ccgo_up(bp + 12))).Fstart, libc.UintptrFromInt32(0), int32(10)))
-						rc = Xnpy_scanner_next(tls, bp, bp+12)
-						if rc != int32(m_VEC0_TOKEN_RESULT_SOME) || (**(**TNpyToken)(__ccgo_up(bp + 12))).Ftoken_type != int32(_NPY_TOKEN_TYPE_RPAREN) {
-							Xvtab_set_error(tls, pVTab, __ccgo_ts+2747, 0)
-							return int32(m_SQLITE_ERROR)
-						}
-					} else {
-						if (**(**TNpyToken)(__ccgo_up(bp + 12))).Ftoken_type == int32(_NPY_TOKEN_TYPE_RPAREN) {
-							// '(0,)' means an empty array!
-							if first != 0 {
-								v1 = int32(1)
-							} else {
-								v1 = 0
-							}
-							**(**Tsize_t)(__ccgo_up(numElements)) = uint32(v1)
-							**(**Tsize_t)(__ccgo_up(numDimensions)) = first
-						} else {
-							Xvtab_set_error(tls, pVTab, __ccgo_ts+2819, 0)
-							return int32(m_SQLITE_ERROR)
-						}
-					}
-				} else {
-					Xvtab_set_error(tls, pVTab, __ccgo_ts+2874, 0)
-					return int32(m_SQLITE_ERROR)
-				}
-			}
-		}
-		rc = Xnpy_scanner_next(tls, bp, bp+12)
-		if rc != int32(m_VEC0_TOKEN_RESULT_SOME) || (**(**TNpyToken)(__ccgo_up(bp + 12))).Ftoken_type != int32(_NPY_TOKEN_TYPE_COMMA) {
-			Xvtab_set_error(tls, pVTab, __ccgo_ts+2929, 0)
-			return int32(m_SQLITE_ERROR)
-		}
-	}
-	return m_SQLITE_OK
-}
-
-func Xvec0Filter_knn_chunks_iter(tls *libc.TLS, p uintptr, stmtChunks uintptr, vector_column uintptr, vectorColumnIdx int32, arrayRowidsIn uintptr, aMetadataIn uintptr, idxStr uintptr, argc int32, argv uintptr, queryVector uintptr, k Ti64, out_topk_rowids uintptr, out_topk_distances uintptr, out_used uintptr) (r int32) {
-	bp := tls.Alloc(128)
-	defer tls.Free(128)
-	var b, bTaken, baseVectors, base_i, base_i1, base_i2, bmMetadata, bmRowids, chunkRowids, chunkValidity, chunk_distances, chunk_topk_idxs, in, tmp_topk_distances, tmp_topk_rowids, topk_distances, topk_rowids, v1 uintptr
-	var baseVectorsSize, chunk_id, currentBaseVectorsSize, expectedBaseVectorsSize, k_used, rowidsSize, validitySize Ti64
-	var hasDistanceConstraints, hasMetadataFilters, i, i1, i10, i2, i3, i4, i5, i6, i7, i8, i9, idx, idx1, idx2, idxStrLength, metadata_idx, numValueEntries, operator, rc, v4 int32
-	var kind, kind1, kind2 int8
-	var op Tvec0_distance_constraint_operator
-	var result, target Tf32
-	var v12, v13, v14 int64
-	var _ /* blobVectors at bp+0 */ uintptr
-	var _ /* metadataBlobs at bp+4 */ [16]uintptr
-	var _ /* rowid at bp+72 */ Ti64
-	var _ /* used at bp+88 */ Ti64
-	var _ /* used1 at bp+80 */ int32
-	_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _ = b, bTaken, baseVectors, baseVectorsSize, base_i, base_i1, base_i2, bmMetadata, bmRowids, chunkRowids, chunkValidity, chunk_distances, chunk_id, chunk_topk_idxs, currentBaseVectorsSize, expectedBaseVectorsSize, hasDistanceConstraints, hasMetadataFilters, i, i1, i10, i2, i3, i4, i5, i6, i7, i8, i9, idx, idx1, idx2, idxStrLength, in, k_used, kind, kind1, kind2, metadata_idx, numValueEntries, op, operator, rc, result, rowidsSize, target, tmp_topk_distances, tmp_topk_rowids, topk_distances, topk_rowids, validitySize, v1, v12, v13, v14, v4
-	// for each chunk, get top min(k, chunk_size) rowid + distances to query vec.
-	// then reconcile all topk_chunks for a true top k.
-	// output only rowids + distances for now
-	rc = m_SQLITE_OK
-	**(**uintptr)(__ccgo_up(bp)) = libc.UintptrFromInt32(0)
-	baseVectors = libc.UintptrFromInt32(0) // memory: chunk_size * dimensions * element_size
-	// OWNED BY CALLER ON SUCCESS
-	topk_rowids = libc.UintptrFromInt32(0) // memory: k * 4
-	// OWNED BY CALLER ON SUCCESS
-	topk_distances = libc.UintptrFromInt32(0)     // memory: k * 4
-	tmp_topk_rowids = libc.UintptrFromInt32(0)    // memory: k * 4
-	tmp_topk_distances = libc.UintptrFromInt32(0) // memory: k * 4
-	chunk_distances = libc.UintptrFromInt32(0)    // memory: chunk_size * 4
-	b = libc.UintptrFromInt32(0)                  // memory: chunk_size / 8
-	bTaken = libc.UintptrFromInt32(0)             // memory: chunk_size / 8
-	chunk_topk_idxs = libc.UintptrFromInt32(0)    // memory: k * 4
-	bmRowids = libc.UintptrFromInt32(0)           // memory: chunk_size / 8
-	bmMetadata = libc.UintptrFromInt32(0)         // memory: chunk_size / 8
-	//                        // total: a lot???
-	// 6 * (k * 4) + (k * 2) + (chunk_size / 8) + (chunk_size * dimensions * 4)
-	topk_rowids = libsqlite3.Xsqlite3_malloc(tls, int32(k*int64(8)))
-	if !(topk_rowids != 0) {
-		rc = int32(m_SQLITE_NOMEM)
-		goto cleanup
-	}
-	libc.Xmemset(tls, topk_rowids, 0, uint32(k*int64(8)))
-	topk_distances = libsqlite3.Xsqlite3_malloc(tls, int32(k*int64(4)))
-	if !(topk_distances != 0) {
-		rc = int32(m_SQLITE_NOMEM)
-		goto cleanup
-	}
-	libc.Xmemset(tls, topk_distances, 0, uint32(k*int64(4)))
-	tmp_topk_rowids = libsqlite3.Xsqlite3_malloc(tls, int32(k*int64(8)))
-	if !(tmp_topk_rowids != 0) {
-		rc = int32(m_SQLITE_NOMEM)
-		goto cleanup
-	}
-	libc.Xmemset(tls, tmp_topk_rowids, 0, uint32(k*int64(8)))
-	tmp_topk_distances = libsqlite3.Xsqlite3_malloc(tls, int32(k*int64(4)))
-	if !(tmp_topk_distances != 0) {
-		rc = int32(m_SQLITE_NOMEM)
-		goto cleanup
-	}
-	libc.Xmemset(tls, tmp_topk_distances, 0, uint32(k*int64(4)))
-	k_used = 0
-	baseVectorsSize = int64(uint32((*Tvec0_vtab)(unsafe.Pointer(p)).Fchunk_size) * Xvector_column_byte_size(tls, **(**TVectorColumnDefinition)(__ccgo_up(vector_column))))
-	baseVectors = libsqlite3.Xsqlite3_malloc(tls, int32(baseVectorsSize))
-	if !(baseVectors != 0) {
-		rc = int32(m_SQLITE_NOMEM)
-		goto cleanup
-	}
-	chunk_distances = libsqlite3.Xsqlite3_malloc(tls, int32(uint32((*Tvec0_vtab)(unsafe.Pointer(p)).Fchunk_size)*uint32(4)))
-	if !(chunk_distances != 0) {
-		rc = int32(m_SQLITE_NOMEM)
-		goto cleanup
-	}
-	b = Xbitmap_new(tls, (*Tvec0_vtab)(unsafe.Pointer(p)).Fchunk_size)
-	if !(b != 0) {
-		rc = int32(m_SQLITE_NOMEM)
-		goto cleanup
-	}
-	bTaken = Xbitmap_new(tls, (*Tvec0_vtab)(unsafe.Pointer(p)).Fchunk_size)
-	if !(bTaken != 0) {
-		rc = int32(m_SQLITE_NOMEM)
-		goto cleanup
-	}
-	chunk_topk_idxs = libsqlite3.Xsqlite3_malloc(tls, int32(k*int64(4)))
-	if !(chunk_topk_idxs != 0) {
-		rc = int32(m_SQLITE_NOMEM)
-		goto cleanup
-	}
-	if arrayRowidsIn != 0 {
-		v1 = Xbitmap_new(tls, (*Tvec0_vtab)(unsafe.Pointer(p)).Fchunk_size)
-	} else {
-		v1 = libc.UintptrFromInt32(0)
-	}
-	bmRowids = v1
-	if arrayRowidsIn != 0 && !(bmRowids != 0) {
-		rc = int32(m_SQLITE_NOMEM)
-		goto cleanup
-	}
-	libc.Xmemset(tls, bp+4, 0, libc.Uint32FromInt64(4)*libc.Uint32FromInt32(m_VEC0_MAX_METADATA_COLUMNS))
-	bmMetadata = Xbitmap_new(tls, (*Tvec0_vtab)(unsafe.Pointer(p)).Fchunk_size)
-	if !(bmMetadata != 0) {
-		rc = int32(m_SQLITE_NOMEM)
-		goto cleanup
-	}
-	idxStrLength = int32(libc.Xstrlen(tls, idxStr))
-	numValueEntries = (idxStrLength - int32(1)) / int32(4)
-	hasMetadataFilters = 0
-	hasDistanceConstraints = 0
-	i = 0
-	for {
-		if !(i < argc) {
-			break
-		}
-		idx = int32(1) + i*int32(4)
-		kind = **(**int8)(__ccgo_up(idxStr + uintptr(idx+0)))
-		if int32(kind) == int32(_VEC0_IDXSTR_KIND_METADATA_CONSTRAINT) {
-			hasMetadataFilters = int32(1)
-		} else {
-			if int32(kind) == int32(_VEC0_IDXSTR_KIND_KNN_DISTANCE_CONSTRAINT) {
-				hasDistanceConstraints = int32(1)
-			}
-		}
-		goto _2
-	_2:
-		;
-		i = i + 1
-	}
-	for int32(m_true) != 0 {
-		rc = libsqlite3.Xsqlite3_step(tls, stmtChunks)
-		if rc == int32(m_SQLITE_DONE) {
-			break
-		}
-		if rc != int32(m_SQLITE_ROW) {
-			Xvtab_set_error(tls, p, __ccgo_ts+9697, 0)
-			rc = int32(m_SQLITE_ERROR)
-			goto cleanup
-		}
-		libc.Xmemset(tls, chunk_distances, 0, uint32((*Tvec0_vtab)(unsafe.Pointer(p)).Fchunk_size)*uint32(4))
-		libc.Xmemset(tls, chunk_topk_idxs, 0, uint32(k*int64(4)))
-		Xbitmap_clear(tls, b, (*Tvec0_vtab)(unsafe.Pointer(p)).Fchunk_size)
-		chunk_id = libsqlite3.Xsqlite3_column_int64(tls, stmtChunks, 0)
-		chunkValidity = libsqlite3.Xsqlite3_column_blob(tls, stmtChunks, int32(1))
-		validitySize = int64(libsqlite3.Xsqlite3_column_bytes(tls, stmtChunks, int32(1)))
-		if validitySize != int64((*Tvec0_vtab)(unsafe.Pointer(p)).Fchunk_size/int32(m___CHAR_BIT__)) {
-			// IMP: V05271_22109
-			Xvtab_set_error(tls, p, __ccgo_ts+9715, libc.VaList(bp+104, (*Tvec0_vtab)(unsafe.Pointer(p)).Fchunk_size/int32(m___CHAR_BIT__), validitySize))
-			rc = int32(m_SQLITE_ERROR)
-			goto cleanup
-		}
-		chunkRowids = libsqlite3.Xsqlite3_column_blob(tls, stmtChunks, int32(2))
-		rowidsSize = int64(libsqlite3.Xsqlite3_column_bytes(tls, stmtChunks, int32(2)))
-		if rowidsSize != int64(uint32((*Tvec0_vtab)(unsafe.Pointer(p)).Fchunk_size)*uint32(8)) {
-			// IMP: V02796_19635
-			Xvtab_set_error(tls, p, __ccgo_ts+9777, 0)
-			Xvtab_set_error(tls, p, __ccgo_ts+9803, libc.VaList(bp+104, uint32((*Tvec0_vtab)(unsafe.Pointer(p)).Fchunk_size)*uint32(8), rowidsSize))
-			rc = int32(m_SQLITE_ERROR)
-			goto cleanup
-		}
-		// open the vector chunk blob for the current chunk
-		rc = libsqlite3.Xsqlite3_blob_open(tls, (*Tvec0_vtab)(unsafe.Pointer(p)).Fdb, (*Tvec0_vtab)(unsafe.Pointer(p)).FschemaName, **(**uintptr)(__ccgo_up(p + 312 + uintptr(vectorColumnIdx)*4)), __ccgo_ts+3712, chunk_id, 0, bp)
-		if rc != m_SQLITE_OK {
-			Xvtab_set_error(tls, p, __ccgo_ts+9863, libc.VaList(bp+104, chunk_id))
-			rc = int32(m_SQLITE_ERROR)
-			goto cleanup
-		}
-		currentBaseVectorsSize = int64(libsqlite3.Xsqlite3_blob_bytes(tls, **(**uintptr)(__ccgo_up(bp))))
-		expectedBaseVectorsSize = int64(uint32((*Tvec0_vtab)(unsafe.Pointer(p)).Fchunk_size) * Xvector_column_byte_size(tls, **(**TVectorColumnDefinition)(__ccgo_up(vector_column))))
-		if currentBaseVectorsSize != expectedBaseVectorsSize {
-			// IMP: V16465_00535
-			Xvtab_set_error(tls, p, __ccgo_ts+9906, libc.VaList(bp+104, expectedBaseVectorsSize, currentBaseVectorsSize))
-			rc = int32(m_SQLITE_ERROR)
-			goto cleanup
-		}
-		rc = libsqlite3.Xsqlite3_blob_read(tls, **(**uintptr)(__ccgo_up(bp)), baseVectors, int32(currentBaseVectorsSize), 0)
-		if rc != m_SQLITE_OK {
-			Xvtab_set_error(tls, p, __ccgo_ts+9966, libc.VaList(bp+104, chunk_id))
-			rc = int32(m_SQLITE_ERROR)
-			goto cleanup
-		}
-		Xbitmap_copy(tls, b, chunkValidity, (*Tvec0_vtab)(unsafe.Pointer(p)).Fchunk_size)
-		if arrayRowidsIn != 0 {
-			Xbitmap_clear(tls, bmRowids, (*Tvec0_vtab)(unsafe.Pointer(p)).Fchunk_size)
-			i1 = 0
-			for {
-				if !(i1 < (*Tvec0_vtab)(unsafe.Pointer(p)).Fchunk_size) {
-					break
-				}
-				if !(Xbitmap_get(tls, chunkValidity, i1) != 0) {
-					goto _3
-				}
-				**(**Ti64)(__ccgo_up(bp + 72)) = **(**Ti64)(__ccgo_up(chunkRowids + uintptr(i1)*8))
-				in = libc.Xbsearch(tls, bp+72, (*TArray)(unsafe.Pointer(arrayRowidsIn)).Fz, (*TArray)(unsafe.Pointer(arrayRowidsIn)).Flength, uint32(8), __ccgo_fp(X_cmp))
-				if in != 0 {
-					v4 = int32(1)
-				} else {
-					v4 = 0
-				}
-				Xbitmap_set(tls, bmRowids, i1, v4)
-				goto _3
-			_3:
-				;
-				i1 = i1 + 1
-			}
-			Xbitmap_and_inplace(tls, b, bmRowids, (*Tvec0_vtab)(unsafe.Pointer(p)).Fchunk_size)
-		}
-		if hasMetadataFilters != 0 {
-			i2 = 0
-			for {
-				if !(i2 < argc) {
-					break
-				}
-				idx1 = int32(1) + i2*int32(4)
-				kind1 = **(**int8)(__ccgo_up(idxStr + uintptr(idx1+0)))
-				if int32(kind1) != int32(_VEC0_IDXSTR_KIND_METADATA_CONSTRAINT) {
-					goto _5
-				}
-				metadata_idx = int32(**(**int8)(__ccgo_up(idxStr + uintptr(idx1+int32(1))))) - int32('A')
-				operator = int32(**(**int8)(__ccgo_up(idxStr + uintptr(idx1+int32(2)))))
-				if !((**(**[16]uintptr)(__ccgo_up(bp + 4)))[metadata_idx] != 0) {
-					rc = libsqlite3.Xsqlite3_blob_open(tls, (*Tvec0_vtab)(unsafe.Pointer(p)).Fdb, (*Tvec0_vtab)(unsafe.Pointer(p)).FschemaName, **(**uintptr)(__ccgo_up(p + 376 + uintptr(metadata_idx)*4)), __ccgo_ts+4053, chunk_id, 0, bp+4+uintptr(metadata_idx)*4)
-					Xvtab_set_error(tls, p, __ccgo_ts+9999, 0)
-					if rc != m_SQLITE_OK {
-						goto cleanup
-					}
-				}
-				Xbitmap_clear(tls, bmMetadata, (*Tvec0_vtab)(unsafe.Pointer(p)).Fchunk_size)
-				rc = Xvec0_set_metadata_filter_bitmap(tls, p, metadata_idx, operator, **(**uintptr)(__ccgo_up(argv + uintptr(i2)*4)), (**(**[16]uintptr)(__ccgo_up(bp + 4)))[metadata_idx], chunk_id, bmMetadata, (*Tvec0_vtab)(unsafe.Pointer(p)).Fchunk_size, aMetadataIn, i2)
-				if rc != m_SQLITE_OK {
-					Xvtab_set_error(tls, p, __ccgo_ts+10028, 0)
-					if rc != m_SQLITE_OK {
-						goto cleanup
-					}
-				}
-				Xbitmap_and_inplace(tls, b, bmMetadata, (*Tvec0_vtab)(unsafe.Pointer(p)).Fchunk_size)
-				goto _5
-			_5:
-				;
-				i2 = i2 + 1
-			}
-		}
-		i3 = 0
-		for {
-			if !(i3 < (*Tvec0_vtab)(unsafe.Pointer(p)).Fchunk_size) {
-				break
-			}
-			if !(Xbitmap_get(tls, b, i3) != 0) {
-				goto _6
-			}
-			switch (*TVectorColumnDefinition)(unsafe.Pointer(vector_column)).Felement_type {
-			case int32(_SQLITE_VEC_ELEMENT_TYPE_FLOAT32):
-				base_i = baseVectors + uintptr(uint32(i3)*(*TVectorColumnDefinition)(unsafe.Pointer(vector_column)).Fdimensions)*4
-				switch (*TVectorColumnDefinition)(unsafe.Pointer(vector_column)).Fdistance_metric {
-				case int32(_VEC0_DISTANCE_METRIC_L2):
-					result = _distance_l2_sqr_float(tls, base_i, queryVector, vector_column+8)
-				case int32(_VEC0_DISTANCE_METRIC_L1):
-					result = float32(_distance_l1_f32(tls, base_i, queryVector, vector_column+8))
-				case int32(_VEC0_DISTANCE_METRIC_COSINE):
-					result = _distance_cosine_float(tls, base_i, queryVector, vector_column+8)
-					break
-				}
-			case int32(_SQLITE_VEC_ELEMENT_TYPE_INT8):
-				base_i1 = baseVectors + uintptr(uint32(i3)*(*TVectorColumnDefinition)(unsafe.Pointer(vector_column)).Fdimensions)
-				switch (*TVectorColumnDefinition)(unsafe.Pointer(vector_column)).Fdistance_metric {
-				case int32(_VEC0_DISTANCE_METRIC_L2):
-					result = _distance_l2_sqr_int8(tls, base_i1, queryVector, vector_column+8)
-				case int32(_VEC0_DISTANCE_METRIC_L1):
-					result = float32(_distance_l1_int8(tls, base_i1, queryVector, vector_column+8))
-				case int32(_VEC0_DISTANCE_METRIC_COSINE):
-					result = _distance_cosine_int8(tls, base_i1, queryVector, vector_column+8)
-					break
-				}
-			case int32(_SQLITE_VEC_ELEMENT_TYPE_BIT):
-				base_i2 = baseVectors + uintptr(uint32(i3)*((*TVectorColumnDefinition)(unsafe.Pointer(vector_column)).Fdimensions/libc.Uint32FromInt32(m___CHAR_BIT__)))
-				result = _distance_hamming(tls, base_i2, queryVector, vector_column+8)
-				break
-			}
-			**(**Tf32)(__ccgo_up(chunk_distances + uintptr(i3)*4)) = result
-			goto _6
-		_6:
-			;
-			i3 = i3 + 1
-		}
-		if hasDistanceConstraints != 0 {
-			i4 = 0
-			for {
-				if !(i4 < argc) {
-					break
-				}
-				idx2 = int32(1) + i4*int32(4)
-				kind2 = **(**int8)(__ccgo_up(idxStr + uintptr(idx2+0)))
-				// TODO casts f64 to f32, is that a problem?
-				target = float32(libsqlite3.Xsqlite3_value_double(tls, **(**uintptr)(__ccgo_up(argv + uintptr(i4)*4))))
-				if int32(kind2) != int32(_VEC0_IDXSTR_KIND_KNN_DISTANCE_CONSTRAINT) {
-					goto _7
-				}
-				op = int32(**(**int8)(__ccgo_up(idxStr + uintptr(idx2+int32(1)))))
-				switch op {
-				case int32(_VEC0_DISTANCE_CONSTRAINT_GE):
-					i5 = 0
-					for {
-						if !(i5 < (*Tvec0_vtab)(unsafe.Pointer(p)).Fchunk_size) {
-							break
-						}
-						if Xbitmap_get(tls, b, i5) != 0 && !(**(**Tf32)(__ccgo_up(chunk_distances + uintptr(i5)*4)) >= target) {
-							Xbitmap_set(tls, b, i5, 0)
-						}
-						goto _8
-					_8:
-						;
-						i5 = i5 + 1
-					}
-				case int32(_VEC0_DISTANCE_CONSTRAINT_GT):
-					i6 = 0
-					for {
-						if !(i6 < (*Tvec0_vtab)(unsafe.Pointer(p)).Fchunk_size) {
-							break
-						}
-						if Xbitmap_get(tls, b, i6) != 0 && !(**(**Tf32)(__ccgo_up(chunk_distances + uintptr(i6)*4)) > target) {
-							Xbitmap_set(tls, b, i6, 0)
-						}
-						goto _9
-					_9:
-						;
-						i6 = i6 + 1
-					}
-				case int32(_VEC0_DISTANCE_CONSTRAINT_LE):
-					i7 = 0
-					for {
-						if !(i7 < (*Tvec0_vtab)(unsafe.Pointer(p)).Fchunk_size) {
-							break
-						}
-						if Xbitmap_get(tls, b, i7) != 0 && !(**(**Tf32)(__ccgo_up(chunk_distances + uintptr(i7)*4)) <= target) {
-							Xbitmap_set(tls, b, i7, 0)
-						}
-						goto _10
-					_10:
-						;
-						i7 = i7 + 1
-					}
-				case int32(_VEC0_DISTANCE_CONSTRAINT_LT):
-					i8 = 0
-					for {
-						if !(i8 < (*Tvec0_vtab)(unsafe.Pointer(p)).Fchunk_size) {
-							break
-						}
-						if Xbitmap_get(tls, b, i8) != 0 && !(**(**Tf32)(__ccgo_up(chunk_distances + uintptr(i8)*4)) < target) {
-							Xbitmap_set(tls, b, i8, 0)
-						}
-						goto _11
-					_11:
-						;
-						i8 = i8 + 1
-					}
-					break
-				}
-				goto _7
-			_7:
-				;
-				i4 = i4 + 1
-			}
-		}
-		if k <= int64((*Tvec0_vtab)(unsafe.Pointer(p)).Fchunk_size) {
-			v12 = k
-		} else {
-			v12 = int64((*Tvec0_vtab)(unsafe.Pointer(p)).Fchunk_size)
-		}
-		Xmin_idx(tls, chunk_distances, (*Tvec0_vtab)(unsafe.Pointer(p)).Fchunk_size, b, chunk_topk_idxs, int32(v12), bTaken, bp+80)
-		if k <= int64((*Tvec0_vtab)(unsafe.Pointer(p)).Fchunk_size) {
-			v13 = k
-		} else {
-			v13 = int64((*Tvec0_vtab)(unsafe.Pointer(p)).Fchunk_size)
-		}
-		if v13 <= int64(**(**int32)(__ccgo_up(bp + 80))) {
-			if k <= int64((*Tvec0_vtab)(unsafe.Pointer(p)).Fchunk_size) {
-				v14 = k
-			} else {
-				v14 = int64((*Tvec0_vtab)(unsafe.Pointer(p)).Fchunk_size)
-			}
-			v12 = v14
-		} else {
-			v12 = int64(**(**int32)(__ccgo_up(bp + 80)))
-		}
-		Xmerge_sorted_lists(tls, topk_distances, topk_rowids, k_used, chunk_distances, chunkRowids, chunk_topk_idxs, v12, tmp_topk_distances, tmp_topk_rowids, k, bp+88)
-		i9 = 0
-		for {
-			if !(int64(i9) < **(**Ti64)(__ccgo_up(bp + 88))) {
-				break
-			}
-			**(**Ti64)(__ccgo_up(topk_rowids + uintptr(i9)*8)) = **(**Ti64)(__ccgo_up(tmp_topk_rowids + uintptr(i9)*8))
-			**(**Tf32)(__ccgo_up(topk_distances + uintptr(i9)*4)) = **(**Tf32)(__ccgo_up(tmp_topk_distances + uintptr(i9)*4))
-			goto _16
-		_16:
-			;
-			i9 = i9 + 1
-		}
-		k_used = **(**Ti64)(__ccgo_up(bp + 88))
-		// blobVectors is always opened with read-only permissions, so this never
-		// fails.
-		libsqlite3.Xsqlite3_blob_close(tls, **(**uintptr)(__ccgo_up(bp)))
-		**(**uintptr)(__ccgo_up(bp)) = libc.UintptrFromInt32(0)
-	}
-	**(**uintptr)(__ccgo_up(out_topk_rowids)) = topk_rowids
-	**(**uintptr)(__ccgo_up(out_topk_distances)) = topk_distances
-	**(**Ti64)(__ccgo_up(out_used)) = k_used
-	rc = m_SQLITE_OK
-	goto cleanup
-cleanup:
-	;
-	if rc != m_SQLITE_OK {
-		libsqlite3.Xsqlite3_free(tls, topk_rowids)
-		libsqlite3.Xsqlite3_free(tls, topk_distances)
-	}
-	libsqlite3.Xsqlite3_free(tls, chunk_topk_idxs)
-	libsqlite3.Xsqlite3_free(tls, tmp_topk_rowids)
-	libsqlite3.Xsqlite3_free(tls, tmp_topk_distances)
-	libsqlite3.Xsqlite3_free(tls, b)
-	libsqlite3.Xsqlite3_free(tls, bTaken)
-	libsqlite3.Xsqlite3_free(tls, bmRowids)
-	libsqlite3.Xsqlite3_free(tls, baseVectors)
-	libsqlite3.Xsqlite3_free(tls, chunk_distances)
-	libsqlite3.Xsqlite3_free(tls, bmMetadata)
-	i10 = 0
-	for {
-		if !(i10 < int32(m_VEC0_MAX_METADATA_COLUMNS)) {
-			break
-		}
-		libsqlite3.Xsqlite3_blob_close(tls, (**(**[16]uintptr)(__ccgo_up(bp + 4)))[i10])
-		goto _17
-	_17:
-		;
-		i10 = i10 + 1
-	}
-	// blobVectors is always opened with read-only permissions, so this never
-	// fails.
-	libsqlite3.Xsqlite3_blob_close(tls, **(**uintptr)(__ccgo_up(bp)))
-	return rc
 }
 
 func Xvec0Update_Delete_ClearMetadata(tls *libc.TLS, p uintptr, metadata_idx int32, rowid Ti64, chunk_id Ti64, chunk_offset Tu64) (r int32) {
@@ -806,36 +181,36 @@ func Xvec0Update_Delete_ClearMetadata(tls *libc.TLS, p uintptr, metadata_idx int
 	var _ /* v at bp+8 */ Ti64
 	var _ /* view at bp+28 */ [16]Tu8
 	_, _, _, _ = kind, rc, rc2, zSql
-	kind = (**(**TVec0MetadataColumnDefinition)(__ccgo_up(p + 1000 + uintptr(metadata_idx)*12))).Fkind
-	rc = libsqlite3.Xsqlite3_blob_open(tls, (*Tvec0_vtab)(unsafe.Pointer(p)).Fdb, (*Tvec0_vtab)(unsafe.Pointer(p)).FschemaName, **(**uintptr)(__ccgo_up(p + 376 + uintptr(metadata_idx)*4)), __ccgo_ts+4053, chunk_id, int32(1), bp)
+	kind = (*(*TVec0MetadataColumnDefinition)(__ccgo_ptr(p + 1000 + uintptr(metadata_idx)*12))).Fkind
+	rc = libsqlite3.Xsqlite3_blob_open(tls, (*Tvec0_vtab)(unsafe.Pointer(p)).Fdb, (*Tvec0_vtab)(unsafe.Pointer(p)).FschemaName, *(*uintptr)(__ccgo_ptr(p + 376 + uintptr(metadata_idx)*4)), __ccgo_ts+4053, chunk_id, int32(1), bp)
 	if rc != m_SQLITE_OK {
 		return rc
 	}
 	switch kind {
 	case int32(_VEC0_METADATA_COLUMN_KIND_BOOLEAN):
-		rc = libsqlite3.Xsqlite3_blob_read(tls, **(**uintptr)(__ccgo_up(bp)), bp+4, int32(1), int32(chunk_offset/libc.Uint64FromInt32(m___CHAR_BIT__)))
+		rc = libsqlite3.Xsqlite3_blob_read(tls, *(*uintptr)(__ccgo_ptr(bp)), bp+4, int32(1), int32(chunk_offset/libc.Uint64FromInt32(m___CHAR_BIT__)))
 		if rc != m_SQLITE_OK {
 			goto done
 		}
-		**(**Tu8)(__ccgo_up(bp + 4)) = uint8(int32(**(**Tu8)(__ccgo_up(bp + 4))) & ^(libc.Int32FromInt32(1) << (chunk_offset % libc.Uint64FromInt32(m___CHAR_BIT__))))
-		rc = libsqlite3.Xsqlite3_blob_write(tls, **(**uintptr)(__ccgo_up(bp)), bp+4, int32(1), int32(chunk_offset/uint64(m___CHAR_BIT__)))
+		*(*Tu8)(__ccgo_ptr(bp + 4)) = uint8(int32(*(*Tu8)(__ccgo_ptr(bp + 4))) & ^(libc.Int32FromInt32(1) << (chunk_offset % libc.Uint64FromInt32(m___CHAR_BIT__))))
+		rc = libsqlite3.Xsqlite3_blob_write(tls, *(*uintptr)(__ccgo_ptr(bp)), bp+4, int32(1), int32(chunk_offset/uint64(m___CHAR_BIT__)))
 	case int32(_VEC0_METADATA_COLUMN_KIND_INTEGER):
-		**(**Ti64)(__ccgo_up(bp + 8)) = 0
-		rc = libsqlite3.Xsqlite3_blob_write(tls, **(**uintptr)(__ccgo_up(bp)), bp+8, int32(8), int32(chunk_offset*uint64(8)))
+		*(*Ti64)(__ccgo_ptr(bp + 8)) = 0
+		rc = libsqlite3.Xsqlite3_blob_write(tls, *(*uintptr)(__ccgo_ptr(bp)), bp+8, int32(8), int32(chunk_offset*uint64(8)))
 	case int32(_VEC0_METADATA_COLUMN_KIND_FLOAT):
-		**(**float64)(__ccgo_up(bp + 16)) = libc.Float64FromInt32(0)
-		rc = libsqlite3.Xsqlite3_blob_write(tls, **(**uintptr)(__ccgo_up(bp)), bp+16, int32(8), int32(chunk_offset*uint64(8)))
+		*(*float64)(__ccgo_ptr(bp + 16)) = libc.Float64FromInt32(0)
+		rc = libsqlite3.Xsqlite3_blob_write(tls, *(*uintptr)(__ccgo_ptr(bp)), bp+16, int32(8), int32(chunk_offset*uint64(8)))
 	case int32(_VEC0_METADATA_COLUMN_KIND_TEXT):
-		rc = libsqlite3.Xsqlite3_blob_read(tls, **(**uintptr)(__ccgo_up(bp)), bp+24, int32(4), int32(chunk_offset*uint64(m_VEC0_METADATA_TEXT_VIEW_BUFFER_LENGTH)))
+		rc = libsqlite3.Xsqlite3_blob_read(tls, *(*uintptr)(__ccgo_ptr(bp)), bp+24, int32(4), int32(chunk_offset*uint64(m_VEC0_METADATA_TEXT_VIEW_BUFFER_LENGTH)))
 		if rc != m_SQLITE_OK {
 			goto done
 		}
 		libc.Xmemset(tls, bp+28, 0, uint32(m_VEC0_METADATA_TEXT_VIEW_BUFFER_LENGTH))
-		rc = libsqlite3.Xsqlite3_blob_write(tls, **(**uintptr)(__ccgo_up(bp)), bp+28, int32(16), int32(chunk_offset*uint64(m_VEC0_METADATA_TEXT_VIEW_BUFFER_LENGTH)))
+		rc = libsqlite3.Xsqlite3_blob_write(tls, *(*uintptr)(__ccgo_ptr(bp)), bp+28, int32(16), int32(chunk_offset*uint64(m_VEC0_METADATA_TEXT_VIEW_BUFFER_LENGTH)))
 		if rc != m_SQLITE_OK {
 			goto done
 		}
-		if **(**int32)(__ccgo_up(bp + 24)) > int32(m_VEC0_METADATA_TEXT_VIEW_DATA_LENGTH) {
+		if *(*int32)(__ccgo_ptr(bp + 24)) > int32(m_VEC0_METADATA_TEXT_VIEW_DATA_LENGTH) {
 			zSql = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+12987, libc.VaList(bp+56, (*Tvec0_vtab)(unsafe.Pointer(p)).FschemaName, (*Tvec0_vtab)(unsafe.Pointer(p)).FtableName, metadata_idx))
 			if !(zSql != 0) {
 				rc = int32(m_SQLITE_NOMEM)
@@ -845,9 +220,9 @@ func Xvec0Update_Delete_ClearMetadata(tls *libc.TLS, p uintptr, metadata_idx int
 			if rc != m_SQLITE_OK {
 				goto done
 			}
-			libsqlite3.Xsqlite3_bind_int64(tls, **(**uintptr)(__ccgo_up(bp + 44)), int32(1), rowid)
-			rc = libsqlite3.Xsqlite3_step(tls, **(**uintptr)(__ccgo_up(bp + 44)))
-			libsqlite3.Xsqlite3_finalize(tls, **(**uintptr)(__ccgo_up(bp + 44)))
+			libsqlite3.Xsqlite3_bind_int64(tls, *(*uintptr)(__ccgo_ptr(bp + 44)), int32(1), rowid)
+			rc = libsqlite3.Xsqlite3_step(tls, *(*uintptr)(__ccgo_ptr(bp + 44)))
+			libsqlite3.Xsqlite3_finalize(tls, *(*uintptr)(__ccgo_ptr(bp + 44)))
 			if rc != int32(m_SQLITE_DONE) {
 				rc = int32(m_SQLITE_ERROR)
 				goto done
@@ -864,7 +239,7 @@ func Xvec0Update_Delete_ClearMetadata(tls *libc.TLS, p uintptr, metadata_idx int
 	goto done
 done:
 	;
-	rc2 = libsqlite3.Xsqlite3_blob_close(tls, **(**uintptr)(__ccgo_up(bp)))
+	rc2 = libsqlite3.Xsqlite3_blob_close(tls, *(*uintptr)(__ccgo_ptr(bp)))
 	if rc == m_SQLITE_OK {
 		return rc2
 	}
@@ -880,7 +255,7 @@ func Xvec0Update_Delete_ClearValidity(tls *libc.TLS, p uintptr, chunk_id Ti64, c
 	var _ /* bx at bp+4 */ uint8
 	var _ /* result at bp+5 */ int8
 	_, _, _, _ = brc, mask, rc, validityOffset
-	**(**uintptr)(__ccgo_up(bp)) = libc.UintptrFromInt32(0)
+	*(*uintptr)(__ccgo_ptr(bp)) = libc.UintptrFromInt32(0)
 	validityOffset = int32(chunk_offset / uint64(m___CHAR_BIT__))
 	// 2. ensure chunks.validity bit is 1, then set to 0
 	rc = libsqlite3.Xsqlite3_blob_open(tls, (*Tvec0_vtab)(unsafe.Pointer(p)).Fdb, (*Tvec0_vtab)(unsafe.Pointer(p)).FschemaName, (*Tvec0_vtab)(unsafe.Pointer(p)).FshadowChunksName, __ccgo_ts+11207, chunk_id, int32(1), bp)
@@ -891,21 +266,21 @@ func Xvec0Update_Delete_ClearValidity(tls *libc.TLS, p uintptr, chunk_id Ti64, c
 	}
 	// will skip the sqlite3_blob_bytes(blobChunksValidity) check for now,
 	// the read below would catch it
-	rc = libsqlite3.Xsqlite3_blob_read(tls, **(**uintptr)(__ccgo_up(bp)), bp+4, int32(1), validityOffset)
+	rc = libsqlite3.Xsqlite3_blob_read(tls, *(*uintptr)(__ccgo_ptr(bp)), bp+4, int32(1), validityOffset)
 	if rc != m_SQLITE_OK {
 		// IMP: V21193_05263
 		Xvtab_set_error(tls, p, __ccgo_ts+13781, libc.VaList(bp+16, (*Tvec0_vtab)(unsafe.Pointer(p)).FschemaName, (*Tvec0_vtab)(unsafe.Pointer(p)).FshadowChunksName, chunk_id, validityOffset))
 		goto cleanup
 	}
-	if !(int32(**(**uint8)(__ccgo_up(bp + 4)))>>(chunk_offset%libc.Uint64FromInt32(m___CHAR_BIT__)) != 0) {
+	if !(int32(*(*uint8)(__ccgo_ptr(bp + 4)))>>(chunk_offset%libc.Uint64FromInt32(m___CHAR_BIT__)) != 0) {
 		// IMP: V21193_05263
 		rc = int32(m_SQLITE_ERROR)
 		Xvtab_set_error(tls, p, __ccgo_ts+13831, libc.VaList(bp+16, (*Tvec0_vtab)(unsafe.Pointer(p)).FschemaName, (*Tvec0_vtab)(unsafe.Pointer(p)).FshadowChunksName, chunk_id, validityOffset))
 		goto cleanup
 	}
 	mask = uint8(^(libc.Int32FromInt32(1) << (chunk_offset % libc.Uint64FromInt32(m___CHAR_BIT__))))
-	**(**int8)(__ccgo_up(bp + 5)) = int8(int32(**(**uint8)(__ccgo_up(bp + 4))) & int32(mask))
-	rc = libsqlite3.Xsqlite3_blob_write(tls, **(**uintptr)(__ccgo_up(bp)), bp+5, int32(1), validityOffset)
+	*(*int8)(__ccgo_ptr(bp + 5)) = int8(int32(*(*uint8)(__ccgo_ptr(bp + 4))) & int32(mask))
+	rc = libsqlite3.Xsqlite3_blob_write(tls, *(*uintptr)(__ccgo_ptr(bp)), bp+5, int32(1), validityOffset)
 	if rc != m_SQLITE_OK {
 		Xvtab_set_error(tls, p, __ccgo_ts+13897, libc.VaList(bp+16, (*Tvec0_vtab)(unsafe.Pointer(p)).FschemaName, (*Tvec0_vtab)(unsafe.Pointer(p)).FshadowChunksName, chunk_id, validityOffset))
 		goto cleanup
@@ -913,7 +288,7 @@ func Xvec0Update_Delete_ClearValidity(tls *libc.TLS, p uintptr, chunk_id Ti64, c
 	goto cleanup
 cleanup:
 	;
-	brc = libsqlite3.Xsqlite3_blob_close(tls, **(**uintptr)(__ccgo_up(bp)))
+	brc = libsqlite3.Xsqlite3_blob_close(tls, *(*uintptr)(__ccgo_ptr(bp)))
 	if rc != m_SQLITE_OK {
 		return rc
 	}
@@ -937,30 +312,30 @@ func Xvec0Update_Delete_ClearVectors(tls *libc.TLS, p uintptr, chunk_id Ti64, ch
 		if !(i < (*Tvec0_vtab)(unsafe.Pointer(p)).FnumVectorColumns) {
 			break
 		}
-		**(**uintptr)(__ccgo_up(bp)) = libc.UintptrFromInt32(0)
-		n = Xvector_column_byte_size(tls, **(**TVectorColumnDefinition)(__ccgo_up(p + 440 + uintptr(i)*20)))
-		rc = libsqlite3.Xsqlite3_blob_open(tls, (*Tvec0_vtab)(unsafe.Pointer(p)).Fdb, (*Tvec0_vtab)(unsafe.Pointer(p)).FschemaName, **(**uintptr)(__ccgo_up(p + 312 + uintptr(i)*4)), __ccgo_ts+3712, chunk_id, int32(1), bp)
+		*(*uintptr)(__ccgo_ptr(bp)) = libc.UintptrFromInt32(0)
+		n = Xvector_column_byte_size(tls, *(*TVectorColumnDefinition)(__ccgo_ptr(p + 440 + uintptr(i)*20)))
+		rc = libsqlite3.Xsqlite3_blob_open(tls, (*Tvec0_vtab)(unsafe.Pointer(p)).Fdb, (*Tvec0_vtab)(unsafe.Pointer(p)).FschemaName, *(*uintptr)(__ccgo_ptr(p + 312 + uintptr(i)*4)), __ccgo_ts+3712, chunk_id, int32(1), bp)
 		if rc != m_SQLITE_OK {
-			Xvtab_set_error(tls, p, __ccgo_ts+14213, libc.VaList(bp+16, (*Tvec0_vtab)(unsafe.Pointer(p)).FschemaName, **(**uintptr)(__ccgo_up(p + 312 + uintptr(i)*4)), chunk_id, i))
+			Xvtab_set_error(tls, p, __ccgo_ts+14213, libc.VaList(bp+16, (*Tvec0_vtab)(unsafe.Pointer(p)).FschemaName, *(*uintptr)(__ccgo_ptr(p + 312 + uintptr(i)*4)), chunk_id, i))
 			return int32(m_SQLITE_ERROR)
 		}
 		zeroBuf = libsqlite3.Xsqlite3_malloc(tls, int32(n))
 		if !(zeroBuf != 0) {
-			libsqlite3.Xsqlite3_blob_close(tls, **(**uintptr)(__ccgo_up(bp)))
+			libsqlite3.Xsqlite3_blob_close(tls, *(*uintptr)(__ccgo_ptr(bp)))
 			return int32(m_SQLITE_NOMEM)
 		}
 		libc.Xmemset(tls, zeroBuf, 0, n)
-		rc = libsqlite3.Xsqlite3_blob_write(tls, **(**uintptr)(__ccgo_up(bp)), zeroBuf, int32(n), int32(chunk_offset*uint64(n)))
+		rc = libsqlite3.Xsqlite3_blob_write(tls, *(*uintptr)(__ccgo_ptr(bp)), zeroBuf, int32(n), int32(chunk_offset*uint64(n)))
 		libsqlite3.Xsqlite3_free(tls, zeroBuf)
 		if rc != m_SQLITE_OK {
-			Xvtab_set_error(tls, p, __ccgo_ts+14265, libc.VaList(bp+16, (*Tvec0_vtab)(unsafe.Pointer(p)).FschemaName, **(**uintptr)(__ccgo_up(p + 312 + uintptr(i)*4)), chunk_id, chunk_offset, i))
+			Xvtab_set_error(tls, p, __ccgo_ts+14265, libc.VaList(bp+16, (*Tvec0_vtab)(unsafe.Pointer(p)).FschemaName, *(*uintptr)(__ccgo_ptr(p + 312 + uintptr(i)*4)), chunk_id, chunk_offset, i))
 		}
-		brc = libsqlite3.Xsqlite3_blob_close(tls, **(**uintptr)(__ccgo_up(bp)))
+		brc = libsqlite3.Xsqlite3_blob_close(tls, *(*uintptr)(__ccgo_ptr(bp)))
 		if rc != m_SQLITE_OK {
 			return rc
 		}
 		if brc != m_SQLITE_OK {
-			Xvtab_set_error(tls, p, __ccgo_ts+14329, libc.VaList(bp+16, (*Tvec0_vtab)(unsafe.Pointer(p)).FschemaName, **(**uintptr)(__ccgo_up(p + 312 + uintptr(i)*4)), chunk_id, i))
+			Xvtab_set_error(tls, p, __ccgo_ts+14329, libc.VaList(bp+16, (*Tvec0_vtab)(unsafe.Pointer(p)).FschemaName, *(*uintptr)(__ccgo_ptr(p + 312 + uintptr(i)*4)), chunk_id, i))
 			return brc
 		}
 		goto _1
@@ -968,133 +343,6 @@ func Xvec0Update_Delete_ClearVectors(tls *libc.TLS, p uintptr, chunk_id Ti64, ch
 		;
 		i = i + 1
 	}
-	return m_SQLITE_OK
-}
-
-func Xvec0Update_Delete_DeleteChunkIfEmpty(tls *libc.TLS, p uintptr, chunk_id Ti64, deleted uintptr) (r int32) {
-	bp := tls.Alloc(48)
-	defer tls.Free(48)
-	var allZero, brc, i, i1, i2, rc, validitySize int32
-	var validityBuf, zSql uintptr
-	var _ /* blobValidity at bp+0 */ uintptr
-	var _ /* stmt at bp+4 */ uintptr
-	_, _, _, _, _, _, _, _, _ = allZero, brc, i, i1, i2, rc, validityBuf, validitySize, zSql
-	**(**uintptr)(__ccgo_up(bp)) = libc.UintptrFromInt32(0)
-	**(**int32)(__ccgo_up(deleted)) = 0
-	rc = libsqlite3.Xsqlite3_blob_open(tls, (*Tvec0_vtab)(unsafe.Pointer(p)).Fdb, (*Tvec0_vtab)(unsafe.Pointer(p)).FschemaName, (*Tvec0_vtab)(unsafe.Pointer(p)).FshadowChunksName, __ccgo_ts+11207, chunk_id, 0, bp)
-	if rc != m_SQLITE_OK {
-		Xvtab_set_error(tls, p, __ccgo_ts+14414, libc.VaList(bp+16, chunk_id))
-		return int32(m_SQLITE_ERROR)
-	}
-	validitySize = libsqlite3.Xsqlite3_blob_bytes(tls, **(**uintptr)(__ccgo_up(bp)))
-	validityBuf = libsqlite3.Xsqlite3_malloc(tls, validitySize)
-	if !(validityBuf != 0) {
-		libsqlite3.Xsqlite3_blob_close(tls, **(**uintptr)(__ccgo_up(bp)))
-		return int32(m_SQLITE_NOMEM)
-	}
-	rc = libsqlite3.Xsqlite3_blob_read(tls, **(**uintptr)(__ccgo_up(bp)), validityBuf, validitySize, 0)
-	brc = libsqlite3.Xsqlite3_blob_close(tls, **(**uintptr)(__ccgo_up(bp)))
-	if rc != m_SQLITE_OK {
-		libsqlite3.Xsqlite3_free(tls, validityBuf)
-		return rc
-	}
-	if brc != m_SQLITE_OK {
-		libsqlite3.Xsqlite3_free(tls, validityBuf)
-		return brc
-	}
-	allZero = int32(1)
-	i = 0
-	for {
-		if !(i < validitySize) {
-			break
-		}
-		if int32(**(**uint8)(__ccgo_up(validityBuf + uintptr(i)))) != 0 {
-			allZero = 0
-			break
-		}
-		goto _1
-	_1:
-		;
-		i = i + 1
-	}
-	libsqlite3.Xsqlite3_free(tls, validityBuf)
-	if !(allZero != 0) {
-		return m_SQLITE_OK
-	}
-	// Delete from _chunks
-	zSql = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+14458, libc.VaList(bp+16, (*Tvec0_vtab)(unsafe.Pointer(p)).FschemaName, (*Tvec0_vtab)(unsafe.Pointer(p)).FtableName))
-	if !(zSql != 0) {
-		return int32(m_SQLITE_NOMEM)
-	}
-	rc = libsqlite3.Xsqlite3_prepare_v2(tls, (*Tvec0_vtab)(unsafe.Pointer(p)).Fdb, zSql, -int32(1), bp+4, libc.UintptrFromInt32(0))
-	libsqlite3.Xsqlite3_free(tls, zSql)
-	if rc != m_SQLITE_OK {
-		return rc
-	}
-	libsqlite3.Xsqlite3_bind_int64(tls, **(**uintptr)(__ccgo_up(bp + 4)), int32(1), chunk_id)
-	rc = libsqlite3.Xsqlite3_step(tls, **(**uintptr)(__ccgo_up(bp + 4)))
-	libsqlite3.Xsqlite3_finalize(tls, **(**uintptr)(__ccgo_up(bp + 4)))
-	if rc != int32(m_SQLITE_DONE) {
-		return int32(m_SQLITE_ERROR)
-	}
-	// Delete from each _vector_chunksNN
-	i1 = 0
-	for {
-		if !(i1 < (*Tvec0_vtab)(unsafe.Pointer(p)).FnumVectorColumns) {
-			break
-		}
-		zSql = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+14503, libc.VaList(bp+16, (*Tvec0_vtab)(unsafe.Pointer(p)).FschemaName, (*Tvec0_vtab)(unsafe.Pointer(p)).FtableName, i1))
-		if !(zSql != 0) {
-			return int32(m_SQLITE_NOMEM)
-		}
-		rc = libsqlite3.Xsqlite3_prepare_v2(tls, (*Tvec0_vtab)(unsafe.Pointer(p)).Fdb, zSql, -int32(1), bp+4, libc.UintptrFromInt32(0))
-		libsqlite3.Xsqlite3_free(tls, zSql)
-		if rc != m_SQLITE_OK {
-			return rc
-		}
-		libsqlite3.Xsqlite3_bind_int64(tls, **(**uintptr)(__ccgo_up(bp + 4)), int32(1), chunk_id)
-		rc = libsqlite3.Xsqlite3_step(tls, **(**uintptr)(__ccgo_up(bp + 4)))
-		libsqlite3.Xsqlite3_finalize(tls, **(**uintptr)(__ccgo_up(bp + 4)))
-		if rc != int32(m_SQLITE_DONE) {
-			return int32(m_SQLITE_ERROR)
-		}
-		goto _2
-	_2:
-		;
-		i1 = i1 + 1
-	}
-	// Delete from each _metadatachunksNN
-	i2 = 0
-	for {
-		if !(i2 < (*Tvec0_vtab)(unsafe.Pointer(p)).FnumMetadataColumns) {
-			break
-		}
-		zSql = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+14559, libc.VaList(bp+16, (*Tvec0_vtab)(unsafe.Pointer(p)).FschemaName, (*Tvec0_vtab)(unsafe.Pointer(p)).FtableName, i2))
-		if !(zSql != 0) {
-			return int32(m_SQLITE_NOMEM)
-		}
-		rc = libsqlite3.Xsqlite3_prepare_v2(tls, (*Tvec0_vtab)(unsafe.Pointer(p)).Fdb, zSql, -int32(1), bp+4, libc.UintptrFromInt32(0))
-		libsqlite3.Xsqlite3_free(tls, zSql)
-		if rc != m_SQLITE_OK {
-			return rc
-		}
-		libsqlite3.Xsqlite3_bind_int64(tls, **(**uintptr)(__ccgo_up(bp + 4)), int32(1), chunk_id)
-		rc = libsqlite3.Xsqlite3_step(tls, **(**uintptr)(__ccgo_up(bp + 4)))
-		libsqlite3.Xsqlite3_finalize(tls, **(**uintptr)(__ccgo_up(bp + 4)))
-		if rc != int32(m_SQLITE_DONE) {
-			return int32(m_SQLITE_ERROR)
-		}
-		goto _3
-	_3:
-		;
-		i2 = i2 + 1
-	}
-	// Invalidate cached stmtLatestChunk so it gets re-prepared on next insert
-	if (*Tvec0_vtab)(unsafe.Pointer(p)).FstmtLatestChunk != 0 {
-		libsqlite3.Xsqlite3_finalize(tls, (*Tvec0_vtab)(unsafe.Pointer(p)).FstmtLatestChunk)
-		(*Tvec0_vtab)(unsafe.Pointer(p)).FstmtLatestChunk = libc.UintptrFromInt32(0)
-	}
-	**(**int32)(__ccgo_up(deleted)) = int32(1)
 	return m_SQLITE_OK
 }
 
@@ -1106,30 +354,26 @@ func Xvec0Update_Delete_DeleteChunkIfEmpty(tls *libc.TLS, p uintptr, chunk_id Ti
 //	 * @return int SQLITE_OK on success, otherwise error code on failure
 //	 */
 func Xvec0Update_Insert(tls *libc.TLS, pVTab uintptr, argc int32, argv uintptr, pRowid uintptr) (r int32) {
-	bp := tls.Alloc(240)
-	defer tls.Free(240)
+	bp := tls.Alloc(176)
+	defer tls.Free(176)
 	var auxiliary_key_idx, brc, i, i1, i2, i3, i4, i5, i6, metadata_idx, new_value_type, numReadVectors, partition_key_idx, rc, v_type, vector_column_idx int32
-	var p, s, v, v1, valueVector, zSql uintptr
-	var _ /* blobChunksValidity at bp+168 */ uintptr
-	var _ /* bufferChunksValidity at bp+172 */ uintptr
-	var _ /* chunk_offset at bp+160 */ Ti64
-	var _ /* chunk_rowid at bp+152 */ Ti64
-	var _ /* cleanups at bp+72 */ [16]Tvector_cleanup
-	var _ /* dimensions at bp+176 */ Tsize_t
-	var _ /* elementType at bp+184 */ _VectorElementType
-	var _ /* partitionKeyValues at bp+136 */ [4]uintptr
-	var _ /* pzError at bp+180 */ uintptr
-	var _ /* rowid at bp+0 */ Ti64
-	var _ /* stmt at bp+188 */ uintptr
-	var _ /* vectorDatas at bp+8 */ [16]uintptr
-	_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _ = auxiliary_key_idx, brc, i, i1, i2, i3, i4, i5, i6, metadata_idx, new_value_type, numReadVectors, p, partition_key_idx, rc, s, v, v1, v_type, valueVector, vector_column_idx, zSql
+	var bufferChunksValidity, p, pzError, s, v, v1, valueVector, zSql uintptr
+	var chunk_offset, chunk_rowid, rowid Ti64
+	var dimensions Tsize_t
+	var elementType _VectorElementType
+	var partitionKeyValues [4]uintptr
+	var _ /* blobChunksValidity at bp+128 */ uintptr
+	var _ /* cleanups at bp+64 */ [16]Tvector_cleanup
+	var _ /* stmt at bp+132 */ uintptr
+	var _ /* vectorDatas at bp+0 */ [16]uintptr
+	_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _ = auxiliary_key_idx, brc, bufferChunksValidity, chunk_offset, chunk_rowid, dimensions, elementType, i, i1, i2, i3, i4, i5, i6, metadata_idx, new_value_type, numReadVectors, p, partitionKeyValues, partition_key_idx, pzError, rc, rowid, s, v, v1, v_type, valueVector, vector_column_idx, zSql
 	_ = argc
 	p = pVTab
 	// a write-able blob of the validity column for the given chunk. Used to mark
 	// validity bit
-	**(**uintptr)(__ccgo_up(bp + 168)) = libc.UintptrFromInt32(0)
+	*(*uintptr)(__ccgo_ptr(bp + 128)) = libc.UintptrFromInt32(0)
 	// buffer for the valididty column for the given chunk. Maybe not needed here?
-	**(**uintptr)(__ccgo_up(bp + 172)) = libc.UintptrFromInt32(0)
+	bufferChunksValidity = libc.UintptrFromInt32(0)
 	numReadVectors = 0
 	// Read all provided partition key values into partitionKeyValues
 	i = 0
@@ -1137,15 +381,15 @@ func Xvec0Update_Insert(tls *libc.TLS, pVTab uintptr, argc int32, argv uintptr, 
 		if !(i < Xvec0_num_defined_user_columns(tls, p)) {
 			break
 		}
-		if **(**Tvec0_user_column_kind)(__ccgo_up(p + 52 + uintptr(i)*4)) != int32(_SQLITE_VEC0_USER_COLUMN_KIND_PARTITION) {
+		if *(*Tvec0_user_column_kind)(__ccgo_ptr(p + 52 + uintptr(i)*4)) != int32(_SQLITE_VEC0_USER_COLUMN_KIND_PARTITION) {
 			goto _1
 		}
-		partition_key_idx = int32(**(**Tuint8_t)(__ccgo_up(p + 260 + uintptr(i))))
-		(**(**[4]uintptr)(__ccgo_up(bp + 136)))[partition_key_idx] = **(**uintptr)(__ccgo_up(argv + uintptr(libc.Int32FromInt32(2)+libc.Int32FromInt32(m_VEC0_COLUMN_USERN_START)+i)*4))
-		new_value_type = libsqlite3.Xsqlite3_value_type(tls, (**(**[4]uintptr)(__ccgo_up(bp + 136)))[partition_key_idx])
-		if new_value_type != int32(m_SQLITE_NULL) && new_value_type != (**(**TVec0PartitionColumnDefinition)(__ccgo_up(p + 760 + uintptr(partition_key_idx)*12))).Ftype1 {
+		partition_key_idx = int32(*(*Tuint8_t)(__ccgo_ptr(p + 260 + uintptr(i))))
+		partitionKeyValues[partition_key_idx] = *(*uintptr)(__ccgo_ptr(argv + uintptr(libc.Int32FromInt32(2)+libc.Int32FromInt32(m_VEC0_COLUMN_USERN_START)+i)*4))
+		new_value_type = libsqlite3.Xsqlite3_value_type(tls, partitionKeyValues[partition_key_idx])
+		if new_value_type != int32(m_SQLITE_NULL) && new_value_type != (*(*TVec0PartitionColumnDefinition)(__ccgo_ptr(p + 760 + uintptr(partition_key_idx)*12))).Ftype1 {
 			// IMP: V11454_28292
-			Xvtab_set_error(tls, pVTab, __ccgo_ts+13042, libc.VaList(bp+200, (**(**TVec0PartitionColumnDefinition)(__ccgo_up(p + 760 + uintptr(partition_key_idx)*12))).Fname_length, (**(**TVec0PartitionColumnDefinition)(__ccgo_up(p + 760 + uintptr(partition_key_idx)*12))).Fname, Xtype_name(tls, (**(**TVec0PartitionColumnDefinition)(__ccgo_up(p + 760 + uintptr(partition_key_idx)*12))).Ftype1), Xtype_name(tls, new_value_type)))
+			Xvtab_set_error(tls, pVTab, __ccgo_ts+13042, libc.VaList(bp+144, (*(*TVec0PartitionColumnDefinition)(__ccgo_ptr(p + 760 + uintptr(partition_key_idx)*12))).Fname_length, (*(*TVec0PartitionColumnDefinition)(__ccgo_ptr(p + 760 + uintptr(partition_key_idx)*12))).Fname, Xtype_name(tls, (*(*TVec0PartitionColumnDefinition)(__ccgo_ptr(p + 760 + uintptr(partition_key_idx)*12))).Ftype1), Xtype_name(tls, new_value_type)))
 			rc = int32(m_SQLITE_ERROR)
 			goto cleanup
 		}
@@ -1160,28 +404,28 @@ func Xvec0Update_Insert(tls *libc.TLS, pVTab uintptr, argc int32, argv uintptr, 
 		if !(i1 < Xvec0_num_defined_user_columns(tls, p)) {
 			break
 		}
-		if **(**Tvec0_user_column_kind)(__ccgo_up(p + 52 + uintptr(i1)*4)) != int32(_SQLITE_VEC0_USER_COLUMN_KIND_VECTOR) {
+		if *(*Tvec0_user_column_kind)(__ccgo_ptr(p + 52 + uintptr(i1)*4)) != int32(_SQLITE_VEC0_USER_COLUMN_KIND_VECTOR) {
 			goto _2
 		}
-		vector_column_idx = int32(**(**Tuint8_t)(__ccgo_up(p + 260 + uintptr(i1))))
-		valueVector = **(**uintptr)(__ccgo_up(argv + uintptr(libc.Int32FromInt32(2)+libc.Int32FromInt32(m_VEC0_COLUMN_USERN_START)+i1)*4))
-		rc = Xvector_from_value(tls, valueVector, bp+8+uintptr(vector_column_idx)*4, bp+176, bp+184, bp+72+uintptr(vector_column_idx)*4, bp+180)
+		vector_column_idx = int32(*(*Tuint8_t)(__ccgo_ptr(p + 260 + uintptr(i1))))
+		valueVector = *(*uintptr)(__ccgo_ptr(argv + uintptr(libc.Int32FromInt32(2)+libc.Int32FromInt32(m_VEC0_COLUMN_USERN_START)+i1)*4))
+		rc = _vector_from_value__ccgo_gp(tls, valueVector, unsafe.Pointer(bp+uintptr(vector_column_idx)*4), unsafe.Pointer(&dimensions), unsafe.Pointer(&elementType), unsafe.Pointer(bp+64+uintptr(vector_column_idx)*4), unsafe.Pointer(&pzError))
 		if rc != m_SQLITE_OK {
 			// IMP: V06519_23358
-			Xvtab_set_error(tls, pVTab, __ccgo_ts+13134, libc.VaList(bp+200, (**(**TVectorColumnDefinition)(__ccgo_up(p + 440 + uintptr(vector_column_idx)*20))).Fname_length, (**(**TVectorColumnDefinition)(__ccgo_up(p + 440 + uintptr(vector_column_idx)*20))).Fname, **(**uintptr)(__ccgo_up(bp + 180))))
+			Xvtab_set_error(tls, pVTab, __ccgo_ts+13134, libc.VaList(bp+144, (*(*TVectorColumnDefinition)(__ccgo_ptr(p + 440 + uintptr(vector_column_idx)*20))).Fname_length, (*(*TVectorColumnDefinition)(__ccgo_ptr(p + 440 + uintptr(vector_column_idx)*20))).Fname, pzError))
 			rc = int32(m_SQLITE_ERROR)
 			goto cleanup
 		}
 		numReadVectors = numReadVectors + 1
-		if **(**_VectorElementType)(__ccgo_up(bp + 184)) != (**(**TVectorColumnDefinition)(__ccgo_up(p + 440 + uintptr(vector_column_idx)*20))).Felement_type {
+		if elementType != (*(*TVectorColumnDefinition)(__ccgo_ptr(p + 440 + uintptr(vector_column_idx)*20))).Felement_type {
 			// IMP: V08221_25059
-			Xvtab_set_error(tls, pVTab, __ccgo_ts+13187, libc.VaList(bp+200, (**(**TVectorColumnDefinition)(__ccgo_up(p + 440 + uintptr(i1)*20))).Fname_length, (**(**TVectorColumnDefinition)(__ccgo_up(p + 440 + uintptr(i1)*20))).Fname, Xvector_subtype_name(tls, (**(**TVectorColumnDefinition)(__ccgo_up(p + 440 + uintptr(i1)*20))).Felement_type), Xvector_subtype_name(tls, **(**_VectorElementType)(__ccgo_up(bp + 184)))))
+			Xvtab_set_error(tls, pVTab, __ccgo_ts+13187, libc.VaList(bp+144, (*(*TVectorColumnDefinition)(__ccgo_ptr(p + 440 + uintptr(i1)*20))).Fname_length, (*(*TVectorColumnDefinition)(__ccgo_ptr(p + 440 + uintptr(i1)*20))).Fname, Xvector_subtype_name(tls, (*(*TVectorColumnDefinition)(__ccgo_ptr(p + 440 + uintptr(i1)*20))).Felement_type), Xvector_subtype_name(tls, elementType)))
 			rc = int32(m_SQLITE_ERROR)
 			goto cleanup
 		}
-		if **(**Tsize_t)(__ccgo_up(bp + 176)) != (**(**TVectorColumnDefinition)(__ccgo_up(p + 440 + uintptr(vector_column_idx)*20))).Fdimensions {
+		if dimensions != (*(*TVectorColumnDefinition)(__ccgo_ptr(p + 440 + uintptr(vector_column_idx)*20))).Fdimensions {
 			// IMP: V01145_17984
-			Xvtab_set_error(tls, pVTab, __ccgo_ts+13285, libc.VaList(bp+200, (**(**TVectorColumnDefinition)(__ccgo_up(p + 440 + uintptr(vector_column_idx)*20))).Fname_length, (**(**TVectorColumnDefinition)(__ccgo_up(p + 440 + uintptr(vector_column_idx)*20))).Fname, (**(**TVectorColumnDefinition)(__ccgo_up(p + 440 + uintptr(vector_column_idx)*20))).Fdimensions, **(**Tsize_t)(__ccgo_up(bp + 176))))
+			Xvtab_set_error(tls, pVTab, __ccgo_ts+13285, libc.VaList(bp+144, (*(*TVectorColumnDefinition)(__ccgo_ptr(p + 440 + uintptr(vector_column_idx)*20))).Fname_length, (*(*TVectorColumnDefinition)(__ccgo_ptr(p + 440 + uintptr(vector_column_idx)*20))).Fname, (*(*TVectorColumnDefinition)(__ccgo_ptr(p + 440 + uintptr(vector_column_idx)*20))).Fdimensions, dimensions))
 			rc = int32(m_SQLITE_ERROR)
 			goto cleanup
 		}
@@ -1191,45 +435,45 @@ func Xvec0Update_Insert(tls *libc.TLS, pVTab uintptr, argc int32, argv uintptr, 
 		i1 = i1 + 1
 	}
 	// Cannot insert a value in the hidden "distance" column
-	if libsqlite3.Xsqlite3_value_type(tls, **(**uintptr)(__ccgo_up(argv + uintptr(int32(2)+Xvec0_column_distance_idx(tls, p))*4))) != int32(m_SQLITE_NULL) {
+	if libsqlite3.Xsqlite3_value_type(tls, *(*uintptr)(__ccgo_ptr(argv + uintptr(int32(2)+Xvec0_column_distance_idx(tls, p))*4))) != int32(m_SQLITE_NULL) {
 		// IMP: V24228_08298
 		Xvtab_set_error(tls, pVTab, __ccgo_ts+13387, 0)
 		rc = int32(m_SQLITE_ERROR)
 		goto cleanup
 	}
 	// Cannot insert a value in the hidden "k" column
-	if libsqlite3.Xsqlite3_value_type(tls, **(**uintptr)(__ccgo_up(argv + uintptr(int32(2)+Xvec0_column_k_idx(tls, p))*4))) != int32(m_SQLITE_NULL) {
+	if libsqlite3.Xsqlite3_value_type(tls, *(*uintptr)(__ccgo_ptr(argv + uintptr(int32(2)+Xvec0_column_k_idx(tls, p))*4))) != int32(m_SQLITE_NULL) {
 		// IMP: V11875_28713
 		Xvtab_set_error(tls, pVTab, __ccgo_ts+13442, 0)
 		rc = int32(m_SQLITE_ERROR)
 		goto cleanup
 	}
 	// Step #1: Insert/get a rowid for this row, from the _rowids table.
-	rc = Xvec0Update_InsertRowidStep(tls, p, **(**uintptr)(__ccgo_up(argv + uintptr(libc.Int32FromInt32(2)+libc.Int32FromInt32(m_VEC0_COLUMN_ID))*4)), bp)
+	rc = _vec0Update_InsertRowidStep__ccgo_gp(tls, p, *(*uintptr)(__ccgo_ptr(argv + uintptr(libc.Int32FromInt32(2)+libc.Int32FromInt32(m_VEC0_COLUMN_ID))*4)), unsafe.Pointer(&rowid))
 	if rc != m_SQLITE_OK {
 		goto cleanup
 	}
 	// Step #2: Find the next "available" position in the _chunks table for this
 	// row.
-	rc = Xvec0Update_InsertNextAvailableStep(tls, p, bp+136, bp+152, bp+160, bp+168, bp+172)
+	rc = _vec0Update_InsertNextAvailableStep__ccgo_gp(tls, p, unsafe.Pointer(&partitionKeyValues), unsafe.Pointer(&chunk_rowid), unsafe.Pointer(&chunk_offset), bp+128, unsafe.Pointer(&bufferChunksValidity))
 	if rc != m_SQLITE_OK {
 		goto cleanup
 	}
 	// Step #3: With the next available chunk position, write out all the vectors
 	//          to their specified location.
-	rc = Xvec0Update_InsertWriteFinalStep(tls, p, **(**Ti64)(__ccgo_up(bp + 152)), **(**Ti64)(__ccgo_up(bp + 160)), **(**Ti64)(__ccgo_up(bp)), bp+8, **(**uintptr)(__ccgo_up(bp + 168)), **(**uintptr)(__ccgo_up(bp + 172)))
+	rc = _vec0Update_InsertWriteFinalStep__ccgo_gp(tls, p, chunk_rowid, chunk_offset, rowid, __ccgo_ptr(bp), *(*uintptr)(__ccgo_ptr(bp + 128)), bufferChunksValidity)
 	if rc != m_SQLITE_OK {
 		goto cleanup
 	}
 	if (*Tvec0_vtab)(unsafe.Pointer(p)).FnumAuxiliaryColumns > 0 {
 		s = libsqlite3.Xsqlite3_str_new(tls, libc.UintptrFromInt32(0))
-		libsqlite3.Xsqlite3_str_appendf(tls, s, __ccgo_ts+13490, libc.VaList(bp+200, (*Tvec0_vtab)(unsafe.Pointer(p)).FschemaName, (*Tvec0_vtab)(unsafe.Pointer(p)).FtableName))
+		libsqlite3.Xsqlite3_str_appendf(tls, s, __ccgo_ts+13490, libc.VaList(bp+144, (*Tvec0_vtab)(unsafe.Pointer(p)).FschemaName, (*Tvec0_vtab)(unsafe.Pointer(p)).FtableName))
 		i2 = 0
 		for {
 			if !(i2 < (*Tvec0_vtab)(unsafe.Pointer(p)).FnumAuxiliaryColumns) {
 				break
 			}
-			libsqlite3.Xsqlite3_str_appendf(tls, s, __ccgo_ts+8098, libc.VaList(bp+200, i2))
+			libsqlite3.Xsqlite3_str_appendf(tls, s, __ccgo_ts+8098, libc.VaList(bp+144, i2))
 			goto _3
 		_3:
 			;
@@ -1254,54 +498,54 @@ func Xvec0Update_Insert(tls *libc.TLS, pVTab uintptr, argc int32, argv uintptr, 
 			rc = int32(m_SQLITE_NOMEM)
 			goto cleanup
 		}
-		rc = libsqlite3.Xsqlite3_prepare_v2(tls, (*Tvec0_vtab)(unsafe.Pointer(p)).Fdb, zSql, -int32(1), bp+188, libc.UintptrFromInt32(0))
+		rc = libsqlite3.Xsqlite3_prepare_v2(tls, (*Tvec0_vtab)(unsafe.Pointer(p)).Fdb, zSql, -int32(1), bp+132, libc.UintptrFromInt32(0))
 		if rc != m_SQLITE_OK {
 			goto cleanup
 		}
-		libsqlite3.Xsqlite3_bind_int64(tls, **(**uintptr)(__ccgo_up(bp + 188)), int32(1), **(**Ti64)(__ccgo_up(bp)))
+		libsqlite3.Xsqlite3_bind_int64(tls, *(*uintptr)(__ccgo_ptr(bp + 132)), int32(1), rowid)
 		i4 = 0
 		for {
 			if !(i4 < Xvec0_num_defined_user_columns(tls, p)) {
 				break
 			}
-			if **(**Tvec0_user_column_kind)(__ccgo_up(p + 52 + uintptr(i4)*4)) != int32(_SQLITE_VEC0_USER_COLUMN_KIND_AUXILIARY) {
+			if *(*Tvec0_user_column_kind)(__ccgo_ptr(p + 52 + uintptr(i4)*4)) != int32(_SQLITE_VEC0_USER_COLUMN_KIND_AUXILIARY) {
 				goto _5
 			}
-			auxiliary_key_idx = int32(**(**Tuint8_t)(__ccgo_up(p + 260 + uintptr(i4))))
-			v = **(**uintptr)(__ccgo_up(argv + uintptr(libc.Int32FromInt32(2)+libc.Int32FromInt32(m_VEC0_COLUMN_USERN_START)+i4)*4))
+			auxiliary_key_idx = int32(*(*Tuint8_t)(__ccgo_ptr(p + 260 + uintptr(i4))))
+			v = *(*uintptr)(__ccgo_ptr(argv + uintptr(libc.Int32FromInt32(2)+libc.Int32FromInt32(m_VEC0_COLUMN_USERN_START)+i4)*4))
 			v_type = libsqlite3.Xsqlite3_value_type(tls, v)
-			if v_type != int32(m_SQLITE_NULL) && v_type != (**(**TVec0AuxiliaryColumnDefinition)(__ccgo_up(p + 808 + uintptr(auxiliary_key_idx)*12))).Ftype1 {
-				libsqlite3.Xsqlite3_finalize(tls, **(**uintptr)(__ccgo_up(bp + 188)))
+			if v_type != int32(m_SQLITE_NULL) && v_type != (*(*TVec0AuxiliaryColumnDefinition)(__ccgo_ptr(p + 808 + uintptr(auxiliary_key_idx)*12))).Ftype1 {
+				libsqlite3.Xsqlite3_finalize(tls, *(*uintptr)(__ccgo_ptr(bp + 132)))
 				rc = int32(m_SQLITE_CONSTRAINT)
-				Xvtab_set_error(tls, pVTab, __ccgo_ts+13542, libc.VaList(bp+200, (**(**TVec0AuxiliaryColumnDefinition)(__ccgo_up(p + 808 + uintptr(auxiliary_key_idx)*12))).Fname_length, (**(**TVec0AuxiliaryColumnDefinition)(__ccgo_up(p + 808 + uintptr(auxiliary_key_idx)*12))).Fname, Xtype_name(tls, (**(**TVec0AuxiliaryColumnDefinition)(__ccgo_up(p + 808 + uintptr(auxiliary_key_idx)*12))).Ftype1), Xtype_name(tls, v_type)))
+				Xvtab_set_error(tls, pVTab, __ccgo_ts+13542, libc.VaList(bp+144, (*(*TVec0AuxiliaryColumnDefinition)(__ccgo_ptr(p + 808 + uintptr(auxiliary_key_idx)*12))).Fname_length, (*(*TVec0AuxiliaryColumnDefinition)(__ccgo_ptr(p + 808 + uintptr(auxiliary_key_idx)*12))).Fname, Xtype_name(tls, (*(*TVec0AuxiliaryColumnDefinition)(__ccgo_ptr(p + 808 + uintptr(auxiliary_key_idx)*12))).Ftype1), Xtype_name(tls, v_type)))
 				goto cleanup
 			}
 			// first 1 is for 1-based indexing on sqlite3_bind_*, second 1 is to account for initial rowid parameter
-			libsqlite3.Xsqlite3_bind_value(tls, **(**uintptr)(__ccgo_up(bp + 188)), libc.Int32FromInt32(1)+libc.Int32FromInt32(1)+auxiliary_key_idx, v)
+			libsqlite3.Xsqlite3_bind_value(tls, *(*uintptr)(__ccgo_ptr(bp + 132)), libc.Int32FromInt32(1)+libc.Int32FromInt32(1)+auxiliary_key_idx, v)
 			goto _5
 		_5:
 			;
 			i4 = i4 + 1
 		}
-		rc = libsqlite3.Xsqlite3_step(tls, **(**uintptr)(__ccgo_up(bp + 188)))
+		rc = libsqlite3.Xsqlite3_step(tls, *(*uintptr)(__ccgo_ptr(bp + 132)))
 		if rc != int32(m_SQLITE_DONE) {
-			libsqlite3.Xsqlite3_finalize(tls, **(**uintptr)(__ccgo_up(bp + 188)))
+			libsqlite3.Xsqlite3_finalize(tls, *(*uintptr)(__ccgo_ptr(bp + 132)))
 			rc = int32(m_SQLITE_ERROR)
 			goto cleanup
 		}
-		libsqlite3.Xsqlite3_finalize(tls, **(**uintptr)(__ccgo_up(bp + 188)))
+		libsqlite3.Xsqlite3_finalize(tls, *(*uintptr)(__ccgo_ptr(bp + 132)))
 	}
 	i5 = 0
 	for {
 		if !(i5 < Xvec0_num_defined_user_columns(tls, p)) {
 			break
 		}
-		if **(**Tvec0_user_column_kind)(__ccgo_up(p + 52 + uintptr(i5)*4)) != int32(_SQLITE_VEC0_USER_COLUMN_KIND_METADATA) {
+		if *(*Tvec0_user_column_kind)(__ccgo_ptr(p + 52 + uintptr(i5)*4)) != int32(_SQLITE_VEC0_USER_COLUMN_KIND_METADATA) {
 			goto _6
 		}
-		metadata_idx = int32(**(**Tuint8_t)(__ccgo_up(p + 260 + uintptr(i5))))
-		v1 = **(**uintptr)(__ccgo_up(argv + uintptr(libc.Int32FromInt32(2)+libc.Int32FromInt32(m_VEC0_COLUMN_USERN_START)+i5)*4))
-		rc = Xvec0_write_metadata_value(tls, p, metadata_idx, **(**Ti64)(__ccgo_up(bp)), **(**Ti64)(__ccgo_up(bp + 152)), **(**Ti64)(__ccgo_up(bp + 160)), v1, 0)
+		metadata_idx = int32(*(*Tuint8_t)(__ccgo_ptr(p + 260 + uintptr(i5))))
+		v1 = *(*uintptr)(__ccgo_ptr(argv + uintptr(libc.Int32FromInt32(2)+libc.Int32FromInt32(m_VEC0_COLUMN_USERN_START)+i5)*4))
+		rc = Xvec0_write_metadata_value(tls, p, metadata_idx, rowid, chunk_rowid, chunk_offset, v1, 0)
 		if rc != m_SQLITE_OK {
 			goto cleanup
 		}
@@ -1310,7 +554,7 @@ func Xvec0Update_Insert(tls *libc.TLS, pVTab uintptr, argc int32, argv uintptr, 
 		;
 		i5 = i5 + 1
 	}
-	**(**Tsqlite_int64)(__ccgo_up(pRowid)) = **(**Ti64)(__ccgo_up(bp))
+	*(*Tsqlite_int64)(__ccgo_ptr(pRowid)) = rowid
 	rc = m_SQLITE_OK
 	goto cleanup
 cleanup:
@@ -1320,14 +564,14 @@ cleanup:
 		if !(i6 < numReadVectors) {
 			break
 		}
-		(*(*func(*libc.TLS, uintptr))(unsafe.Pointer(&struct{ uintptr }{(**(**[16]Tvector_cleanup)(__ccgo_up(bp + 72)))[i6]})))(tls, (**(**[16]uintptr)(__ccgo_up(bp + 8)))[i6])
+		(*(*func(*libc.TLS, uintptr))(unsafe.Pointer(&struct{ uintptr }{(*(*[16]Tvector_cleanup)(__ccgo_ptr(bp + 64)))[i6]})))(tls, (*(*[16]uintptr)(__ccgo_ptr(bp)))[i6])
 		goto _7
 	_7:
 		;
 		i6 = i6 + 1
 	}
-	libsqlite3.Xsqlite3_free(tls, **(**uintptr)(__ccgo_up(bp + 172)))
-	brc = libsqlite3.Xsqlite3_blob_close(tls, **(**uintptr)(__ccgo_up(bp + 168)))
+	libsqlite3.Xsqlite3_free(tls, bufferChunksValidity)
+	brc = libsqlite3.Xsqlite3_blob_close(tls, *(*uintptr)(__ccgo_ptr(bp + 128)))
 	if rc == m_SQLITE_OK && brc != m_SQLITE_OK {
 		Xvtab_set_error(tls, p, __ccgo_ts+13634, 0)
 		return brc
@@ -1335,146 +579,30 @@ cleanup:
 	return rc
 }
 
-// C documentation
-//
-//	/**
-//	 * @brief
-//	 *
-//	 * @param p vec0 virtual table
-//	 * @param chunk_rowid: which chunk to write to
-//	 * @param chunk_offset: the offset inside the chunk to write the vector to.
-//	 * @param rowid: the rowid of the inserting row
-//	 * @param vectorDatas: array of the vector data to insert
-//	 * @param blobValidity: writeable validity blob of the row's assigned chunk.
-//	 * @param validity: snapshot buffer of the valdity column from the row's
-//	 * assigned chunk.
-//	 * @return int SQLITE_OK on success, error code on failure
-//	 */
-func Xvec0Update_InsertWriteFinalStep(tls *libc.TLS, p uintptr, chunk_rowid Ti64, chunk_offset Ti64, _rowid Ti64, vectorDatas uintptr, blobChunksValidity uintptr, bufferChunksValidity uintptr) (r int32) {
-	bp := tls.Alloc(80)
-	defer tls.Free(80)
-	*(*Ti64)(unsafe.Pointer(bp)) = _rowid
-	var actual, actual1, expected, expected1 Ti64
-	var brc, i, rc int32
-	var _ /* blobChunksRowids at bp+8 */ uintptr
-	var _ /* blobVectors at bp+16 */ uintptr
-	var _ /* bx at bp+12 */ uint8
-	_, _, _, _, _, _, _ = actual, actual1, brc, expected, expected1, i, rc
-	**(**uintptr)(__ccgo_up(bp + 8)) = libc.UintptrFromInt32(0)
-	// mark the validity bit for this row in the chunk's validity bitmap
-	// Get the byte offset of the bitmap
-	**(**uint8)(__ccgo_up(bp + 12)) = **(**uint8)(__ccgo_up(bufferChunksValidity + uintptr(chunk_offset/int64(m___CHAR_BIT__))))
-	// set the bit at the chunk_offset position inside that byte
-	**(**uint8)(__ccgo_up(bp + 12)) = uint8(int32(**(**uint8)(__ccgo_up(bp + 12))) | int32(1)<<(chunk_offset%int64(m___CHAR_BIT__)))
-	// write that 1 byte
-	rc = libsqlite3.Xsqlite3_blob_write(tls, blobChunksValidity, bp+12, int32(1), int32(chunk_offset/int64(m___CHAR_BIT__)))
-	if rc != m_SQLITE_OK {
-		Xvtab_set_error(tls, p, __ccgo_ts+11995, 0)
-		return rc
-	}
-	// Go insert the vector data into the vector chunk shadow tables
-	i = 0
-	for {
-		if !(i < (*Tvec0_vtab)(unsafe.Pointer(p)).FnumVectorColumns) {
-			break
-		}
-		rc = libsqlite3.Xsqlite3_blob_open(tls, (*Tvec0_vtab)(unsafe.Pointer(p)).Fdb, (*Tvec0_vtab)(unsafe.Pointer(p)).FschemaName, **(**uintptr)(__ccgo_up(p + 312 + uintptr(i)*4)), __ccgo_ts+3712, chunk_rowid, int32(1), bp+16)
-		if rc != m_SQLITE_OK {
-			Xvtab_set_error(tls, p, __ccgo_ts+12051, libc.VaList(bp+32, (*Tvec0_vtab)(unsafe.Pointer(p)).FschemaName, **(**uintptr)(__ccgo_up(p + 312 + uintptr(i)*4)), chunk_rowid))
-			goto cleanup
-		}
-		expected = int64(uint32((*Tvec0_vtab)(unsafe.Pointer(p)).Fchunk_size) * Xvector_column_byte_size(tls, **(**TVectorColumnDefinition)(__ccgo_up(p + 440 + uintptr(i)*20))))
-		actual = int64(libsqlite3.Xsqlite3_blob_bytes(tls, **(**uintptr)(__ccgo_up(bp + 16))))
-		if actual != expected {
-			// IMP: V16386_00456
-			Xvtab_set_error(tls, p, __ccgo_ts+12091, libc.VaList(bp+32, (*Tvec0_vtab)(unsafe.Pointer(p)).FschemaName, **(**uintptr)(__ccgo_up(p + 312 + uintptr(i)*4)), chunk_rowid, expected, actual))
-			rc = int32(m_SQLITE_ERROR)
-			// already error, can ignore result code
-			libsqlite3.Xsqlite3_blob_close(tls, **(**uintptr)(__ccgo_up(bp + 16)))
-			goto cleanup
-		}
-		rc = _vec0_write_vector_to_vector_blob(tls, **(**uintptr)(__ccgo_up(bp + 16)), chunk_offset, **(**uintptr)(__ccgo_up(vectorDatas + uintptr(i)*4)), (**(**TVectorColumnDefinition)(__ccgo_up(p + 440 + uintptr(i)*20))).Fdimensions, (**(**TVectorColumnDefinition)(__ccgo_up(p + 440 + uintptr(i)*20))).Felement_type)
-		if rc != m_SQLITE_OK {
-			Xvtab_set_error(tls, p, __ccgo_ts+12186, libc.VaList(bp+32, (*Tvec0_vtab)(unsafe.Pointer(p)).FschemaName, **(**uintptr)(__ccgo_up(p + 312 + uintptr(i)*4)), chunk_rowid))
-			rc = int32(m_SQLITE_ERROR)
-			// already error, can ignore result code
-			libsqlite3.Xsqlite3_blob_close(tls, **(**uintptr)(__ccgo_up(bp + 16)))
-			goto cleanup
-		}
-		rc = libsqlite3.Xsqlite3_blob_close(tls, **(**uintptr)(__ccgo_up(bp + 16)))
-		if rc != m_SQLITE_OK {
-			Xvtab_set_error(tls, p, __ccgo_ts+12255, libc.VaList(bp+32, (*Tvec0_vtab)(unsafe.Pointer(p)).FschemaName, **(**uintptr)(__ccgo_up(p + 312 + uintptr(i)*4)), chunk_rowid))
-			rc = int32(m_SQLITE_ERROR)
-			goto cleanup
-		}
-		goto _1
-	_1:
-		;
-		i = i + 1
-	}
-	// write the new rowid to the rowids column of the _chunks table
-	rc = libsqlite3.Xsqlite3_blob_open(tls, (*Tvec0_vtab)(unsafe.Pointer(p)).Fdb, (*Tvec0_vtab)(unsafe.Pointer(p)).FschemaName, (*Tvec0_vtab)(unsafe.Pointer(p)).FshadowChunksName, __ccgo_ts+9690, chunk_rowid, int32(1), bp+8)
-	if rc != m_SQLITE_OK {
-		// IMP: V09221_26060
-		Xvtab_set_error(tls, p, __ccgo_ts+12324, libc.VaList(bp+32, (*Tvec0_vtab)(unsafe.Pointer(p)).FschemaName, (*Tvec0_vtab)(unsafe.Pointer(p)).FshadowChunksName, chunk_rowid))
-		goto cleanup
-	}
-	expected1 = int64(uint32((*Tvec0_vtab)(unsafe.Pointer(p)).Fchunk_size) * uint32(8))
-	actual1 = int64(libsqlite3.Xsqlite3_blob_bytes(tls, **(**uintptr)(__ccgo_up(bp + 8))))
-	if expected1 != actual1 {
-		// IMP: V12779_29618
-		Xvtab_set_error(tls, p, __ccgo_ts+12392, libc.VaList(bp+32, (*Tvec0_vtab)(unsafe.Pointer(p)).FschemaName, (*Tvec0_vtab)(unsafe.Pointer(p)).FshadowChunksName, chunk_rowid, expected1, actual1))
-		rc = int32(m_SQLITE_ERROR)
-		goto cleanup
-	}
-	rc = libsqlite3.Xsqlite3_blob_write(tls, **(**uintptr)(__ccgo_up(bp + 8)), bp, int32(8), int32(chunk_offset*int64(8)))
-	if rc != m_SQLITE_OK {
-		Xvtab_set_error(tls, p, __ccgo_ts+12487, libc.VaList(bp+32, (*Tvec0_vtab)(unsafe.Pointer(p)).FschemaName, (*Tvec0_vtab)(unsafe.Pointer(p)).FshadowChunksName, chunk_rowid))
-		rc = int32(m_SQLITE_ERROR)
-		goto cleanup
-	}
-	// Now with all the vectors inserted, go back and update the _rowids table
-	// with the new chunk_rowid/chunk_offset values
-	rc = Xvec0_rowids_update_position(tls, p, **(**Ti64)(__ccgo_up(bp)), chunk_rowid, chunk_offset)
-	goto cleanup
-cleanup:
-	;
-	brc = libsqlite3.Xsqlite3_blob_close(tls, **(**uintptr)(__ccgo_up(bp + 8)))
-	if rc == m_SQLITE_OK && brc != m_SQLITE_OK {
-		Xvtab_set_error(tls, p, __ccgo_ts+12556, libc.VaList(bp+32, (*Tvec0_vtab)(unsafe.Pointer(p)).FschemaName, (*Tvec0_vtab)(unsafe.Pointer(p)).FshadowChunksName, chunk_rowid))
-		return brc
-	}
-	return rc
-}
-
 func Xvec0Update_Update(tls *libc.TLS, pVTab uintptr, argc int32, argv uintptr) (r int32) {
-	bp := tls.Alloc(32)
-	defer tls.Free(32)
 	var a, b, p, value, value1, value2, valueVector uintptr
 	var auxiliary_column_idx, i, i1, i2, i3, metadata_column_idx, rc, vector_idx int32
-	var _ /* chunk_id at bp+0 */ Ti64
-	var _ /* chunk_offset at bp+8 */ Ti64
-	var _ /* rowid at bp+16 */ Ti64
-	_, _, _, _, _, _, _, _, _, _, _, _, _, _, _ = a, auxiliary_column_idx, b, i, i1, i2, i3, metadata_column_idx, p, rc, value, value1, value2, valueVector, vector_idx
+	var chunk_id, chunk_offset, rowid Ti64
+	_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _ = a, auxiliary_column_idx, b, chunk_id, chunk_offset, i, i1, i2, i3, metadata_column_idx, p, rc, rowid, value, value1, value2, valueVector, vector_idx
 	_ = argc
 	p = pVTab
 	if (*Tvec0_vtab)(unsafe.Pointer(p)).FpkIsText != 0 {
-		a = libsqlite3.Xsqlite3_value_text(tls, **(**uintptr)(__ccgo_up(argv)))
-		b = libsqlite3.Xsqlite3_value_text(tls, **(**uintptr)(__ccgo_up(argv + 1*4)))
+		a = libsqlite3.Xsqlite3_value_text(tls, *(*uintptr)(__ccgo_ptr(argv)))
+		b = libsqlite3.Xsqlite3_value_text(tls, *(*uintptr)(__ccgo_ptr(argv + 1*4)))
 		// IMP: V08886_25725
-		if libsqlite3.Xsqlite3_value_bytes(tls, **(**uintptr)(__ccgo_up(argv))) != libsqlite3.Xsqlite3_value_bytes(tls, **(**uintptr)(__ccgo_up(argv + 1*4))) || libc.Xstrncmp(tls, a, b, uint32(libsqlite3.Xsqlite3_value_bytes(tls, **(**uintptr)(__ccgo_up(argv))))) != 0 {
+		if libsqlite3.Xsqlite3_value_bytes(tls, *(*uintptr)(__ccgo_ptr(argv))) != libsqlite3.Xsqlite3_value_bytes(tls, *(*uintptr)(__ccgo_ptr(argv + 1*4))) || libc.Xstrncmp(tls, a, b, uint32(libsqlite3.Xsqlite3_value_bytes(tls, *(*uintptr)(__ccgo_ptr(argv))))) != 0 {
 			Xvtab_set_error(tls, pVTab, __ccgo_ts+15180, 0)
 			return int32(m_SQLITE_ERROR)
 		}
-		rc = Xvec0_rowid_from_id(tls, p, **(**uintptr)(__ccgo_up(argv)), bp+16)
+		rc = _vec0_rowid_from_id__ccgo_gp(tls, p, *(*uintptr)(__ccgo_ptr(argv)), unsafe.Pointer(&rowid))
 		if rc != m_SQLITE_OK {
 			return rc
 		}
 	} else {
-		**(**Ti64)(__ccgo_up(bp + 16)) = libsqlite3.Xsqlite3_value_int64(tls, **(**uintptr)(__ccgo_up(argv)))
+		rowid = libsqlite3.Xsqlite3_value_int64(tls, *(*uintptr)(__ccgo_ptr(argv)))
 	}
 	// 1) get chunk_id and chunk_offset from _rowids
-	rc = Xvec0_get_chunk_position(tls, p, **(**Ti64)(__ccgo_up(bp + 16)), libc.UintptrFromInt32(0), bp, bp+8)
+	rc = _vec0_get_chunk_position__ccgo_gp(tls, p, rowid, nil, unsafe.Pointer(&chunk_id), unsafe.Pointer(&chunk_offset))
 	if rc != m_SQLITE_OK {
 		return rc
 	}
@@ -1484,10 +612,10 @@ func Xvec0Update_Update(tls *libc.TLS, pVTab uintptr, argc int32, argv uintptr) 
 		if !(i < Xvec0_num_defined_user_columns(tls, p)) {
 			break
 		}
-		if **(**Tvec0_user_column_kind)(__ccgo_up(p + 52 + uintptr(i)*4)) != int32(_SQLITE_VEC0_USER_COLUMN_KIND_PARTITION) {
+		if *(*Tvec0_user_column_kind)(__ccgo_ptr(p + 52 + uintptr(i)*4)) != int32(_SQLITE_VEC0_USER_COLUMN_KIND_PARTITION) {
 			goto _1
 		}
-		value = **(**uintptr)(__ccgo_up(argv + uintptr(libc.Int32FromInt32(2)+libc.Int32FromInt32(m_VEC0_COLUMN_USERN_START)+i)*4))
+		value = *(*uintptr)(__ccgo_ptr(argv + uintptr(libc.Int32FromInt32(2)+libc.Int32FromInt32(m_VEC0_COLUMN_USERN_START)+i)*4))
 		if libsqlite3.Xsqlite3_value_nochange(tls, value) != 0 {
 			goto _1
 		}
@@ -1504,15 +632,15 @@ func Xvec0Update_Update(tls *libc.TLS, pVTab uintptr, argc int32, argv uintptr) 
 		if !(i1 < Xvec0_num_defined_user_columns(tls, p)) {
 			break
 		}
-		if **(**Tvec0_user_column_kind)(__ccgo_up(p + 52 + uintptr(i1)*4)) != int32(_SQLITE_VEC0_USER_COLUMN_KIND_AUXILIARY) {
+		if *(*Tvec0_user_column_kind)(__ccgo_ptr(p + 52 + uintptr(i1)*4)) != int32(_SQLITE_VEC0_USER_COLUMN_KIND_AUXILIARY) {
 			goto _2
 		}
-		auxiliary_column_idx = int32(**(**Tuint8_t)(__ccgo_up(p + 260 + uintptr(i1))))
-		value1 = **(**uintptr)(__ccgo_up(argv + uintptr(libc.Int32FromInt32(2)+libc.Int32FromInt32(m_VEC0_COLUMN_USERN_START)+i1)*4))
+		auxiliary_column_idx = int32(*(*Tuint8_t)(__ccgo_ptr(p + 260 + uintptr(i1))))
+		value1 = *(*uintptr)(__ccgo_ptr(argv + uintptr(libc.Int32FromInt32(2)+libc.Int32FromInt32(m_VEC0_COLUMN_USERN_START)+i1)*4))
 		if libsqlite3.Xsqlite3_value_nochange(tls, value1) != 0 {
 			goto _2
 		}
-		rc = Xvec0Update_UpdateAuxColumn(tls, p, auxiliary_column_idx, value1, **(**Ti64)(__ccgo_up(bp + 16)))
+		rc = Xvec0Update_UpdateAuxColumn(tls, p, auxiliary_column_idx, value1, rowid)
 		if rc != m_SQLITE_OK {
 			return int32(m_SQLITE_ERROR)
 		}
@@ -1527,15 +655,15 @@ func Xvec0Update_Update(tls *libc.TLS, pVTab uintptr, argc int32, argv uintptr) 
 		if !(i2 < Xvec0_num_defined_user_columns(tls, p)) {
 			break
 		}
-		if **(**Tvec0_user_column_kind)(__ccgo_up(p + 52 + uintptr(i2)*4)) != int32(_SQLITE_VEC0_USER_COLUMN_KIND_METADATA) {
+		if *(*Tvec0_user_column_kind)(__ccgo_ptr(p + 52 + uintptr(i2)*4)) != int32(_SQLITE_VEC0_USER_COLUMN_KIND_METADATA) {
 			goto _3
 		}
-		metadata_column_idx = int32(**(**Tuint8_t)(__ccgo_up(p + 260 + uintptr(i2))))
-		value2 = **(**uintptr)(__ccgo_up(argv + uintptr(libc.Int32FromInt32(2)+libc.Int32FromInt32(m_VEC0_COLUMN_USERN_START)+i2)*4))
+		metadata_column_idx = int32(*(*Tuint8_t)(__ccgo_ptr(p + 260 + uintptr(i2))))
+		value2 = *(*uintptr)(__ccgo_ptr(argv + uintptr(libc.Int32FromInt32(2)+libc.Int32FromInt32(m_VEC0_COLUMN_USERN_START)+i2)*4))
 		if libsqlite3.Xsqlite3_value_nochange(tls, value2) != 0 {
 			goto _3
 		}
-		rc = Xvec0_write_metadata_value(tls, p, metadata_column_idx, **(**Ti64)(__ccgo_up(bp + 16)), **(**Ti64)(__ccgo_up(bp)), **(**Ti64)(__ccgo_up(bp + 8)), value2, int32(1))
+		rc = Xvec0_write_metadata_value(tls, p, metadata_column_idx, rowid, chunk_id, chunk_offset, value2, int32(1))
 		if rc != m_SQLITE_OK {
 			return rc
 		}
@@ -1550,11 +678,11 @@ func Xvec0Update_Update(tls *libc.TLS, pVTab uintptr, argc int32, argv uintptr) 
 		if !(i3 < Xvec0_num_defined_user_columns(tls, p)) {
 			break
 		}
-		if **(**Tvec0_user_column_kind)(__ccgo_up(p + 52 + uintptr(i3)*4)) != int32(_SQLITE_VEC0_USER_COLUMN_KIND_VECTOR) {
+		if *(*Tvec0_user_column_kind)(__ccgo_ptr(p + 52 + uintptr(i3)*4)) != int32(_SQLITE_VEC0_USER_COLUMN_KIND_VECTOR) {
 			goto _4
 		}
-		vector_idx = int32(**(**Tuint8_t)(__ccgo_up(p + 260 + uintptr(i3))))
-		valueVector = **(**uintptr)(__ccgo_up(argv + uintptr(libc.Int32FromInt32(2)+libc.Int32FromInt32(m_VEC0_COLUMN_USERN_START)+i3)*4))
+		vector_idx = int32(*(*Tuint8_t)(__ccgo_ptr(p + 260 + uintptr(i3))))
+		valueVector = *(*uintptr)(__ccgo_ptr(argv + uintptr(libc.Int32FromInt32(2)+libc.Int32FromInt32(m_VEC0_COLUMN_USERN_START)+i3)*4))
 		// in vec0Column, we check sqlite3_vtab_nochange() on vector columns.
 		// If the vector column isn't being changed, we return NULL;
 		// That's not great, that means vector columns can never be NULLABLE
@@ -1568,7 +696,7 @@ func Xvec0Update_Update(tls *libc.TLS, pVTab uintptr, argc int32, argv uintptr) 
 		if libsqlite3.Xsqlite3_value_type(tls, valueVector) == int32(m_SQLITE_NULL) {
 			goto _4
 		}
-		rc = Xvec0Update_UpdateVectorColumn(tls, p, **(**Ti64)(__ccgo_up(bp)), **(**Ti64)(__ccgo_up(bp + 8)), vector_idx, valueVector)
+		rc = Xvec0Update_UpdateVectorColumn(tls, p, chunk_id, chunk_offset, vector_idx, valueVector)
 		if rc != m_SQLITE_OK {
 			return int32(m_SQLITE_ERROR)
 		}
@@ -1616,12 +744,12 @@ func Xvec0_chunks_iter(tls *libc.TLS, p uintptr, idxStr uintptr, argc int32, arg
 			break
 		}
 		idx = int32(1) + i*int32(4)
-		kind = **(**int8)(__ccgo_up(idxStr + uintptr(idx+0)))
+		kind = *(*int8)(__ccgo_ptr(idxStr + uintptr(idx+0)))
 		if int32(kind) != int32(_VEC0_IDXSTR_KIND_KNN_PARTITON_CONSTRAINT) {
 			goto _1
 		}
-		partition_idx = int32(**(**int8)(__ccgo_up(idxStr + uintptr(idx+int32(1))))) - int32('A')
-		operator = int32(**(**int8)(__ccgo_up(idxStr + uintptr(idx+int32(2)))))
+		partition_idx = int32(*(*int8)(__ccgo_ptr(idxStr + uintptr(idx+int32(1))))) - int32('A')
+		operator = int32(*(*int8)(__ccgo_ptr(idxStr + uintptr(idx+int32(2)))))
 		// idxStr[idx + 3] is just null, a '_' placeholder
 		if !(appendedWhere != 0) {
 			libsqlite3.Xsqlite3_str_appendall(tls, s, __ccgo_ts+9579)
@@ -1668,13 +796,13 @@ func Xvec0_chunks_iter(tls *libc.TLS, p uintptr, idxStr uintptr, argc int32, arg
 			break
 		}
 		idx1 = int32(1) + i1*int32(4)
-		kind1 = **(**int8)(__ccgo_up(idxStr + uintptr(idx1+0)))
+		kind1 = *(*int8)(__ccgo_ptr(idxStr + uintptr(idx1+0)))
 		if int32(kind1) != int32(_VEC0_IDXSTR_KIND_KNN_PARTITON_CONSTRAINT) {
 			goto _2
 		}
 		v3 = n
 		n = n + 1
-		libsqlite3.Xsqlite3_bind_value(tls, **(**uintptr)(__ccgo_up(outStmt)), v3, **(**uintptr)(__ccgo_up(argv + uintptr(i1)*4)))
+		libsqlite3.Xsqlite3_bind_value(tls, *(*uintptr)(__ccgo_ptr(outStmt)), v3, *(*uintptr)(__ccgo_ptr(argv + uintptr(i1)*4)))
 		goto _2
 	_2:
 		;
@@ -1691,7 +819,7 @@ func Xvec0_chunks_iter(tls *libc.TLS, p uintptr, idxStr uintptr, argc int32, arg
 //	 */
 func Xvec0_column_idx_to_auxiliary_idx(tls *libc.TLS, pVtab uintptr, column_idx int32) (r int32) {
 	_ = pVtab
-	return int32(**(**Tuint8_t)(__ccgo_up(pVtab + 260 + uintptr(column_idx-int32(m_VEC0_COLUMN_USERN_START)))))
+	return int32(*(*Tuint8_t)(__ccgo_ptr(pVtab + 260 + uintptr(column_idx-int32(m_VEC0_COLUMN_USERN_START)))))
 }
 
 // C documentation
@@ -1702,7 +830,7 @@ func Xvec0_column_idx_to_auxiliary_idx(tls *libc.TLS, pVtab uintptr, column_idx 
 //	 */
 func Xvec0_column_idx_to_metadata_idx(tls *libc.TLS, pVtab uintptr, column_idx int32) (r int32) {
 	_ = pVtab
-	return int32(**(**Tuint8_t)(__ccgo_up(pVtab + 260 + uintptr(column_idx-int32(m_VEC0_COLUMN_USERN_START)))))
+	return int32(*(*Tuint8_t)(__ccgo_ptr(pVtab + 260 + uintptr(column_idx-int32(m_VEC0_COLUMN_USERN_START)))))
 }
 
 // C documentation
@@ -1713,7 +841,7 @@ func Xvec0_column_idx_to_metadata_idx(tls *libc.TLS, pVtab uintptr, column_idx i
 //	 */
 func Xvec0_column_idx_to_partition_idx(tls *libc.TLS, pVtab uintptr, column_idx int32) (r int32) {
 	_ = pVtab
-	return int32(**(**Tuint8_t)(__ccgo_up(pVtab + 260 + uintptr(column_idx-int32(m_VEC0_COLUMN_USERN_START)))))
+	return int32(*(*Tuint8_t)(__ccgo_ptr(pVtab + 260 + uintptr(column_idx-int32(m_VEC0_COLUMN_USERN_START)))))
 }
 
 // C documentation
@@ -1724,79 +852,7 @@ func Xvec0_column_idx_to_partition_idx(tls *libc.TLS, pVtab uintptr, column_idx 
 //	 */
 func Xvec0_column_idx_to_vector_idx(tls *libc.TLS, pVtab uintptr, column_idx int32) (r int32) {
 	_ = pVtab
-	return int32(**(**Tuint8_t)(__ccgo_up(pVtab + 260 + uintptr(column_idx-int32(m_VEC0_COLUMN_USERN_START)))))
-}
-
-// C documentation
-//
-//	/**
-//	 * @brief
-//	 *
-//	 * @param pVtab: virtual table to query
-//	 * @param rowid: row to lookup
-//	 * @param vector_column_idx: which vector column to query
-//	 * @param outVector: Output pointer to the vector buffer.
-//	 *                    Must be sqlite3_free()'ed.
-//	 * @param outVectorSize: Pointer to a int where the size of outVector
-//	 *                       will be stored.
-//	 * @return int SQLITE_OK on success.
-//	 */
-func Xvec0_get_vector_data(tls *libc.TLS, pVtab uintptr, rowid Ti64, vector_column_idx int32, outVector uintptr, outVectorSize uintptr) (r int32) {
-	bp := tls.Alloc(48)
-	defer tls.Free(48)
-	var blobOffset, brc, rc int32
-	var buf, p uintptr
-	var size Tsize_t
-	var _ /* chunk_id at bp+0 */ Ti64
-	var _ /* chunk_offset at bp+8 */ Ti64
-	var _ /* vectorBlob at bp+16 */ uintptr
-	_, _, _, _, _, _ = blobOffset, brc, buf, p, rc, size
-	p = pVtab
-	buf = libc.UintptrFromInt32(0)
-	**(**uintptr)(__ccgo_up(bp + 16)) = libc.UintptrFromInt32(0)
-	rc = Xvec0_get_chunk_position(tls, pVtab, rowid, libc.UintptrFromInt32(0), bp, bp+8)
-	if rc == int32(m_SQLITE_EMPTY) {
-		Xvtab_set_error(tls, pVtab, __ccgo_ts+3675, libc.VaList(bp+32, rowid))
-		goto cleanup
-	}
-	if rc != m_SQLITE_OK {
-		goto cleanup
-	}
-	rc = libsqlite3.Xsqlite3_blob_open(tls, (*Tvec0_vtab)(unsafe.Pointer(p)).Fdb, (*Tvec0_vtab)(unsafe.Pointer(p)).FschemaName, **(**uintptr)(__ccgo_up(p + 312 + uintptr(vector_column_idx)*4)), __ccgo_ts+3712, **(**Ti64)(__ccgo_up(bp)), 0, bp+16)
-	if rc != m_SQLITE_OK {
-		Xvtab_set_error(tls, pVtab, __ccgo_ts+3720, libc.VaList(bp+32, rowid))
-		rc = int32(m_SQLITE_ERROR)
-		goto cleanup
-	}
-	size = Xvector_column_byte_size(tls, **(**TVectorColumnDefinition)(__ccgo_up(pVtab + 440 + uintptr(vector_column_idx)*20)))
-	blobOffset = int32(**(**Ti64)(__ccgo_up(bp + 8)) * int64(size))
-	buf = libsqlite3.Xsqlite3_malloc(tls, int32(size))
-	if !(buf != 0) {
-		rc = int32(m_SQLITE_NOMEM)
-		goto cleanup
-	}
-	rc = libsqlite3.Xsqlite3_blob_read(tls, **(**uintptr)(__ccgo_up(bp + 16)), buf, int32(size), blobOffset)
-	if rc != m_SQLITE_OK {
-		libsqlite3.Xsqlite3_free(tls, buf)
-		buf = libc.UintptrFromInt32(0)
-		Xvtab_set_error(tls, pVtab, __ccgo_ts+3778, libc.VaList(bp+32, rowid))
-		rc = int32(m_SQLITE_ERROR)
-		goto cleanup
-	}
-	**(**uintptr)(__ccgo_up(outVector)) = buf
-	if outVectorSize != 0 {
-		**(**int32)(__ccgo_up(outVectorSize)) = int32(size)
-	}
-	rc = m_SQLITE_OK
-	goto cleanup
-cleanup:
-	;
-	brc = libsqlite3.Xsqlite3_blob_close(tls, **(**uintptr)(__ccgo_up(bp + 16)))
-	if rc == m_SQLITE_OK && brc != m_SQLITE_OK {
-		Xvtab_set_error(tls, p, __ccgo_ts+3841, 0)
-		return brc
-	}
-	return rc
+	return int32(*(*Tuint8_t)(__ccgo_ptr(pVtab + 260 + uintptr(column_idx-int32(m_VEC0_COLUMN_USERN_START)))))
 }
 
 func Xvec0_metadata_chunk_size(tls *libc.TLS, kind Tvec0_metadata_column_kind, chunk_size int32) (r int32) {
@@ -1814,19 +870,15 @@ func Xvec0_metadata_chunk_size(tls *libc.TLS, kind Tvec0_metadata_column_kind, c
 }
 
 func Xvec0_metadata_filter_text(tls *libc.TLS, p uintptr, value uintptr, buffer uintptr, size int32, op Tvec0_metadata_operator, b uintptr, metadata_idx int32, chunk_rowid int32, aMetadataIn uintptr, argv_idx int32) (r int32) {
-	bp := tls.Alloc(32)
-	defer tls.Free(32)
-	var aTarget, entry, metadataIn, metadataIn1, rowids, sPrefix, sPrefix1, sTarget, view, view1 uintptr
-	var cmpPrefix, cmpPrefix1, cmpPrefix2, cmpPrefix3, cmpPrefix4, cmpPrefix5, cmpPrefix6, i, i1, i2, i3, i4, i5, i7, nPrefix, nPrefix1, nTarget, rc, v10, v12, v14 int32
+	bp := tls.Alloc(16)
+	defer tls.Free(16)
+	var aTarget, entry, metadataIn, metadataIn1, rowids, sFull, sFull1, sPrefix, sPrefix1, sTarget, view, view1 uintptr
+	var cmpPrefix, cmpPrefix1, cmpPrefix2, cmpPrefix3, cmpPrefix4, cmpPrefix5, cmpPrefix6, i, i1, i2, i3, i4, i5, i7, nFull, nFull1, nPrefix, nPrefix1, nTarget, rc, v10, v12, v14 int32
 	var i6, metadataInIdx, target_idx Tsize_t
-	var _ /* nFull at bp+12 */ int32
-	var _ /* nFull at bp+20 */ int32
 	var _ /* rowidsBlob at bp+4 */ uintptr
-	var _ /* sFull at bp+16 */ uintptr
-	var _ /* sFull at bp+8 */ uintptr
 	var _ /* stmt at bp+0 */ uintptr
-	_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _ = aTarget, cmpPrefix, cmpPrefix1, cmpPrefix2, cmpPrefix3, cmpPrefix4, cmpPrefix5, cmpPrefix6, entry, i, i1, i2, i3, i4, i5, i6, i7, metadataIn, metadataIn1, metadataInIdx, nPrefix, nPrefix1, nTarget, rc, rowids, sPrefix, sPrefix1, sTarget, target_idx, view, view1, v10, v12, v14
-	**(**uintptr)(__ccgo_up(bp)) = libc.UintptrFromInt32(0)
+	_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _ = aTarget, cmpPrefix, cmpPrefix1, cmpPrefix2, cmpPrefix3, cmpPrefix4, cmpPrefix5, cmpPrefix6, entry, i, i1, i2, i3, i4, i5, i6, i7, metadataIn, metadataIn1, metadataInIdx, nFull, nFull1, nPrefix, nPrefix1, nTarget, rc, rowids, sFull, sFull1, sPrefix, sPrefix1, sTarget, target_idx, view, view1, v10, v12, v14
+	*(*uintptr)(__ccgo_ptr(bp)) = libc.UintptrFromInt32(0)
 	rowids = libc.UintptrFromInt32(0)
 	sTarget = libsqlite3.Xsqlite3_value_text(tls, value)
 	nTarget = libsqlite3.Xsqlite3_value_bytes(tls, value)
@@ -1837,17 +889,17 @@ func Xvec0_metadata_filter_text(tls *libc.TLS, p uintptr, value uintptr, buffer 
 	if rc != m_SQLITE_OK {
 		return rc
 	}
-	rowids = libsqlite3.Xsqlite3_malloc(tls, libsqlite3.Xsqlite3_blob_bytes(tls, **(**uintptr)(__ccgo_up(bp + 4))))
+	rowids = libsqlite3.Xsqlite3_malloc(tls, libsqlite3.Xsqlite3_blob_bytes(tls, *(*uintptr)(__ccgo_ptr(bp + 4))))
 	if !(rowids != 0) {
-		libsqlite3.Xsqlite3_blob_close(tls, **(**uintptr)(__ccgo_up(bp + 4)))
+		libsqlite3.Xsqlite3_blob_close(tls, *(*uintptr)(__ccgo_ptr(bp + 4)))
 		return int32(m_SQLITE_NOMEM)
 	}
-	rc = libsqlite3.Xsqlite3_blob_read(tls, **(**uintptr)(__ccgo_up(bp + 4)), rowids, libsqlite3.Xsqlite3_blob_bytes(tls, **(**uintptr)(__ccgo_up(bp + 4))), 0)
+	rc = libsqlite3.Xsqlite3_blob_read(tls, *(*uintptr)(__ccgo_ptr(bp + 4)), rowids, libsqlite3.Xsqlite3_blob_bytes(tls, *(*uintptr)(__ccgo_ptr(bp + 4))), 0)
 	if rc != m_SQLITE_OK {
-		libsqlite3.Xsqlite3_blob_close(tls, **(**uintptr)(__ccgo_up(bp + 4)))
+		libsqlite3.Xsqlite3_blob_close(tls, *(*uintptr)(__ccgo_ptr(bp + 4)))
 		return rc
 	}
-	libsqlite3.Xsqlite3_blob_close(tls, **(**uintptr)(__ccgo_up(bp + 4)))
+	libsqlite3.Xsqlite3_blob_close(tls, *(*uintptr)(__ccgo_ptr(bp + 4)))
 	switch op {
 	case int32(_VEC0_METADATA_OPERATOR_EQ):
 		goto _1
@@ -1873,7 +925,7 @@ _1:
 			break
 		}
 		view = buffer + uintptr(i*int32(m_VEC0_METADATA_TEXT_VIEW_BUFFER_LENGTH))
-		nPrefix = **(**int32)(__ccgo_up(view))
+		nPrefix = *(*int32)(__ccgo_ptr(view))
 		sPrefix = view + 4
 		// for EQ the text lengths must match
 		if nPrefix != nTarget {
@@ -1897,15 +949,15 @@ _1:
 			goto _9
 		}
 		// consult the full string
-		rc = Xvec0_get_metadata_text_long_value(tls, p, bp, metadata_idx, **(**Ti64)(__ccgo_up(rowids + uintptr(i)*8)), bp+12, bp+8)
+		rc = _vec0_get_metadata_text_long_value__ccgo_gp(tls, p, bp, metadata_idx, *(*Ti64)(__ccgo_ptr(rowids + uintptr(i)*8)), unsafe.Pointer(&nFull), unsafe.Pointer(&sFull))
 		if rc != m_SQLITE_OK {
 			goto done
 		}
-		if nPrefix != **(**int32)(__ccgo_up(bp + 12)) {
+		if nPrefix != nFull {
 			rc = int32(m_SQLITE_ERROR)
 			goto done
 		}
-		Xbitmap_set(tls, b, i, libc.BoolInt32(libc.Xstrncmp(tls, **(**uintptr)(__ccgo_up(bp + 8)), sTarget, uint32(**(**int32)(__ccgo_up(bp + 12)))) == 0))
+		Xbitmap_set(tls, b, i, libc.BoolInt32(libc.Xstrncmp(tls, sFull, sTarget, uint32(nFull)) == 0))
 		goto _9
 	_9:
 		;
@@ -1920,7 +972,7 @@ _2:
 			break
 		}
 		view = buffer + uintptr(i1*int32(m_VEC0_METADATA_TEXT_VIEW_BUFFER_LENGTH))
-		nPrefix = **(**int32)(__ccgo_up(view))
+		nPrefix = *(*int32)(__ccgo_ptr(view))
 		sPrefix = view + 4
 		// for NE if text lengths dont match, it never will
 		if nPrefix != nTarget {
@@ -1944,15 +996,15 @@ _2:
 			goto _11
 		}
 		// consult the full string
-		rc = Xvec0_get_metadata_text_long_value(tls, p, bp, metadata_idx, **(**Ti64)(__ccgo_up(rowids + uintptr(i1)*8)), bp+12, bp+8)
+		rc = _vec0_get_metadata_text_long_value__ccgo_gp(tls, p, bp, metadata_idx, *(*Ti64)(__ccgo_ptr(rowids + uintptr(i1)*8)), unsafe.Pointer(&nFull), unsafe.Pointer(&sFull))
 		if rc != m_SQLITE_OK {
 			goto done
 		}
-		if nPrefix != **(**int32)(__ccgo_up(bp + 12)) {
+		if nPrefix != nFull {
 			rc = int32(m_SQLITE_ERROR)
 			goto done
 		}
-		Xbitmap_set(tls, b, i1, libc.BoolInt32(libc.Xstrncmp(tls, **(**uintptr)(__ccgo_up(bp + 8)), sTarget, uint32(**(**int32)(__ccgo_up(bp + 12)))) != 0))
+		Xbitmap_set(tls, b, i1, libc.BoolInt32(libc.Xstrncmp(tls, sFull, sTarget, uint32(nFull)) != 0))
 		goto _11
 	_11:
 		;
@@ -1967,7 +1019,7 @@ _3:
 			break
 		}
 		view = buffer + uintptr(i2*int32(m_VEC0_METADATA_TEXT_VIEW_BUFFER_LENGTH))
-		nPrefix = **(**int32)(__ccgo_up(view))
+		nPrefix = *(*int32)(__ccgo_ptr(view))
 		sPrefix = view + 4
 		if nPrefix <= int32(m_VEC0_METADATA_TEXT_VIEW_DATA_LENGTH) {
 			v12 = nPrefix
@@ -1995,15 +1047,15 @@ _3:
 			goto _13
 		}
 		// TODO(perf): may not need to compare full text in some cases
-		rc = Xvec0_get_metadata_text_long_value(tls, p, bp, metadata_idx, **(**Ti64)(__ccgo_up(rowids + uintptr(i2)*8)), bp+12, bp+8)
+		rc = _vec0_get_metadata_text_long_value__ccgo_gp(tls, p, bp, metadata_idx, *(*Ti64)(__ccgo_ptr(rowids + uintptr(i2)*8)), unsafe.Pointer(&nFull), unsafe.Pointer(&sFull))
 		if rc != m_SQLITE_OK {
 			goto done
 		}
-		if nPrefix != **(**int32)(__ccgo_up(bp + 12)) {
+		if nPrefix != nFull {
 			rc = int32(m_SQLITE_ERROR)
 			goto done
 		}
-		Xbitmap_set(tls, b, i2, libc.BoolInt32(libc.Xstrncmp(tls, **(**uintptr)(__ccgo_up(bp + 8)), sTarget, uint32(**(**int32)(__ccgo_up(bp + 12)))) > 0))
+		Xbitmap_set(tls, b, i2, libc.BoolInt32(libc.Xstrncmp(tls, sFull, sTarget, uint32(nFull)) > 0))
 		goto _13
 	_13:
 		;
@@ -2018,7 +1070,7 @@ _4:
 			break
 		}
 		view = buffer + uintptr(i3*int32(m_VEC0_METADATA_TEXT_VIEW_BUFFER_LENGTH))
-		nPrefix = **(**int32)(__ccgo_up(view))
+		nPrefix = *(*int32)(__ccgo_ptr(view))
 		sPrefix = view + 4
 		if nPrefix <= int32(m_VEC0_METADATA_TEXT_VIEW_DATA_LENGTH) {
 			v12 = nPrefix
@@ -2046,15 +1098,15 @@ _4:
 			goto _17
 		}
 		// TODO(perf): may not need to compare full text in some cases
-		rc = Xvec0_get_metadata_text_long_value(tls, p, bp, metadata_idx, **(**Ti64)(__ccgo_up(rowids + uintptr(i3)*8)), bp+12, bp+8)
+		rc = _vec0_get_metadata_text_long_value__ccgo_gp(tls, p, bp, metadata_idx, *(*Ti64)(__ccgo_ptr(rowids + uintptr(i3)*8)), unsafe.Pointer(&nFull), unsafe.Pointer(&sFull))
 		if rc != m_SQLITE_OK {
 			goto done
 		}
-		if nPrefix != **(**int32)(__ccgo_up(bp + 12)) {
+		if nPrefix != nFull {
 			rc = int32(m_SQLITE_ERROR)
 			goto done
 		}
-		Xbitmap_set(tls, b, i3, libc.BoolInt32(libc.Xstrncmp(tls, **(**uintptr)(__ccgo_up(bp + 8)), sTarget, uint32(**(**int32)(__ccgo_up(bp + 12)))) >= 0))
+		Xbitmap_set(tls, b, i3, libc.BoolInt32(libc.Xstrncmp(tls, sFull, sTarget, uint32(nFull)) >= 0))
 		goto _17
 	_17:
 		;
@@ -2069,7 +1121,7 @@ _5:
 			break
 		}
 		view = buffer + uintptr(i4*int32(m_VEC0_METADATA_TEXT_VIEW_BUFFER_LENGTH))
-		nPrefix = **(**int32)(__ccgo_up(view))
+		nPrefix = *(*int32)(__ccgo_ptr(view))
 		sPrefix = view + 4
 		if nPrefix <= int32(m_VEC0_METADATA_TEXT_VIEW_DATA_LENGTH) {
 			v12 = nPrefix
@@ -2097,15 +1149,15 @@ _5:
 			goto _21
 		}
 		// TODO(perf): may not need to compare full text in some cases
-		rc = Xvec0_get_metadata_text_long_value(tls, p, bp, metadata_idx, **(**Ti64)(__ccgo_up(rowids + uintptr(i4)*8)), bp+12, bp+8)
+		rc = _vec0_get_metadata_text_long_value__ccgo_gp(tls, p, bp, metadata_idx, *(*Ti64)(__ccgo_ptr(rowids + uintptr(i4)*8)), unsafe.Pointer(&nFull), unsafe.Pointer(&sFull))
 		if rc != m_SQLITE_OK {
 			goto done
 		}
-		if nPrefix != **(**int32)(__ccgo_up(bp + 12)) {
+		if nPrefix != nFull {
 			rc = int32(m_SQLITE_ERROR)
 			goto done
 		}
-		Xbitmap_set(tls, b, i4, libc.BoolInt32(libc.Xstrncmp(tls, **(**uintptr)(__ccgo_up(bp + 8)), sTarget, uint32(**(**int32)(__ccgo_up(bp + 12)))) <= 0))
+		Xbitmap_set(tls, b, i4, libc.BoolInt32(libc.Xstrncmp(tls, sFull, sTarget, uint32(nFull)) <= 0))
 		goto _21
 	_21:
 		;
@@ -2120,7 +1172,7 @@ _6:
 			break
 		}
 		view = buffer + uintptr(i5*int32(m_VEC0_METADATA_TEXT_VIEW_BUFFER_LENGTH))
-		nPrefix = **(**int32)(__ccgo_up(view))
+		nPrefix = *(*int32)(__ccgo_ptr(view))
 		sPrefix = view + 4
 		if nPrefix <= int32(m_VEC0_METADATA_TEXT_VIEW_DATA_LENGTH) {
 			v12 = nPrefix
@@ -2148,15 +1200,15 @@ _6:
 			goto _25
 		}
 		// TODO(perf): may not need to compare full text in some cases
-		rc = Xvec0_get_metadata_text_long_value(tls, p, bp, metadata_idx, **(**Ti64)(__ccgo_up(rowids + uintptr(i5)*8)), bp+12, bp+8)
+		rc = _vec0_get_metadata_text_long_value__ccgo_gp(tls, p, bp, metadata_idx, *(*Ti64)(__ccgo_ptr(rowids + uintptr(i5)*8)), unsafe.Pointer(&nFull), unsafe.Pointer(&sFull))
 		if rc != m_SQLITE_OK {
 			goto done
 		}
-		if nPrefix != **(**int32)(__ccgo_up(bp + 12)) {
+		if nPrefix != nFull {
 			rc = int32(m_SQLITE_ERROR)
 			goto done
 		}
-		Xbitmap_set(tls, b, i5, libc.BoolInt32(libc.Xstrncmp(tls, **(**uintptr)(__ccgo_up(bp + 8)), sTarget, uint32(**(**int32)(__ccgo_up(bp + 12)))) < 0))
+		Xbitmap_set(tls, b, i5, libc.BoolInt32(libc.Xstrncmp(tls, sFull, sTarget, uint32(nFull)) < 0))
 		goto _25
 	_25:
 		;
@@ -2193,7 +1245,7 @@ _7:
 			break
 		}
 		view1 = buffer + uintptr(i7*int32(m_VEC0_METADATA_TEXT_VIEW_BUFFER_LENGTH))
-		nPrefix1 = **(**int32)(__ccgo_up(view1))
+		nPrefix1 = *(*int32)(__ccgo_ptr(view1))
 		sPrefix1 = view1 + 4
 		target_idx = uint32(0)
 		for {
@@ -2220,15 +1272,15 @@ _7:
 			if cmpPrefix6 != 0 {
 				goto _31
 			}
-			rc = Xvec0_get_metadata_text_long_value(tls, p, bp, metadata_idx, **(**Ti64)(__ccgo_up(rowids + uintptr(i7)*8)), bp+20, bp+16)
+			rc = _vec0_get_metadata_text_long_value__ccgo_gp(tls, p, bp, metadata_idx, *(*Ti64)(__ccgo_ptr(rowids + uintptr(i7)*8)), unsafe.Pointer(&nFull1), unsafe.Pointer(&sFull1))
 			if rc != m_SQLITE_OK {
 				goto done
 			}
-			if nPrefix1 != **(**int32)(__ccgo_up(bp + 20)) {
+			if nPrefix1 != nFull1 {
 				rc = int32(m_SQLITE_ERROR)
 				goto done
 			}
-			if libc.Xstrncmp(tls, **(**uintptr)(__ccgo_up(bp + 16)), (*TVec0MetadataInTextEntry)(unsafe.Pointer(entry)).FzString, uint32(**(**int32)(__ccgo_up(bp + 20)))) == 0 {
+			if libc.Xstrncmp(tls, sFull1, (*TVec0MetadataInTextEntry)(unsafe.Pointer(entry)).FzString, uint32(nFull1)) == 0 {
 				Xbitmap_set(tls, b, i7, int32(1))
 				break
 			}
@@ -2249,310 +1301,9 @@ _8:
 	goto done
 done:
 	;
-	libsqlite3.Xsqlite3_finalize(tls, **(**uintptr)(__ccgo_up(bp)))
+	libsqlite3.Xsqlite3_finalize(tls, *(*uintptr)(__ccgo_ptr(bp)))
 	libsqlite3.Xsqlite3_free(tls, rowids)
 	return rc
-}
-
-// C documentation
-//
-//	/**
-//	 * @brief Adds a new chunk for the vec0 table, and the corresponding vector
-//	 * chunks.
-//	 *
-//	 * Inserts a new row into the _chunks table, with blank data, and uses that new
-//	 * rowid to insert new blank rows into _vector_chunksXX tables.
-//	 *
-//	 * @param p: vec0 table to add new chunk
-//	 * @param paritionKeyValues: Array of partition key valeus for the new chunk, if available
-//	 * @param chunk_rowid: Output pointer, if not NULL, then will be filled with the
-//	 * new chunk rowid.
-//	 * @return int SQLITE_OK on success, error code otherwise.
-//	 */
-func Xvec0_new_chunk(tls *libc.TLS, p uintptr, partitionKeyValues uintptr, chunk_rowid uintptr) (r int32) {
-	bp := tls.Alloc(48)
-	defer tls.Free(48)
-	var failed, i, i1, i2, i3, i4, metadata_column_idx, rc, vector_column_idx int32
-	var rowid, vectorsSize Ti64
-	var s, zSql uintptr
-	var _ /* stmt at bp+0 */ uintptr
-	_, _, _, _, _, _, _, _, _, _, _, _, _ = failed, i, i1, i2, i3, i4, metadata_column_idx, rc, rowid, s, vector_column_idx, vectorsSize, zSql
-	// Step 1: Insert a new row in _chunks, capture that new rowid
-	if (*Tvec0_vtab)(unsafe.Pointer(p)).FnumPartitionColumns > 0 {
-		s = libsqlite3.Xsqlite3_str_new(tls, libc.UintptrFromInt32(0))
-		libsqlite3.Xsqlite3_str_appendf(tls, s, __ccgo_ts+5165, libc.VaList(bp+16, (*Tvec0_vtab)(unsafe.Pointer(p)).FschemaName, (*Tvec0_vtab)(unsafe.Pointer(p)).FtableName))
-		libsqlite3.Xsqlite3_str_appendall(tls, s, __ccgo_ts+5194)
-		i = 0
-		for {
-			if !(i < (*Tvec0_vtab)(unsafe.Pointer(p)).FnumPartitionColumns) {
-				break
-			}
-			libsqlite3.Xsqlite3_str_appendf(tls, s, __ccgo_ts+5218, libc.VaList(bp+16, i))
-			goto _1
-		_1:
-			;
-			i = i + 1
-		}
-		libsqlite3.Xsqlite3_str_appendall(tls, s, __ccgo_ts+5234)
-		i1 = 0
-		for {
-			if !(i1 < (*Tvec0_vtab)(unsafe.Pointer(p)).FnumPartitionColumns) {
-				break
-			}
-			libsqlite3.Xsqlite3_str_appendall(tls, s, __ccgo_ts+5252)
-			goto _2
-		_2:
-			;
-			i1 = i1 + 1
-		}
-		libsqlite3.Xsqlite3_str_appendall(tls, s, __ccgo_ts+5256)
-		zSql = libsqlite3.Xsqlite3_str_finish(tls, s)
-	} else {
-		zSql = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+5258, libc.VaList(bp+16, (*Tvec0_vtab)(unsafe.Pointer(p)).FschemaName, (*Tvec0_vtab)(unsafe.Pointer(p)).FtableName))
-	}
-	if !(zSql != 0) {
-		return int32(m_SQLITE_NOMEM)
-	}
-	rc = libsqlite3.Xsqlite3_prepare_v2(tls, (*Tvec0_vtab)(unsafe.Pointer(p)).Fdb, zSql, -int32(1), bp, libc.UintptrFromInt32(0))
-	libsqlite3.Xsqlite3_free(tls, zSql)
-	if rc != m_SQLITE_OK {
-		libsqlite3.Xsqlite3_finalize(tls, **(**uintptr)(__ccgo_up(bp)))
-		return rc
-	}
-	libsqlite3.Xsqlite3_bind_int64(tls, **(**uintptr)(__ccgo_up(bp)), int32(1), int64((*Tvec0_vtab)(unsafe.Pointer(p)).Fchunk_size))                      // size
-	libsqlite3.Xsqlite3_bind_zeroblob(tls, **(**uintptr)(__ccgo_up(bp)), int32(2), (*Tvec0_vtab)(unsafe.Pointer(p)).Fchunk_size/int32(m___CHAR_BIT__))    // validity bitmap
-	libsqlite3.Xsqlite3_bind_zeroblob(tls, **(**uintptr)(__ccgo_up(bp)), int32(3), int32(uint32((*Tvec0_vtab)(unsafe.Pointer(p)).Fchunk_size)*uint32(8))) // rowids
-	i2 = 0
-	for {
-		if !(i2 < (*Tvec0_vtab)(unsafe.Pointer(p)).FnumPartitionColumns) {
-			break
-		}
-		libsqlite3.Xsqlite3_bind_value(tls, **(**uintptr)(__ccgo_up(bp)), int32(4)+i2, **(**uintptr)(__ccgo_up(partitionKeyValues + uintptr(i2)*4)))
-		goto _3
-	_3:
-		;
-		i2 = i2 + 1
-	}
-	rc = libsqlite3.Xsqlite3_step(tls, **(**uintptr)(__ccgo_up(bp)))
-	failed = libc.BoolInt32(rc != int32(m_SQLITE_DONE))
-	rowid = libsqlite3.Xsqlite3_last_insert_rowid(tls, (*Tvec0_vtab)(unsafe.Pointer(p)).Fdb)
-	libsqlite3.Xsqlite3_finalize(tls, **(**uintptr)(__ccgo_up(bp)))
-	if failed != 0 {
-		return int32(m_SQLITE_ERROR)
-	}
-	// Step 2: Create new vector chunks for each vector column, with
-	//          that new chunk_rowid.
-	//
-	// SHADOW_TABLE_ROWID_QUIRK: The _vector_chunksNN and _metadatachunksNN
-	// shadow tables declare "rowid PRIMARY KEY" without the INTEGER type, so
-	// the user-defined "rowid" column is NOT an alias for the internal SQLite
-	// rowid (_rowid_). When only appending rows these two happen to stay in
-	// sync, but after a chunk is deleted (vec0Update_Delete_DeleteChunkIfEmpty)
-	// and a new one is created, the auto-assigned _rowid_ can diverge from the
-	// user "rowid" value. Since sqlite3_blob_open() addresses rows by internal
-	// _rowid_, we must explicitly set BOTH _rowid_ and "rowid" to the same
-	// value so that later blob operations can find the row.
-	//
-	// The correct long-term fix is changing the schema to
-	//   "rowid INTEGER PRIMARY KEY"
-	// which makes it a true alias, but that would break existing databases.
-	i3 = 0
-	for {
-		if !(i3 < Xvec0_num_defined_user_columns(tls, p)) {
-			break
-		}
-		if **(**Tvec0_user_column_kind)(__ccgo_up(p + 52 + uintptr(i3)*4)) != int32(_SQLITE_VEC0_USER_COLUMN_KIND_VECTOR) {
-			goto _4
-		}
-		vector_column_idx = int32(**(**Tuint8_t)(__ccgo_up(p + 260 + uintptr(i3))))
-		vectorsSize = int64(uint32((*Tvec0_vtab)(unsafe.Pointer(p)).Fchunk_size) * Xvector_column_byte_size(tls, **(**TVectorColumnDefinition)(__ccgo_up(p + 440 + uintptr(vector_column_idx)*20))))
-		// See SHADOW_TABLE_ROWID_QUIRK above for why _rowid_ and rowid are both set.
-		zSql = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+5329, libc.VaList(bp+16, (*Tvec0_vtab)(unsafe.Pointer(p)).FschemaName, (*Tvec0_vtab)(unsafe.Pointer(p)).FtableName, vector_column_idx))
-		if !(zSql != 0) {
-			return int32(m_SQLITE_NOMEM)
-		}
-		rc = libsqlite3.Xsqlite3_prepare_v2(tls, (*Tvec0_vtab)(unsafe.Pointer(p)).Fdb, zSql, -int32(1), bp, libc.UintptrFromInt32(0))
-		libsqlite3.Xsqlite3_free(tls, zSql)
-		if rc != m_SQLITE_OK {
-			libsqlite3.Xsqlite3_finalize(tls, **(**uintptr)(__ccgo_up(bp)))
-			return rc
-		}
-		libsqlite3.Xsqlite3_bind_int64(tls, **(**uintptr)(__ccgo_up(bp)), int32(1), rowid) // _rowid_ (internal SQLite rowid)
-		libsqlite3.Xsqlite3_bind_int64(tls, **(**uintptr)(__ccgo_up(bp)), int32(2), rowid) // rowid   (user-defined column)
-		libsqlite3.Xsqlite3_bind_zeroblob64(tls, **(**uintptr)(__ccgo_up(bp)), int32(3), uint64(vectorsSize))
-		rc = libsqlite3.Xsqlite3_step(tls, **(**uintptr)(__ccgo_up(bp)))
-		libsqlite3.Xsqlite3_finalize(tls, **(**uintptr)(__ccgo_up(bp)))
-		if rc != int32(m_SQLITE_DONE) {
-			return rc
-		}
-		goto _4
-	_4:
-		;
-		i3 = i3 + 1
-	}
-	// Step 3: Create new metadata chunks for each metadata column
-	i4 = 0
-	for {
-		if !(i4 < Xvec0_num_defined_user_columns(tls, p)) {
-			break
-		}
-		if **(**Tvec0_user_column_kind)(__ccgo_up(p + 52 + uintptr(i4)*4)) != int32(_SQLITE_VEC0_USER_COLUMN_KIND_METADATA) {
-			goto _5
-		}
-		metadata_column_idx = int32(**(**Tuint8_t)(__ccgo_up(p + 260 + uintptr(i4))))
-		// See SHADOW_TABLE_ROWID_QUIRK above for why _rowid_ and rowid are both set.
-		zSql = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+5410, libc.VaList(bp+16, (*Tvec0_vtab)(unsafe.Pointer(p)).FschemaName, (*Tvec0_vtab)(unsafe.Pointer(p)).FtableName, metadata_column_idx))
-		if !(zSql != 0) {
-			return int32(m_SQLITE_NOMEM)
-		}
-		rc = libsqlite3.Xsqlite3_prepare_v2(tls, (*Tvec0_vtab)(unsafe.Pointer(p)).Fdb, zSql, -int32(1), bp, libc.UintptrFromInt32(0))
-		libsqlite3.Xsqlite3_free(tls, zSql)
-		if rc != m_SQLITE_OK {
-			libsqlite3.Xsqlite3_finalize(tls, **(**uintptr)(__ccgo_up(bp)))
-			return rc
-		}
-		libsqlite3.Xsqlite3_bind_int64(tls, **(**uintptr)(__ccgo_up(bp)), int32(1), rowid) // _rowid_ (internal SQLite rowid)
-		libsqlite3.Xsqlite3_bind_int64(tls, **(**uintptr)(__ccgo_up(bp)), int32(2), rowid) // rowid   (user-defined column)
-		libsqlite3.Xsqlite3_bind_zeroblob64(tls, **(**uintptr)(__ccgo_up(bp)), int32(3), uint64(Xvec0_metadata_chunk_size(tls, (**(**TVec0MetadataColumnDefinition)(__ccgo_up(p + 1000 + uintptr(metadata_column_idx)*12))).Fkind, (*Tvec0_vtab)(unsafe.Pointer(p)).Fchunk_size)))
-		rc = libsqlite3.Xsqlite3_step(tls, **(**uintptr)(__ccgo_up(bp)))
-		libsqlite3.Xsqlite3_finalize(tls, **(**uintptr)(__ccgo_up(bp)))
-		if rc != int32(m_SQLITE_DONE) {
-			return rc
-		}
-		goto _5
-	_5:
-		;
-		i4 = i4 + 1
-	}
-	if chunk_rowid != 0 {
-		**(**Ti64)(__ccgo_up(chunk_rowid)) = rowid
-	}
-	return m_SQLITE_OK
-}
-
-// C documentation
-//
-//	/**
-//	 * @brief Parse an vec0 vtab argv[i] column definition and see if
-//	 * it's a vector column defintion, ex `contents_embedding float[768]`.
-//	 *
-//	 * @param source vec0 argv[i] item
-//	 * @param source_length length of source in bytes
-//	 * @param outColumn Output the parse vector column to this struct, if success
-//	 * @return int SQLITE_OK on success, SQLITE_EMPTY is it's not a vector column
-//	 * definition, SQLITE_ERROR on error.
-//	 */
-func Xvec0_parse_vector_column(tls *libc.TLS, source uintptr, source_length int32, outColumn uintptr) (r int32) {
-	bp := tls.Alloc(48)
-	defer tls.Free(48)
-	var dimensions, keyLength, nameLength, rc, valueLength int32
-	var distanceMetric _Vec0DistanceMetrics
-	var elementType _VectorElementType
-	var key, name, value uintptr
-	var _ /* scanner at bp+0 */ TVec0Scanner
-	var _ /* token at bp+12 */ TVec0Token
-	_, _, _, _, _, _, _, _, _, _ = dimensions, distanceMetric, elementType, key, keyLength, name, nameLength, rc, value, valueLength
-	distanceMetric = int32(_VEC0_DISTANCE_METRIC_L2)
-	Xvec0_scanner_init(tls, bp, source, source_length)
-	// starts with an identifier
-	rc = Xvec0_scanner_next(tls, bp, bp+12)
-	if rc != int32(m_VEC0_TOKEN_RESULT_SOME) && (**(**TVec0Token)(__ccgo_up(bp + 12))).Ftoken_type != int32(_TOKEN_TYPE_IDENTIFIER) {
-		return int32(m_SQLITE_EMPTY)
-	}
-	name = (**(**TVec0Token)(__ccgo_up(bp + 12))).Fstart
-	nameLength = int32((**(**TVec0Token)(__ccgo_up(bp + 12))).Fend) - int32((**(**TVec0Token)(__ccgo_up(bp + 12))).Fstart)
-	// vector column type comes next: float, int, or bit
-	rc = Xvec0_scanner_next(tls, bp, bp+12)
-	if rc != int32(m_VEC0_TOKEN_RESULT_SOME) || (**(**TVec0Token)(__ccgo_up(bp + 12))).Ftoken_type != int32(_TOKEN_TYPE_IDENTIFIER) {
-		return int32(m_SQLITE_EMPTY)
-	}
-	if libsqlite3.Xsqlite3_strnicmp(tls, (**(**TVec0Token)(__ccgo_up(bp + 12))).Fstart, __ccgo_ts+1771, int32(5)) == 0 || libsqlite3.Xsqlite3_strnicmp(tls, (**(**TVec0Token)(__ccgo_up(bp + 12))).Fstart, __ccgo_ts+1838, int32(3)) == 0 {
-		elementType = int32(_SQLITE_VEC_ELEMENT_TYPE_FLOAT32)
-	} else {
-		if libsqlite3.Xsqlite3_strnicmp(tls, (**(**TVec0Token)(__ccgo_up(bp + 12))).Fstart, __ccgo_ts+8, int32(4)) == 0 || libsqlite3.Xsqlite3_strnicmp(tls, (**(**TVec0Token)(__ccgo_up(bp + 12))).Fstart, __ccgo_ts+1842, int32(2)) == 0 {
-			elementType = int32(_SQLITE_VEC_ELEMENT_TYPE_INT8)
-		} else {
-			if libsqlite3.Xsqlite3_strnicmp(tls, (**(**TVec0Token)(__ccgo_up(bp + 12))).Fstart, __ccgo_ts+13, int32(3)) == 0 {
-				elementType = int32(_SQLITE_VEC_ELEMENT_TYPE_BIT)
-			} else {
-				return int32(m_SQLITE_EMPTY)
-			}
-		}
-	}
-	// left '[' bracket
-	rc = Xvec0_scanner_next(tls, bp, bp+12)
-	if rc != int32(m_VEC0_TOKEN_RESULT_SOME) && (**(**TVec0Token)(__ccgo_up(bp + 12))).Ftoken_type != int32(_TOKEN_TYPE_LBRACKET) {
-		return int32(m_SQLITE_EMPTY)
-	}
-	// digit, for vector dimension length
-	rc = Xvec0_scanner_next(tls, bp, bp+12)
-	if rc != int32(m_VEC0_TOKEN_RESULT_SOME) && (**(**TVec0Token)(__ccgo_up(bp + 12))).Ftoken_type != int32(_TOKEN_TYPE_DIGIT) {
-		return int32(m_SQLITE_ERROR)
-	}
-	dimensions = libc.Xatoi(tls, (**(**TVec0Token)(__ccgo_up(bp + 12))).Fstart)
-	if dimensions <= 0 {
-		return int32(m_SQLITE_ERROR)
-	}
-	// // right ']' bracket
-	rc = Xvec0_scanner_next(tls, bp, bp+12)
-	if rc != int32(m_VEC0_TOKEN_RESULT_SOME) && (**(**TVec0Token)(__ccgo_up(bp + 12))).Ftoken_type != int32(_TOKEN_TYPE_RBRACKET) {
-		return int32(m_SQLITE_ERROR)
-	}
-	// any other tokens left should be column-level options , ex `key=value`
-	// ex `distance_metric=L2 distance_metric=cosine` should error
-	for int32(1) != 0 {
-		// should be EOF or identifier (option key)
-		rc = Xvec0_scanner_next(tls, bp, bp+12)
-		if rc == int32(m_VEC0_TOKEN_RESULT_EOF) {
-			break
-		}
-		if rc != int32(m_VEC0_TOKEN_RESULT_SOME) && (**(**TVec0Token)(__ccgo_up(bp + 12))).Ftoken_type != int32(_TOKEN_TYPE_IDENTIFIER) {
-			return int32(m_SQLITE_ERROR)
-		}
-		key = (**(**TVec0Token)(__ccgo_up(bp + 12))).Fstart
-		keyLength = int32((**(**TVec0Token)(__ccgo_up(bp + 12))).Fend) - int32((**(**TVec0Token)(__ccgo_up(bp + 12))).Fstart)
-		if libsqlite3.Xsqlite3_strnicmp(tls, key, __ccgo_ts+1845, keyLength) == 0 {
-			if elementType == int32(_SQLITE_VEC_ELEMENT_TYPE_BIT) {
-				return int32(m_SQLITE_ERROR)
-			}
-			// ensure equal sign after distance_metric
-			rc = Xvec0_scanner_next(tls, bp, bp+12)
-			if rc != int32(m_VEC0_TOKEN_RESULT_SOME) && (**(**TVec0Token)(__ccgo_up(bp + 12))).Ftoken_type != int32(_TOKEN_TYPE_EQ) {
-				return int32(m_SQLITE_ERROR)
-			}
-			// distance_metric value, an identifier (L2, cosine, etc)
-			rc = Xvec0_scanner_next(tls, bp, bp+12)
-			if rc != int32(m_VEC0_TOKEN_RESULT_SOME) && (**(**TVec0Token)(__ccgo_up(bp + 12))).Ftoken_type != int32(_TOKEN_TYPE_IDENTIFIER) {
-				return int32(m_SQLITE_ERROR)
-			}
-			value = (**(**TVec0Token)(__ccgo_up(bp + 12))).Fstart
-			valueLength = int32((**(**TVec0Token)(__ccgo_up(bp + 12))).Fend) - int32((**(**TVec0Token)(__ccgo_up(bp + 12))).Fstart)
-			if libsqlite3.Xsqlite3_strnicmp(tls, value, __ccgo_ts+1861, valueLength) == 0 {
-				distanceMetric = int32(_VEC0_DISTANCE_METRIC_L2)
-			} else {
-				if libsqlite3.Xsqlite3_strnicmp(tls, value, __ccgo_ts+1864, valueLength) == 0 {
-					distanceMetric = int32(_VEC0_DISTANCE_METRIC_L1)
-				} else {
-					if libsqlite3.Xsqlite3_strnicmp(tls, value, __ccgo_ts+1867, valueLength) == 0 {
-						distanceMetric = int32(_VEC0_DISTANCE_METRIC_COSINE)
-					} else {
-						return int32(m_SQLITE_ERROR)
-					}
-				}
-			}
-		} else {
-			return int32(m_SQLITE_ERROR)
-		}
-	}
-	(*TVectorColumnDefinition)(unsafe.Pointer(outColumn)).Fname = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+1874, libc.VaList(bp+32, nameLength, name))
-	if !((*TVectorColumnDefinition)(unsafe.Pointer(outColumn)).Fname != 0) {
-		return int32(m_SQLITE_ERROR)
-	}
-	(*TVectorColumnDefinition)(unsafe.Pointer(outColumn)).Fname_length = nameLength
-	(*TVectorColumnDefinition)(unsafe.Pointer(outColumn)).Fdistance_metric = distanceMetric
-	(*TVectorColumnDefinition)(unsafe.Pointer(outColumn)).Felement_type = elementType
-	(*TVectorColumnDefinition)(unsafe.Pointer(outColumn)).Fdimensions = uint32(dimensions)
-	return m_SQLITE_OK
 }
 
 // C documentation
@@ -2568,75 +1319,74 @@ func Xvec0_parse_vector_column(tls *libc.TLS, source uintptr, source_length int3
 //	 * @return int
 //	 */
 func Xvec0_result_metadata_value_for_rowid(tls *libc.TLS, p uintptr, rowid Ti64, metadata_idx int32, context uintptr) (r int32) {
-	bp := tls.Alloc(96)
-	defer tls.Free(96)
+	bp := tls.Alloc(80)
+	defer tls.Free(80)
+	var chunk_id, chunk_offset Ti64
 	var length, rc, value int32
 	var zSql uintptr
-	var _ /* blobValue at bp+16 */ uintptr
-	var _ /* block at bp+20 */ Tu8
-	var _ /* chunk_id at bp+0 */ Ti64
-	var _ /* chunk_offset at bp+8 */ Ti64
-	var _ /* stmt at bp+56 */ uintptr
-	var _ /* value at bp+24 */ Ti64
-	var _ /* value at bp+32 */ float64
-	var _ /* view at bp+40 */ [16]Tu8
-	_, _, _, _ = length, rc, value, zSql
-	rc = Xvec0_get_chunk_position(tls, p, rowid, libc.UintptrFromInt32(0), bp, bp+8)
+	var _ /* blobValue at bp+0 */ uintptr
+	var _ /* block at bp+4 */ Tu8
+	var _ /* stmt at bp+40 */ uintptr
+	var _ /* value at bp+16 */ float64
+	var _ /* value at bp+8 */ Ti64
+	var _ /* view at bp+24 */ [16]Tu8
+	_, _, _, _, _, _ = chunk_id, chunk_offset, length, rc, value, zSql
+	rc = _vec0_get_chunk_position__ccgo_gp(tls, p, rowid, nil, unsafe.Pointer(&chunk_id), unsafe.Pointer(&chunk_offset))
 	if rc != m_SQLITE_OK {
 		return rc
 	}
-	rc = libsqlite3.Xsqlite3_blob_open(tls, (*Tvec0_vtab)(unsafe.Pointer(p)).Fdb, (*Tvec0_vtab)(unsafe.Pointer(p)).FschemaName, **(**uintptr)(__ccgo_up(p + 376 + uintptr(metadata_idx)*4)), __ccgo_ts+4053, **(**Ti64)(__ccgo_up(bp)), 0, bp+16)
+	rc = libsqlite3.Xsqlite3_blob_open(tls, (*Tvec0_vtab)(unsafe.Pointer(p)).Fdb, (*Tvec0_vtab)(unsafe.Pointer(p)).FschemaName, *(*uintptr)(__ccgo_ptr(p + 376 + uintptr(metadata_idx)*4)), __ccgo_ts+4053, chunk_id, 0, bp)
 	if rc != m_SQLITE_OK {
 		return rc
 	}
-	switch (**(**TVec0MetadataColumnDefinition)(__ccgo_up(p + 1000 + uintptr(metadata_idx)*12))).Fkind {
+	switch (*(*TVec0MetadataColumnDefinition)(__ccgo_ptr(p + 1000 + uintptr(metadata_idx)*12))).Fkind {
 	case int32(_VEC0_METADATA_COLUMN_KIND_BOOLEAN):
-		rc = libsqlite3.Xsqlite3_blob_read(tls, **(**uintptr)(__ccgo_up(bp + 16)), bp+20, int32(1), int32(**(**Ti64)(__ccgo_up(bp + 8))/int64(m___CHAR_BIT__)))
+		rc = libsqlite3.Xsqlite3_blob_read(tls, *(*uintptr)(__ccgo_ptr(bp)), bp+4, int32(1), int32(chunk_offset/int64(m___CHAR_BIT__)))
 		if rc != m_SQLITE_OK {
 			goto done
 		}
-		value = int32(**(**Tu8)(__ccgo_up(bp + 20))) >> (**(**Ti64)(__ccgo_up(bp + 8)) % int64(m___CHAR_BIT__)) & int32(1)
+		value = int32(*(*Tu8)(__ccgo_ptr(bp + 4))) >> (chunk_offset % int64(m___CHAR_BIT__)) & int32(1)
 		libsqlite3.Xsqlite3_result_int(tls, context, value)
 	case int32(_VEC0_METADATA_COLUMN_KIND_INTEGER):
-		rc = libsqlite3.Xsqlite3_blob_read(tls, **(**uintptr)(__ccgo_up(bp + 16)), bp+24, int32(8), int32(**(**Ti64)(__ccgo_up(bp + 8))*int64(8)))
+		rc = libsqlite3.Xsqlite3_blob_read(tls, *(*uintptr)(__ccgo_ptr(bp)), bp+8, int32(8), int32(chunk_offset*int64(8)))
 		if rc != m_SQLITE_OK {
 			goto done
 		}
-		libsqlite3.Xsqlite3_result_int64(tls, context, **(**Ti64)(__ccgo_up(bp + 24)))
+		libsqlite3.Xsqlite3_result_int64(tls, context, *(*Ti64)(__ccgo_ptr(bp + 8)))
 	case int32(_VEC0_METADATA_COLUMN_KIND_FLOAT):
-		rc = libsqlite3.Xsqlite3_blob_read(tls, **(**uintptr)(__ccgo_up(bp + 16)), bp+32, int32(8), int32(**(**Ti64)(__ccgo_up(bp + 8))*int64(8)))
+		rc = libsqlite3.Xsqlite3_blob_read(tls, *(*uintptr)(__ccgo_ptr(bp)), bp+16, int32(8), int32(chunk_offset*int64(8)))
 		if rc != m_SQLITE_OK {
 			goto done
 		}
-		libsqlite3.Xsqlite3_result_double(tls, context, **(**float64)(__ccgo_up(bp + 32)))
+		libsqlite3.Xsqlite3_result_double(tls, context, *(*float64)(__ccgo_ptr(bp + 16)))
 	case int32(_VEC0_METADATA_COLUMN_KIND_TEXT):
-		rc = libsqlite3.Xsqlite3_blob_read(tls, **(**uintptr)(__ccgo_up(bp + 16)), bp+40, int32(m_VEC0_METADATA_TEXT_VIEW_BUFFER_LENGTH), int32(**(**Ti64)(__ccgo_up(bp + 8))*int64(m_VEC0_METADATA_TEXT_VIEW_BUFFER_LENGTH)))
+		rc = libsqlite3.Xsqlite3_blob_read(tls, *(*uintptr)(__ccgo_ptr(bp)), bp+24, int32(m_VEC0_METADATA_TEXT_VIEW_BUFFER_LENGTH), int32(chunk_offset*int64(m_VEC0_METADATA_TEXT_VIEW_BUFFER_LENGTH)))
 		if rc != m_SQLITE_OK {
 			goto done
 		}
-		length = **(**int32)(__ccgo_up(bp + 40))
+		length = *(*int32)(__ccgo_ptr(bp + 24))
 		if length <= int32(m_VEC0_METADATA_TEXT_VIEW_DATA_LENGTH) {
-			libsqlite3.Xsqlite3_result_text(tls, context, bp+40+libc.UintptrFromInt32(4), length, uintptr(-libc.Int32FromInt32(1)))
+			libsqlite3.Xsqlite3_result_text(tls, context, bp+24+libc.UintptrFromInt32(4), length, uintptr(-libc.Int32FromInt32(1)))
 		} else {
-			zSql = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+4058, libc.VaList(bp+72, (*Tvec0_vtab)(unsafe.Pointer(p)).FschemaName, (*Tvec0_vtab)(unsafe.Pointer(p)).FtableName, metadata_idx))
+			zSql = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+4058, libc.VaList(bp+56, (*Tvec0_vtab)(unsafe.Pointer(p)).FschemaName, (*Tvec0_vtab)(unsafe.Pointer(p)).FtableName, metadata_idx))
 			if !(zSql != 0) {
 				rc = int32(m_SQLITE_ERROR)
 				goto done
 			}
-			rc = libsqlite3.Xsqlite3_prepare_v2(tls, (*Tvec0_vtab)(unsafe.Pointer(p)).Fdb, zSql, -int32(1), bp+56, libc.UintptrFromInt32(0))
+			rc = libsqlite3.Xsqlite3_prepare_v2(tls, (*Tvec0_vtab)(unsafe.Pointer(p)).Fdb, zSql, -int32(1), bp+40, libc.UintptrFromInt32(0))
 			libsqlite3.Xsqlite3_free(tls, zSql)
 			if rc != m_SQLITE_OK {
 				goto done
 			}
-			libsqlite3.Xsqlite3_bind_int64(tls, **(**uintptr)(__ccgo_up(bp + 56)), int32(1), rowid)
-			rc = libsqlite3.Xsqlite3_step(tls, **(**uintptr)(__ccgo_up(bp + 56)))
+			libsqlite3.Xsqlite3_bind_int64(tls, *(*uintptr)(__ccgo_ptr(bp + 40)), int32(1), rowid)
+			rc = libsqlite3.Xsqlite3_step(tls, *(*uintptr)(__ccgo_ptr(bp + 40)))
 			if rc != int32(m_SQLITE_ROW) {
-				libsqlite3.Xsqlite3_finalize(tls, **(**uintptr)(__ccgo_up(bp + 56)))
+				libsqlite3.Xsqlite3_finalize(tls, *(*uintptr)(__ccgo_ptr(bp + 40)))
 				rc = int32(m_SQLITE_ERROR)
 				goto done
 			}
-			libsqlite3.Xsqlite3_result_value(tls, context, libsqlite3.Xsqlite3_column_value(tls, **(**uintptr)(__ccgo_up(bp + 56)), 0))
-			libsqlite3.Xsqlite3_finalize(tls, **(**uintptr)(__ccgo_up(bp + 56)))
+			libsqlite3.Xsqlite3_result_value(tls, context, libsqlite3.Xsqlite3_column_value(tls, *(*uintptr)(__ccgo_ptr(bp + 40)), 0))
+			libsqlite3.Xsqlite3_finalize(tls, *(*uintptr)(__ccgo_ptr(bp + 40)))
 			rc = m_SQLITE_OK
 		}
 		break
@@ -2645,7 +1395,7 @@ func Xvec0_result_metadata_value_for_rowid(tls *libc.TLS, p uintptr, rowid Ti64,
 done:
 	;
 	// blobValue is read-only, will not fail on close
-	libsqlite3.Xsqlite3_blob_close(tls, **(**uintptr)(__ccgo_up(bp + 16)))
+	libsqlite3.Xsqlite3_blob_close(tls, *(*uintptr)(__ccgo_ptr(bp)))
 	return rc
 }
 
@@ -2675,7 +1425,7 @@ func Xvec0_set_metadata_filter_bitmap(tls *libc.TLS, p uintptr, metadata_idx int
 	if rc != m_SQLITE_OK {
 		return rc
 	}
-	kind = (**(**TVec0MetadataColumnDefinition)(__ccgo_up(p + 1000 + uintptr(metadata_idx)*12))).Fkind
+	kind = (*(*TVec0MetadataColumnDefinition)(__ccgo_ptr(p + 1000 + uintptr(metadata_idx)*12))).Fkind
 	szMatch = 0
 	blobSize = libsqlite3.Xsqlite3_blob_bytes(tls, blob)
 	switch kind {
@@ -2738,7 +1488,7 @@ func Xvec0_set_metadata_filter_bitmap(tls *libc.TLS, p uintptr, metadata_idx int
 				if !(i2 < size) {
 					break
 				}
-				Xbitmap_set(tls, b, i2, libc.BoolInt32(**(**Ti64)(__ccgo_up(array + uintptr(i2)*8)) == target1))
+				Xbitmap_set(tls, b, i2, libc.BoolInt32(*(*Ti64)(__ccgo_ptr(array + uintptr(i2)*8)) == target1))
 				goto _3
 			_3:
 				;
@@ -2750,7 +1500,7 @@ func Xvec0_set_metadata_filter_bitmap(tls *libc.TLS, p uintptr, metadata_idx int
 				if !(i3 < size) {
 					break
 				}
-				Xbitmap_set(tls, b, i3, libc.BoolInt32(**(**Ti64)(__ccgo_up(array + uintptr(i3)*8)) > target1))
+				Xbitmap_set(tls, b, i3, libc.BoolInt32(*(*Ti64)(__ccgo_ptr(array + uintptr(i3)*8)) > target1))
 				goto _4
 			_4:
 				;
@@ -2762,7 +1512,7 @@ func Xvec0_set_metadata_filter_bitmap(tls *libc.TLS, p uintptr, metadata_idx int
 				if !(i4 < size) {
 					break
 				}
-				Xbitmap_set(tls, b, i4, libc.BoolInt32(**(**Ti64)(__ccgo_up(array + uintptr(i4)*8)) <= target1))
+				Xbitmap_set(tls, b, i4, libc.BoolInt32(*(*Ti64)(__ccgo_ptr(array + uintptr(i4)*8)) <= target1))
 				goto _5
 			_5:
 				;
@@ -2774,7 +1524,7 @@ func Xvec0_set_metadata_filter_bitmap(tls *libc.TLS, p uintptr, metadata_idx int
 				if !(i5 < size) {
 					break
 				}
-				Xbitmap_set(tls, b, i5, libc.BoolInt32(**(**Ti64)(__ccgo_up(array + uintptr(i5)*8)) < target1))
+				Xbitmap_set(tls, b, i5, libc.BoolInt32(*(*Ti64)(__ccgo_ptr(array + uintptr(i5)*8)) < target1))
 				goto _6
 			_6:
 				;
@@ -2786,7 +1536,7 @@ func Xvec0_set_metadata_filter_bitmap(tls *libc.TLS, p uintptr, metadata_idx int
 				if !(i6 < size) {
 					break
 				}
-				Xbitmap_set(tls, b, i6, libc.BoolInt32(**(**Ti64)(__ccgo_up(array + uintptr(i6)*8)) >= target1))
+				Xbitmap_set(tls, b, i6, libc.BoolInt32(*(*Ti64)(__ccgo_ptr(array + uintptr(i6)*8)) >= target1))
 				goto _7
 			_7:
 				;
@@ -2798,7 +1548,7 @@ func Xvec0_set_metadata_filter_bitmap(tls *libc.TLS, p uintptr, metadata_idx int
 				if !(i7 < size) {
 					break
 				}
-				Xbitmap_set(tls, b, i7, libc.BoolInt32(**(**Ti64)(__ccgo_up(array + uintptr(i7)*8)) != target1))
+				Xbitmap_set(tls, b, i7, libc.BoolInt32(*(*Ti64)(__ccgo_ptr(array + uintptr(i7)*8)) != target1))
 				goto _8
 			_8:
 				;
@@ -2837,7 +1587,7 @@ func Xvec0_set_metadata_filter_bitmap(tls *libc.TLS, p uintptr, metadata_idx int
 					if !(target_idx < (*TArray)(unsafe.Pointer(aTarget)).Flength) {
 						break
 					}
-					if **(**Ti64)(__ccgo_up((*TArray)(unsafe.Pointer(aTarget)).Fz + uintptr(target_idx)*8)) == **(**Ti64)(__ccgo_up(array + uintptr(i9)*8)) {
+					if *(*Ti64)(__ccgo_ptr((*TArray)(unsafe.Pointer(aTarget)).Fz + uintptr(target_idx)*8)) == *(*Ti64)(__ccgo_ptr(array + uintptr(i9)*8)) {
 						Xbitmap_set(tls, b, i9, int32(1))
 						break
 					}
@@ -2863,7 +1613,7 @@ func Xvec0_set_metadata_filter_bitmap(tls *libc.TLS, p uintptr, metadata_idx int
 				if !(i10 < size) {
 					break
 				}
-				Xbitmap_set(tls, b, i10, libc.BoolInt32(**(**float64)(__ccgo_up(array1 + uintptr(i10)*8)) == target2))
+				Xbitmap_set(tls, b, i10, libc.BoolInt32(*(*float64)(__ccgo_ptr(array1 + uintptr(i10)*8)) == target2))
 				goto _12
 			_12:
 				;
@@ -2875,7 +1625,7 @@ func Xvec0_set_metadata_filter_bitmap(tls *libc.TLS, p uintptr, metadata_idx int
 				if !(i11 < size) {
 					break
 				}
-				Xbitmap_set(tls, b, i11, libc.BoolInt32(**(**float64)(__ccgo_up(array1 + uintptr(i11)*8)) > target2))
+				Xbitmap_set(tls, b, i11, libc.BoolInt32(*(*float64)(__ccgo_ptr(array1 + uintptr(i11)*8)) > target2))
 				goto _13
 			_13:
 				;
@@ -2887,7 +1637,7 @@ func Xvec0_set_metadata_filter_bitmap(tls *libc.TLS, p uintptr, metadata_idx int
 				if !(i12 < size) {
 					break
 				}
-				Xbitmap_set(tls, b, i12, libc.BoolInt32(**(**float64)(__ccgo_up(array1 + uintptr(i12)*8)) <= target2))
+				Xbitmap_set(tls, b, i12, libc.BoolInt32(*(*float64)(__ccgo_ptr(array1 + uintptr(i12)*8)) <= target2))
 				goto _14
 			_14:
 				;
@@ -2899,7 +1649,7 @@ func Xvec0_set_metadata_filter_bitmap(tls *libc.TLS, p uintptr, metadata_idx int
 				if !(i13 < size) {
 					break
 				}
-				Xbitmap_set(tls, b, i13, libc.BoolInt32(**(**float64)(__ccgo_up(array1 + uintptr(i13)*8)) < target2))
+				Xbitmap_set(tls, b, i13, libc.BoolInt32(*(*float64)(__ccgo_ptr(array1 + uintptr(i13)*8)) < target2))
 				goto _15
 			_15:
 				;
@@ -2911,7 +1661,7 @@ func Xvec0_set_metadata_filter_bitmap(tls *libc.TLS, p uintptr, metadata_idx int
 				if !(i14 < size) {
 					break
 				}
-				Xbitmap_set(tls, b, i14, libc.BoolInt32(**(**float64)(__ccgo_up(array1 + uintptr(i14)*8)) >= target2))
+				Xbitmap_set(tls, b, i14, libc.BoolInt32(*(*float64)(__ccgo_ptr(array1 + uintptr(i14)*8)) >= target2))
 				goto _16
 			_16:
 				;
@@ -2923,7 +1673,7 @@ func Xvec0_set_metadata_filter_bitmap(tls *libc.TLS, p uintptr, metadata_idx int
 				if !(i15 < size) {
 					break
 				}
-				Xbitmap_set(tls, b, i15, libc.BoolInt32(**(**float64)(__ccgo_up(array1 + uintptr(i15)*8)) != target2))
+				Xbitmap_set(tls, b, i15, libc.BoolInt32(*(*float64)(__ccgo_ptr(array1 + uintptr(i15)*8)) != target2))
 				goto _17
 			_17:
 				;
@@ -2993,48 +1743,48 @@ func Xvec0_write_metadata_value(tls *libc.TLS, p uintptr, metadata_column_idx in
 		}
 		break
 	}
-	**(**uintptr)(__ccgo_up(bp)) = libc.UintptrFromInt32(0)
-	rc = libsqlite3.Xsqlite3_blob_open(tls, (*Tvec0_vtab)(unsafe.Pointer(p)).Fdb, (*Tvec0_vtab)(unsafe.Pointer(p)).FschemaName, **(**uintptr)(__ccgo_up(p + 376 + uintptr(metadata_column_idx)*4)), __ccgo_ts+4053, chunk_id, int32(1), bp)
+	*(*uintptr)(__ccgo_ptr(bp)) = libc.UintptrFromInt32(0)
+	rc = libsqlite3.Xsqlite3_blob_open(tls, (*Tvec0_vtab)(unsafe.Pointer(p)).Fdb, (*Tvec0_vtab)(unsafe.Pointer(p)).FschemaName, *(*uintptr)(__ccgo_ptr(p + 376 + uintptr(metadata_column_idx)*4)), __ccgo_ts+4053, chunk_id, int32(1), bp)
 	if rc != m_SQLITE_OK {
 		goto done
 	}
 	switch kind {
 	case int32(_VEC0_METADATA_COLUMN_KIND_BOOLEAN):
 		value = libsqlite3.Xsqlite3_value_int(tls, v)
-		rc = libsqlite3.Xsqlite3_blob_read(tls, **(**uintptr)(__ccgo_up(bp)), bp+4, int32(1), int32(chunk_offset/libc.Int64FromInt32(m___CHAR_BIT__)))
+		rc = libsqlite3.Xsqlite3_blob_read(tls, *(*uintptr)(__ccgo_ptr(bp)), bp+4, int32(1), int32(chunk_offset/libc.Int64FromInt32(m___CHAR_BIT__)))
 		if rc != m_SQLITE_OK {
 			goto done
 		}
 		if value != 0 {
-			**(**Tu8)(__ccgo_up(bp + 4)) = uint8(int32(**(**Tu8)(__ccgo_up(bp + 4))) | libc.Int32FromInt32(1)<<(chunk_offset%libc.Int64FromInt32(m___CHAR_BIT__)))
+			*(*Tu8)(__ccgo_ptr(bp + 4)) = uint8(int32(*(*Tu8)(__ccgo_ptr(bp + 4))) | libc.Int32FromInt32(1)<<(chunk_offset%libc.Int64FromInt32(m___CHAR_BIT__)))
 		} else {
-			**(**Tu8)(__ccgo_up(bp + 4)) = uint8(int32(**(**Tu8)(__ccgo_up(bp + 4))) & ^(libc.Int32FromInt32(1) << (chunk_offset % libc.Int64FromInt32(m___CHAR_BIT__))))
+			*(*Tu8)(__ccgo_ptr(bp + 4)) = uint8(int32(*(*Tu8)(__ccgo_ptr(bp + 4))) & ^(libc.Int32FromInt32(1) << (chunk_offset % libc.Int64FromInt32(m___CHAR_BIT__))))
 		}
-		rc = libsqlite3.Xsqlite3_blob_write(tls, **(**uintptr)(__ccgo_up(bp)), bp+4, int32(1), int32(chunk_offset/int64(m___CHAR_BIT__)))
+		rc = libsqlite3.Xsqlite3_blob_write(tls, *(*uintptr)(__ccgo_ptr(bp)), bp+4, int32(1), int32(chunk_offset/int64(m___CHAR_BIT__)))
 	case int32(_VEC0_METADATA_COLUMN_KIND_INTEGER):
-		**(**Ti64)(__ccgo_up(bp + 8)) = libsqlite3.Xsqlite3_value_int64(tls, v)
-		rc = libsqlite3.Xsqlite3_blob_write(tls, **(**uintptr)(__ccgo_up(bp)), bp+8, int32(8), int32(chunk_offset*int64(8)))
+		*(*Ti64)(__ccgo_ptr(bp + 8)) = libsqlite3.Xsqlite3_value_int64(tls, v)
+		rc = libsqlite3.Xsqlite3_blob_write(tls, *(*uintptr)(__ccgo_ptr(bp)), bp+8, int32(8), int32(chunk_offset*int64(8)))
 	case int32(_VEC0_METADATA_COLUMN_KIND_FLOAT):
-		**(**float64)(__ccgo_up(bp + 16)) = libsqlite3.Xsqlite3_value_double(tls, v)
-		rc = libsqlite3.Xsqlite3_blob_write(tls, **(**uintptr)(__ccgo_up(bp)), bp+16, int32(8), int32(chunk_offset*int64(8)))
+		*(*float64)(__ccgo_ptr(bp + 16)) = libsqlite3.Xsqlite3_value_double(tls, v)
+		rc = libsqlite3.Xsqlite3_blob_write(tls, *(*uintptr)(__ccgo_ptr(bp)), bp+16, int32(8), int32(chunk_offset*int64(8)))
 	case int32(_VEC0_METADATA_COLUMN_KIND_TEXT):
-		rc = libsqlite3.Xsqlite3_blob_read(tls, **(**uintptr)(__ccgo_up(bp)), bp+24, int32(4), int32(chunk_offset*int64(m_VEC0_METADATA_TEXT_VIEW_BUFFER_LENGTH)))
+		rc = libsqlite3.Xsqlite3_blob_read(tls, *(*uintptr)(__ccgo_ptr(bp)), bp+24, int32(4), int32(chunk_offset*int64(m_VEC0_METADATA_TEXT_VIEW_BUFFER_LENGTH)))
 		if rc != m_SQLITE_OK {
 			goto done
 		}
 		s = libsqlite3.Xsqlite3_value_text(tls, v)
-		**(**int32)(__ccgo_up(bp + 28)) = libsqlite3.Xsqlite3_value_bytes(tls, v)
+		*(*int32)(__ccgo_ptr(bp + 28)) = libsqlite3.Xsqlite3_value_bytes(tls, v)
 		libc.Xmemset(tls, bp+32, 0, uint32(m_VEC0_METADATA_TEXT_VIEW_BUFFER_LENGTH))
 		libc.Xmemcpy(tls, bp+32, bp+28, uint32(4))
-		if **(**int32)(__ccgo_up(bp + 28)) <= libc.Int32FromInt32(m_VEC0_METADATA_TEXT_VIEW_BUFFER_LENGTH)-libc.Int32FromInt32(4) {
-			v1 = **(**int32)(__ccgo_up(bp + 28))
+		if *(*int32)(__ccgo_ptr(bp + 28)) <= libc.Int32FromInt32(m_VEC0_METADATA_TEXT_VIEW_BUFFER_LENGTH)-libc.Int32FromInt32(4) {
+			v1 = *(*int32)(__ccgo_ptr(bp + 28))
 		} else {
 			v1 = libc.Int32FromInt32(m_VEC0_METADATA_TEXT_VIEW_BUFFER_LENGTH) - libc.Int32FromInt32(4)
 		}
 		libc.Xmemcpy(tls, bp+32+uintptr(4), s, uint32(v1))
-		rc = libsqlite3.Xsqlite3_blob_write(tls, **(**uintptr)(__ccgo_up(bp)), bp+32, int32(m_VEC0_METADATA_TEXT_VIEW_BUFFER_LENGTH), int32(chunk_offset*int64(m_VEC0_METADATA_TEXT_VIEW_BUFFER_LENGTH)))
-		if **(**int32)(__ccgo_up(bp + 28)) > int32(m_VEC0_METADATA_TEXT_VIEW_DATA_LENGTH) {
-			if isupdate != 0 && **(**int32)(__ccgo_up(bp + 24)) > int32(m_VEC0_METADATA_TEXT_VIEW_DATA_LENGTH) {
+		rc = libsqlite3.Xsqlite3_blob_write(tls, *(*uintptr)(__ccgo_ptr(bp)), bp+32, int32(m_VEC0_METADATA_TEXT_VIEW_BUFFER_LENGTH), int32(chunk_offset*int64(m_VEC0_METADATA_TEXT_VIEW_BUFFER_LENGTH)))
+		if *(*int32)(__ccgo_ptr(bp + 28)) > int32(m_VEC0_METADATA_TEXT_VIEW_DATA_LENGTH) {
+			if isupdate != 0 && *(*int32)(__ccgo_ptr(bp + 24)) > int32(m_VEC0_METADATA_TEXT_VIEW_DATA_LENGTH) {
 				zSql = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+12853, libc.VaList(bp+64, (*Tvec0_vtab)(unsafe.Pointer(p)).FschemaName, (*Tvec0_vtab)(unsafe.Pointer(p)).FtableName, metadata_column_idx))
 			} else {
 				zSql = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+12918, libc.VaList(bp+64, (*Tvec0_vtab)(unsafe.Pointer(p)).FschemaName, (*Tvec0_vtab)(unsafe.Pointer(p)).FtableName, metadata_column_idx))
@@ -3047,16 +1797,16 @@ func Xvec0_write_metadata_value(tls *libc.TLS, p uintptr, metadata_column_idx in
 			if rc != m_SQLITE_OK {
 				goto done
 			}
-			libsqlite3.Xsqlite3_bind_int64(tls, **(**uintptr)(__ccgo_up(bp + 48)), int32(1), rowid)
-			libsqlite3.Xsqlite3_bind_text(tls, **(**uintptr)(__ccgo_up(bp + 48)), int32(2), s, **(**int32)(__ccgo_up(bp + 28)), libc.UintptrFromInt32(0))
-			rc = libsqlite3.Xsqlite3_step(tls, **(**uintptr)(__ccgo_up(bp + 48)))
-			libsqlite3.Xsqlite3_finalize(tls, **(**uintptr)(__ccgo_up(bp + 48)))
+			libsqlite3.Xsqlite3_bind_int64(tls, *(*uintptr)(__ccgo_ptr(bp + 48)), int32(1), rowid)
+			libsqlite3.Xsqlite3_bind_text(tls, *(*uintptr)(__ccgo_ptr(bp + 48)), int32(2), s, *(*int32)(__ccgo_ptr(bp + 28)), libc.UintptrFromInt32(0))
+			rc = libsqlite3.Xsqlite3_step(tls, *(*uintptr)(__ccgo_ptr(bp + 48)))
+			libsqlite3.Xsqlite3_finalize(tls, *(*uintptr)(__ccgo_ptr(bp + 48)))
 			if rc != int32(m_SQLITE_DONE) {
 				rc = int32(m_SQLITE_ERROR)
 				goto done
 			}
 		} else {
-			if **(**int32)(__ccgo_up(bp + 24)) > int32(m_VEC0_METADATA_TEXT_VIEW_DATA_LENGTH) {
+			if *(*int32)(__ccgo_ptr(bp + 24)) > int32(m_VEC0_METADATA_TEXT_VIEW_DATA_LENGTH) {
 				zSql1 = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+12987, libc.VaList(bp+64, (*Tvec0_vtab)(unsafe.Pointer(p)).FschemaName, (*Tvec0_vtab)(unsafe.Pointer(p)).FtableName, metadata_column_idx))
 				if !(zSql1 != 0) {
 					rc = int32(m_SQLITE_NOMEM)
@@ -3066,9 +1816,9 @@ func Xvec0_write_metadata_value(tls *libc.TLS, p uintptr, metadata_column_idx in
 				if rc != m_SQLITE_OK {
 					goto done
 				}
-				libsqlite3.Xsqlite3_bind_int64(tls, **(**uintptr)(__ccgo_up(bp + 52)), int32(1), rowid)
-				rc = libsqlite3.Xsqlite3_step(tls, **(**uintptr)(__ccgo_up(bp + 52)))
-				libsqlite3.Xsqlite3_finalize(tls, **(**uintptr)(__ccgo_up(bp + 52)))
+				libsqlite3.Xsqlite3_bind_int64(tls, *(*uintptr)(__ccgo_ptr(bp + 52)), int32(1), rowid)
+				rc = libsqlite3.Xsqlite3_step(tls, *(*uintptr)(__ccgo_ptr(bp + 52)))
+				libsqlite3.Xsqlite3_finalize(tls, *(*uintptr)(__ccgo_ptr(bp + 52)))
 				if rc != int32(m_SQLITE_DONE) {
 					rc = int32(m_SQLITE_ERROR)
 					goto done
@@ -3079,7 +1829,7 @@ func Xvec0_write_metadata_value(tls *libc.TLS, p uintptr, metadata_column_idx in
 	}
 	if rc != m_SQLITE_OK {
 	}
-	rc = libsqlite3.Xsqlite3_blob_close(tls, **(**uintptr)(__ccgo_up(bp)))
+	rc = libsqlite3.Xsqlite3_blob_close(tls, *(*uintptr)(__ccgo_ptr(bp)))
 	if rc != m_SQLITE_OK {
 		goto done
 	}
@@ -3102,7 +1852,35 @@ func Xvector_byte_size(tls *libc.TLS, element_type _VectorElementType, dimension
 	return uint32(0)
 }
 
-func _bitvec_from_value(tls *libc.TLS, value uintptr, vector uintptr, dimensions uintptr, __ccgo_fp_cleanup uintptr, pzErr uintptr) (r int32) {
+// C documentation
+//
+//	/**
+//	 * @brief Initial an array with the given element size and capacity.
+//	 *
+//	 * @param array
+//	 * @param element_size
+//	 * @param init_capacity
+//	 * @return SQLITE_OK on success, error code on failure. Only error is
+//	 * SQLITE_NOMEM
+//	 */
+func _array_init__ccgo_gp(tls *libc.TLS, array unsafe.Pointer, element_size Tsize_t, init_capacity Tsize_t) (r int32) {
+	var sz int32
+	var z uintptr
+	_, _ = sz, z
+	sz = int32(element_size * init_capacity)
+	z = libsqlite3.Xsqlite3_malloc(tls, sz)
+	if !(z != 0) {
+		return int32(m_SQLITE_NOMEM)
+	}
+	libc.Xmemset(tls, z, 0, uint32(sz))
+	*(*Tsize_t)(array) = element_size
+	*(*Tsize_t)(unsafe.Add(array, 4)) = uint32(0)
+	*(*Tsize_t)(unsafe.Add(array, 8)) = init_capacity
+	*(*uintptr)(unsafe.Add(array, 12)) = z
+	return m_SQLITE_OK
+}
+
+func _bitvec_from_value(tls *libc.TLS, value uintptr, vector unsafe.Pointer, dimensions unsafe.Pointer, __ccgo_fp_cleanup unsafe.Pointer, pzErr unsafe.Pointer) (r int32) {
 	var blob uintptr
 	var bytes, value_type int32
 	_, _, _ = blob, bytes, value_type
@@ -3111,15 +1889,15 @@ func _bitvec_from_value(tls *libc.TLS, value uintptr, vector uintptr, dimensions
 		blob = libsqlite3.Xsqlite3_value_blob(tls, value)
 		bytes = libsqlite3.Xsqlite3_value_bytes(tls, value)
 		if bytes == 0 {
-			**(**uintptr)(__ccgo_up(pzErr)) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+47, 0)
+			*(*uintptr)(pzErr) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+47, 0)
 			return int32(m_SQLITE_ERROR)
 		}
-		**(**uintptr)(__ccgo_up(vector)) = blob
-		**(**Tsize_t)(__ccgo_up(dimensions)) = uint32(bytes * int32(m___CHAR_BIT__))
-		**(**Tvector_cleanup)(__ccgo_up(__ccgo_fp_cleanup)) = __ccgo_fp(Xvector_cleanup_noop)
+		*(*uintptr)(vector) = blob
+		*(*Tsize_t)(dimensions) = uint32(bytes * int32(m___CHAR_BIT__))
+		*(*uintptr)(__ccgo_fp_cleanup) = __ccgo_fp(Xvector_cleanup_noop)
 		return m_SQLITE_OK
 	}
-	**(**uintptr)(__ccgo_up(pzErr)) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+313, 0)
+	*(*uintptr)(pzErr) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+313, 0)
 	return int32(m_SQLITE_ERROR)
 }
 
@@ -3133,10 +1911,10 @@ func _bitvec_from_value(tls *libc.TLS, value uintptr, vector uintptr, dimensions
 //	 * @param d - pointer to size_t, MUST be divisible by CHAR_BIT
 //	 * @return f32
 //	 */
-func _distance_hamming(tls *libc.TLS, a uintptr, b uintptr, d uintptr) (r Tf32) {
+func _distance_hamming(tls *libc.TLS, a uintptr, b uintptr, d unsafe.Pointer) (r Tf32) {
 	var dimensions Tsize_t
 	_ = dimensions
-	dimensions = **(**Tsize_t)(__ccgo_up(d))
+	dimensions = *(*Tsize_t)(d)
 	if dimensions%uint32(64) == uint32(0) {
 		return _distance_hamming_u64(tls, a, b, dimensions/uint32(8)/uint32(m___CHAR_BIT__))
 	}
@@ -3154,7 +1932,7 @@ func _distance_hamming_u64(tls *libc.TLS, a uintptr, b uintptr, n Tsize_t) (r Tf
 		if !(i < n) {
 			break
 		}
-		v2 = uint64(libc.X__builtin_popcountll(tls, **(**Tu64)(__ccgo_up(a + uintptr(i)*8))^**(**Tu64)(__ccgo_up(b + uintptr(i)*8))))
+		v2 = uint64(libc.X__builtin_popcountll(tls, *(*Tu64)(__ccgo_ptr(a + uintptr(i)*8))^*(*Tu64)(__ccgo_ptr(b + uintptr(i)*8))))
 		goto _3
 	_3:
 		same = int32(uint64(same) + v2)
@@ -3176,7 +1954,7 @@ func _distance_hamming_u8(tls *libc.TLS, a uintptr, b uintptr, n Tsize_t) (r Tf3
 		if !(i < n) {
 			break
 		}
-		same = same + int32(_hamdist_table[int32(**(**Tu8)(__ccgo_up(a + uintptr(i))))^int32(**(**Tu8)(__ccgo_up(b + uintptr(i))))])
+		same = same + int32(_hamdist_table[int32(*(*Tu8)(__ccgo_ptr(a + uintptr(i))))^int32(*(*Tu8)(__ccgo_ptr(b + uintptr(i))))])
 		goto _1
 	_1:
 		;
@@ -3185,103 +1963,103 @@ func _distance_hamming_u8(tls *libc.TLS, a uintptr, b uintptr, n Tsize_t) (r Tf3
 	return float32(same)
 }
 
-func _fvec_from_value(tls *libc.TLS, value uintptr, vector uintptr, dimensions uintptr, __ccgo_fp_cleanup uintptr, pzErr uintptr) (r int32) {
-	bp := tls.Alloc(48)
-	defer tls.Free(48)
+func _fvec_from_value(tls *libc.TLS, value uintptr, vector unsafe.Pointer, dimensions unsafe.Pointer, __ccgo_fp_cleanup unsafe.Pointer, pzErr unsafe.Pointer) (r int32) {
+	bp := tls.Alloc(32)
+	defer tls.Free(32)
 	var blob, buf, ptr, source uintptr
 	var bytes, i, offset, rc, source_len, value_type int32
 	var result, v1 float64
-	var _ /* endptr at bp+16 */ uintptr
-	var _ /* res at bp+20 */ Tf32
-	var _ /* x at bp+0 */ TArray
-	_, _, _, _, _, _, _, _, _, _, _, _ = blob, buf, bytes, i, offset, ptr, rc, result, source, source_len, value_type, v1
+	var x TArray
+	var _ /* endptr at bp+0 */ uintptr
+	var _ /* res at bp+4 */ Tf32
+	_, _, _, _, _, _, _, _, _, _, _, _, _ = blob, buf, bytes, i, offset, ptr, rc, result, source, source_len, value_type, x, v1
 	value_type = libsqlite3.Xsqlite3_value_type(tls, value)
 	if value_type == int32(m_SQLITE_BLOB) {
 		blob = libsqlite3.Xsqlite3_value_blob(tls, value)
 		bytes = libsqlite3.Xsqlite3_value_bytes(tls, value)
 		if bytes == 0 {
-			**(**uintptr)(__ccgo_up(pzErr)) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+47, 0)
+			*(*uintptr)(pzErr) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+47, 0)
 			return int32(m_SQLITE_ERROR)
 		}
 		if uint32(bytes)%uint32(4) != uint32(0) {
-			**(**uintptr)(__ccgo_up(pzErr)) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+86, libc.VaList(bp+32, uint32(4), bytes))
+			*(*uintptr)(pzErr) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+86, libc.VaList(bp+16, uint32(4), bytes))
 			return int32(m_SQLITE_ERROR)
 		}
 		buf = libsqlite3.Xsqlite3_malloc(tls, bytes)
 		if !(buf != 0) {
-			**(**uintptr)(__ccgo_up(pzErr)) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+156, 0)
+			*(*uintptr)(pzErr) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+156, 0)
 			return int32(m_SQLITE_NOMEM)
 		}
 		libc.Xmemcpy(tls, buf, blob, uint32(bytes))
-		**(**uintptr)(__ccgo_up(vector)) = buf
-		**(**Tsize_t)(__ccgo_up(dimensions)) = uint32(bytes) / uint32(4)
-		**(**Tfvec_cleanup)(__ccgo_up(__ccgo_fp_cleanup)) = __ccgo_fp(libsqlite3.Xsqlite3_free)
+		*(*uintptr)(vector) = buf
+		*(*Tsize_t)(dimensions) = uint32(bytes) / uint32(4)
+		*(*uintptr)(__ccgo_fp_cleanup) = __ccgo_fp(libsqlite3.Xsqlite3_free)
 		return m_SQLITE_OK
 	}
 	if value_type == int32(m_SQLITE_TEXT) {
 		source = libsqlite3.Xsqlite3_value_text(tls, value)
 		source_len = libsqlite3.Xsqlite3_value_bytes(tls, value)
 		if source_len == 0 {
-			**(**uintptr)(__ccgo_up(pzErr)) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+47, 0)
+			*(*uintptr)(pzErr) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+47, 0)
 			return int32(m_SQLITE_ERROR)
 		}
 		i = 0
-		rc = Xarray_init(tls, bp, uint32(4), uint32(libc.Xceil(tls, float64(source_len)/float64(2))))
+		rc = _array_init__ccgo_gp(tls, unsafe.Pointer(&x), uint32(4), uint32(libc.Xceil(tls, float64(source_len)/float64(2))))
 		if rc != m_SQLITE_OK {
 			return rc
 		}
 		// advance leading whitespace to first '['
 		for i < source_len {
-			if _vecJsonIsSpaceX[uint8(**(**int8)(__ccgo_up(source + uintptr(i))))] != 0 {
+			if _vecJsonIsSpaceX[uint8(*(*int8)(__ccgo_ptr(source + uintptr(i))))] != 0 {
 				i = i + 1
 				continue
 			}
-			if int32(**(**int8)(__ccgo_up(source + uintptr(i)))) == int32('[') {
+			if int32(*(*int8)(__ccgo_ptr(source + uintptr(i)))) == int32('[') {
 				break
 			}
-			**(**uintptr)(__ccgo_up(pzErr)) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+170, 0)
-			Xarray_cleanup(tls, bp)
+			*(*uintptr)(pzErr) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+170, 0)
+			_array_cleanup__ccgo_gp(tls, unsafe.Pointer(&x))
 			return int32(m_SQLITE_ERROR)
 		}
-		if int32(**(**int8)(__ccgo_up(source + uintptr(i)))) != int32('[') {
-			**(**uintptr)(__ccgo_up(pzErr)) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+170, 0)
-			Xarray_cleanup(tls, bp)
+		if int32(*(*int8)(__ccgo_ptr(source + uintptr(i)))) != int32('[') {
+			*(*uintptr)(pzErr) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+170, 0)
+			_array_cleanup__ccgo_gp(tls, unsafe.Pointer(&x))
 			return int32(m_SQLITE_ERROR)
 		}
 		offset = i + int32(1)
 		for offset < source_len {
 			ptr = source + uintptr(offset)
-			**(**int32)(__ccgo_up(libc.X_errno(tls))) = 0
-			v1 = libc.X__mingw_strtod(tls, ptr, bp+16)
+			*(*int32)(__ccgo_ptr(libc.X_errno(tls))) = 0
+			v1 = libc.X__mingw_strtod(tls, ptr, bp)
 			goto _2
 		_2:
 			result = v1
-			if **(**int32)(__ccgo_up(libc.X_errno(tls))) != 0 && result == libc.Float64FromInt32(0) || **(**int32)(__ccgo_up(libc.X_errno(tls))) == int32(m_ERANGE) && (result == libc.X__builtin_huge_val(tls) || result == -libc.X__builtin_huge_val(tls)) {
-				libsqlite3.Xsqlite3_free(tls, (**(**TArray)(__ccgo_up(bp))).Fz)
-				**(**uintptr)(__ccgo_up(pzErr)) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+226, 0)
+			if *(*int32)(__ccgo_ptr(libc.X_errno(tls))) != 0 && result == libc.Float64FromInt32(0) || *(*int32)(__ccgo_ptr(libc.X_errno(tls))) == int32(m_ERANGE) && (result == libc.X__builtin_huge_val(tls) || result == -libc.X__builtin_huge_val(tls)) {
+				libsqlite3.Xsqlite3_free(tls, x.Fz)
+				*(*uintptr)(pzErr) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+226, 0)
 				return int32(m_SQLITE_ERROR)
 			}
-			if **(**uintptr)(__ccgo_up(bp + 16)) == ptr {
-				if int32(**(**int8)(__ccgo_up(ptr))) != int32(']') {
-					libsqlite3.Xsqlite3_free(tls, (**(**TArray)(__ccgo_up(bp))).Fz)
-					**(**uintptr)(__ccgo_up(pzErr)) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+226, 0)
+			if *(*uintptr)(__ccgo_ptr(bp)) == ptr {
+				if int32(*(*int8)(__ccgo_ptr(ptr))) != int32(']') {
+					libsqlite3.Xsqlite3_free(tls, x.Fz)
+					*(*uintptr)(pzErr) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+226, 0)
 					return int32(m_SQLITE_ERROR)
 				}
 				goto done
 			}
-			**(**Tf32)(__ccgo_up(bp + 20)) = float32(result)
-			Xarray_append(tls, bp, bp+20)
-			offset = offset + (int32(**(**uintptr)(__ccgo_up(bp + 16))) - int32(ptr))
+			*(*Tf32)(__ccgo_ptr(bp + 4)) = float32(result)
+			_array_append__ccgo_gp(tls, unsafe.Pointer(&x), bp+4)
+			offset = offset + (int32(*(*uintptr)(__ccgo_ptr(bp))) - int32(ptr))
 			for offset < source_len {
-				if _vecJsonIsSpaceX[uint8(**(**int8)(__ccgo_up(source + uintptr(offset))))] != 0 {
+				if _vecJsonIsSpaceX[uint8(*(*int8)(__ccgo_ptr(source + uintptr(offset))))] != 0 {
 					offset = offset + 1
 					continue
 				}
-				if int32(**(**int8)(__ccgo_up(source + uintptr(offset)))) == int32(',') {
+				if int32(*(*int8)(__ccgo_ptr(source + uintptr(offset)))) == int32(',') {
 					offset = offset + 1
 					continue
 				}
-				if int32(**(**int8)(__ccgo_up(source + uintptr(offset)))) == int32(']') {
+				if int32(*(*int8)(__ccgo_ptr(source + uintptr(offset)))) == int32(']') {
 					goto done
 				}
 				break
@@ -3290,40 +2068,40 @@ func _fvec_from_value(tls *libc.TLS, value uintptr, vector uintptr, dimensions u
 		goto done
 	done:
 		;
-		if (**(**TArray)(__ccgo_up(bp))).Flength > uint32(0) {
-			**(**uintptr)(__ccgo_up(vector)) = (**(**TArray)(__ccgo_up(bp))).Fz
-			**(**Tsize_t)(__ccgo_up(dimensions)) = (**(**TArray)(__ccgo_up(bp))).Flength
-			**(**Tfvec_cleanup)(__ccgo_up(__ccgo_fp_cleanup)) = __ccgo_fp(libsqlite3.Xsqlite3_free)
+		if x.Flength > uint32(0) {
+			*(*uintptr)(vector) = x.Fz
+			*(*Tsize_t)(dimensions) = x.Flength
+			*(*uintptr)(__ccgo_fp_cleanup) = __ccgo_fp(libsqlite3.Xsqlite3_free)
 			return m_SQLITE_OK
 		}
-		libsqlite3.Xsqlite3_free(tls, (**(**TArray)(__ccgo_up(bp))).Fz)
-		**(**uintptr)(__ccgo_up(pzErr)) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+47, 0)
+		libsqlite3.Xsqlite3_free(tls, x.Fz)
+		*(*uintptr)(pzErr) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+47, 0)
 		return int32(m_SQLITE_ERROR)
 	}
-	**(**uintptr)(__ccgo_up(pzErr)) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+245, libc.VaList(bp+32, Xtype_name(tls, value_type)))
+	*(*uintptr)(pzErr) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+245, libc.VaList(bp+16, Xtype_name(tls, value_type)))
 	return int32(m_SQLITE_ERROR)
 }
 
-func _int8_vec_from_value(tls *libc.TLS, value uintptr, vector uintptr, dimensions uintptr, __ccgo_fp_cleanup uintptr, pzErr uintptr) (r int32) {
-	bp := tls.Alloc(32)
-	defer tls.Free(32)
+func _int8_vec_from_value(tls *libc.TLS, value uintptr, vector unsafe.Pointer, dimensions unsafe.Pointer, __ccgo_fp_cleanup unsafe.Pointer, pzErr unsafe.Pointer) (r int32) {
+	bp := tls.Alloc(16)
+	defer tls.Free(16)
 	var blob, ptr, source uintptr
 	var bytes, i, offset, rc, result, source_len, value_type int32
-	var _ /* endptr at bp+16 */ uintptr
-	var _ /* res at bp+20 */ Ti8
-	var _ /* x at bp+0 */ TArray
-	_, _, _, _, _, _, _, _, _, _ = blob, bytes, i, offset, ptr, rc, result, source, source_len, value_type
+	var x TArray
+	var _ /* endptr at bp+0 */ uintptr
+	var _ /* res at bp+4 */ Ti8
+	_, _, _, _, _, _, _, _, _, _, _ = blob, bytes, i, offset, ptr, rc, result, source, source_len, value_type, x
 	value_type = libsqlite3.Xsqlite3_value_type(tls, value)
 	if value_type == int32(m_SQLITE_BLOB) {
 		blob = libsqlite3.Xsqlite3_value_blob(tls, value)
 		bytes = libsqlite3.Xsqlite3_value_bytes(tls, value)
 		if bytes == 0 {
-			**(**uintptr)(__ccgo_up(pzErr)) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+47, 0)
+			*(*uintptr)(pzErr) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+47, 0)
 			return int32(m_SQLITE_ERROR)
 		}
-		**(**uintptr)(__ccgo_up(vector)) = blob
-		**(**Tsize_t)(__ccgo_up(dimensions)) = uint32(bytes)
-		**(**Tvector_cleanup)(__ccgo_up(__ccgo_fp_cleanup)) = __ccgo_fp(Xvector_cleanup_noop)
+		*(*uintptr)(vector) = blob
+		*(*Tsize_t)(dimensions) = uint32(bytes)
+		*(*uintptr)(__ccgo_fp_cleanup) = __ccgo_fp(Xvector_cleanup_noop)
 		return m_SQLITE_OK
 	}
 	if value_type == int32(m_SQLITE_TEXT) {
@@ -3331,67 +2109,67 @@ func _int8_vec_from_value(tls *libc.TLS, value uintptr, vector uintptr, dimensio
 		source_len = libsqlite3.Xsqlite3_value_bytes(tls, value)
 		i = 0
 		if source_len == 0 {
-			**(**uintptr)(__ccgo_up(pzErr)) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+47, 0)
+			*(*uintptr)(pzErr) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+47, 0)
 			return int32(m_SQLITE_ERROR)
 		}
-		rc = Xarray_init(tls, bp, uint32(1), uint32(libc.Xceil(tls, float64(source_len)/float64(2))))
+		rc = _array_init__ccgo_gp(tls, unsafe.Pointer(&x), uint32(1), uint32(libc.Xceil(tls, float64(source_len)/float64(2))))
 		if rc != m_SQLITE_OK {
 			return rc
 		}
 		// advance leading whitespace to first '['
 		for i < source_len {
-			if _vecJsonIsSpaceX[uint8(**(**int8)(__ccgo_up(source + uintptr(i))))] != 0 {
+			if _vecJsonIsSpaceX[uint8(*(*int8)(__ccgo_ptr(source + uintptr(i))))] != 0 {
 				i = i + 1
 				continue
 			}
-			if int32(**(**int8)(__ccgo_up(source + uintptr(i)))) == int32('[') {
+			if int32(*(*int8)(__ccgo_ptr(source + uintptr(i)))) == int32('[') {
 				break
 			}
-			**(**uintptr)(__ccgo_up(pzErr)) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+170, 0)
-			Xarray_cleanup(tls, bp)
+			*(*uintptr)(pzErr) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+170, 0)
+			_array_cleanup__ccgo_gp(tls, unsafe.Pointer(&x))
 			return int32(m_SQLITE_ERROR)
 		}
-		if int32(**(**int8)(__ccgo_up(source + uintptr(i)))) != int32('[') {
-			**(**uintptr)(__ccgo_up(pzErr)) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+170, 0)
-			Xarray_cleanup(tls, bp)
+		if int32(*(*int8)(__ccgo_ptr(source + uintptr(i)))) != int32('[') {
+			*(*uintptr)(pzErr) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+170, 0)
+			_array_cleanup__ccgo_gp(tls, unsafe.Pointer(&x))
 			return int32(m_SQLITE_ERROR)
 		}
 		offset = i + int32(1)
 		for offset < source_len {
 			ptr = source + uintptr(offset)
-			**(**int32)(__ccgo_up(libc.X_errno(tls))) = 0
-			result = libc.Xstrtol(tls, ptr, bp+16, int32(10))
-			if **(**int32)(__ccgo_up(libc.X_errno(tls))) != 0 && result == 0 || **(**int32)(__ccgo_up(libc.X_errno(tls))) == int32(m_ERANGE) && (result == int32(0x7fffffff) || result == -libc.Int32FromInt32(0x7fffffff)-libc.Int32FromInt32(1)) {
-				libsqlite3.Xsqlite3_free(tls, (**(**TArray)(__ccgo_up(bp))).Fz)
-				**(**uintptr)(__ccgo_up(pzErr)) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+226, 0)
+			*(*int32)(__ccgo_ptr(libc.X_errno(tls))) = 0
+			result = libc.Xstrtol(tls, ptr, bp, int32(10))
+			if *(*int32)(__ccgo_ptr(libc.X_errno(tls))) != 0 && result == 0 || *(*int32)(__ccgo_ptr(libc.X_errno(tls))) == int32(m_ERANGE) && (result == int32(0x7fffffff) || result == -libc.Int32FromInt32(0x7fffffff)-libc.Int32FromInt32(1)) {
+				libsqlite3.Xsqlite3_free(tls, x.Fz)
+				*(*uintptr)(pzErr) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+226, 0)
 				return int32(m_SQLITE_ERROR)
 			}
-			if **(**uintptr)(__ccgo_up(bp + 16)) == ptr {
-				if int32(**(**int8)(__ccgo_up(ptr))) != int32(']') {
-					libsqlite3.Xsqlite3_free(tls, (**(**TArray)(__ccgo_up(bp))).Fz)
-					**(**uintptr)(__ccgo_up(pzErr)) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+226, 0)
+			if *(*uintptr)(__ccgo_ptr(bp)) == ptr {
+				if int32(*(*int8)(__ccgo_ptr(ptr))) != int32(']') {
+					libsqlite3.Xsqlite3_free(tls, x.Fz)
+					*(*uintptr)(pzErr) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+226, 0)
 					return int32(m_SQLITE_ERROR)
 				}
 				goto done
 			}
 			if result < int32(-libc.Int32FromInt32(128)) || result > int32(m_INT8_MAX) {
-				libsqlite3.Xsqlite3_free(tls, (**(**TArray)(__ccgo_up(bp))).Fz)
-				**(**uintptr)(__ccgo_up(pzErr)) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+341, 0)
+				libsqlite3.Xsqlite3_free(tls, x.Fz)
+				*(*uintptr)(pzErr) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+341, 0)
 				return int32(m_SQLITE_ERROR)
 			}
-			**(**Ti8)(__ccgo_up(bp + 20)) = int8(result)
-			Xarray_append(tls, bp, bp+20)
-			offset = offset + (int32(**(**uintptr)(__ccgo_up(bp + 16))) - int32(ptr))
+			*(*Ti8)(__ccgo_ptr(bp + 4)) = int8(result)
+			_array_append__ccgo_gp(tls, unsafe.Pointer(&x), bp+4)
+			offset = offset + (int32(*(*uintptr)(__ccgo_ptr(bp))) - int32(ptr))
 			for offset < source_len {
-				if _vecJsonIsSpaceX[uint8(**(**int8)(__ccgo_up(source + uintptr(offset))))] != 0 {
+				if _vecJsonIsSpaceX[uint8(*(*int8)(__ccgo_ptr(source + uintptr(offset))))] != 0 {
 					offset = offset + 1
 					continue
 				}
-				if int32(**(**int8)(__ccgo_up(source + uintptr(offset)))) == int32(',') {
+				if int32(*(*int8)(__ccgo_ptr(source + uintptr(offset)))) == int32(',') {
 					offset = offset + 1
 					continue
 				}
-				if int32(**(**int8)(__ccgo_up(source + uintptr(offset)))) == int32(']') {
+				if int32(*(*int8)(__ccgo_ptr(source + uintptr(offset)))) == int32(']') {
 					goto done
 				}
 				break
@@ -3400,18 +2178,282 @@ func _int8_vec_from_value(tls *libc.TLS, value uintptr, vector uintptr, dimensio
 		goto done
 	done:
 		;
-		if (**(**TArray)(__ccgo_up(bp))).Flength > uint32(0) {
-			**(**uintptr)(__ccgo_up(vector)) = (**(**TArray)(__ccgo_up(bp))).Fz
-			**(**Tsize_t)(__ccgo_up(dimensions)) = (**(**TArray)(__ccgo_up(bp))).Flength
-			**(**Tvector_cleanup)(__ccgo_up(__ccgo_fp_cleanup)) = __ccgo_fp(libsqlite3.Xsqlite3_free)
+		if x.Flength > uint32(0) {
+			*(*uintptr)(vector) = x.Fz
+			*(*Tsize_t)(dimensions) = x.Flength
+			*(*uintptr)(__ccgo_fp_cleanup) = __ccgo_fp(libsqlite3.Xsqlite3_free)
 			return m_SQLITE_OK
 		}
-		libsqlite3.Xsqlite3_free(tls, (**(**TArray)(__ccgo_up(bp))).Fz)
-		**(**uintptr)(__ccgo_up(pzErr)) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+47, 0)
+		libsqlite3.Xsqlite3_free(tls, x.Fz)
+		*(*uintptr)(pzErr) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+47, 0)
 		return int32(m_SQLITE_ERROR)
 	}
-	**(**uintptr)(__ccgo_up(pzErr)) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+389, 0)
+	*(*uintptr)(pzErr) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+389, 0)
 	return int32(m_SQLITE_ERROR)
+}
+
+func _npy_token_next__ccgo_gp(tls *libc.TLS, start uintptr, end uintptr, out unsafe.Pointer) (r int32) {
+	var curr uint8
+	var ptr, start1, start2, v1 uintptr
+	_, _, _, _, _ = curr, ptr, start1, start2, v1
+	ptr = start
+	for ptr < end {
+		curr = *(*uint8)(__ccgo_ptr(ptr))
+		if Xis_whitespace(tls, int8(curr)) != 0 {
+			ptr = ptr + 1
+			continue
+		} else {
+			if int32(curr) == int32('(') {
+				v1 = ptr
+				ptr = ptr + 1
+				*(*uintptr)(unsafe.Add(out, 4)) = v1
+				*(*uintptr)(unsafe.Add(out, 8)) = ptr
+				*(*_NpyTokenType)(out) = int32(_NPY_TOKEN_TYPE_LPAREN)
+				return int32(m_VEC0_TOKEN_RESULT_SOME)
+			} else {
+				if int32(curr) == int32(')') {
+					v1 = ptr
+					ptr = ptr + 1
+					*(*uintptr)(unsafe.Add(out, 4)) = v1
+					*(*uintptr)(unsafe.Add(out, 8)) = ptr
+					*(*_NpyTokenType)(out) = int32(_NPY_TOKEN_TYPE_RPAREN)
+					return int32(m_VEC0_TOKEN_RESULT_SOME)
+				} else {
+					if int32(curr) == int32('{') {
+						v1 = ptr
+						ptr = ptr + 1
+						*(*uintptr)(unsafe.Add(out, 4)) = v1
+						*(*uintptr)(unsafe.Add(out, 8)) = ptr
+						*(*_NpyTokenType)(out) = int32(_NPY_TOKEN_TYPE_LBRACE)
+						return int32(m_VEC0_TOKEN_RESULT_SOME)
+					} else {
+						if int32(curr) == int32('}') {
+							v1 = ptr
+							ptr = ptr + 1
+							*(*uintptr)(unsafe.Add(out, 4)) = v1
+							*(*uintptr)(unsafe.Add(out, 8)) = ptr
+							*(*_NpyTokenType)(out) = int32(_NPY_TOKEN_TYPE_RBRACE)
+							return int32(m_VEC0_TOKEN_RESULT_SOME)
+						} else {
+							if int32(curr) == int32(':') {
+								v1 = ptr
+								ptr = ptr + 1
+								*(*uintptr)(unsafe.Add(out, 4)) = v1
+								*(*uintptr)(unsafe.Add(out, 8)) = ptr
+								*(*_NpyTokenType)(out) = int32(_NPY_TOKEN_TYPE_COLON)
+								return int32(m_VEC0_TOKEN_RESULT_SOME)
+							} else {
+								if int32(curr) == int32(',') {
+									v1 = ptr
+									ptr = ptr + 1
+									*(*uintptr)(unsafe.Add(out, 4)) = v1
+									*(*uintptr)(unsafe.Add(out, 8)) = ptr
+									*(*_NpyTokenType)(out) = int32(_NPY_TOKEN_TYPE_COMMA)
+									return int32(m_VEC0_TOKEN_RESULT_SOME)
+								} else {
+									if int32(curr) == int32('\'') {
+										start1 = ptr
+										ptr = ptr + 1
+										for ptr < end {
+											if int32(*(*uint8)(__ccgo_ptr(ptr))) == int32('\'') {
+												break
+											}
+											ptr = ptr + 1
+										}
+										if ptr >= end || int32(*(*uint8)(__ccgo_ptr(ptr))) != int32('\'') {
+											return int32(m_VEC0_TOKEN_RESULT_ERROR)
+										}
+										*(*uintptr)(unsafe.Add(out, 4)) = start1
+										ptr = ptr + 1
+										v1 = ptr
+										*(*uintptr)(unsafe.Add(out, 8)) = v1
+										*(*_NpyTokenType)(out) = int32(_NPY_TOKEN_TYPE_STRING)
+										return int32(m_VEC0_TOKEN_RESULT_SOME)
+									} else {
+										if int32(curr) == int32('F') && libc.Xstrncmp(tls, ptr, __ccgo_ts+1916, libc.Xstrlen(tls, __ccgo_ts+1916)) == 0 {
+											*(*uintptr)(unsafe.Add(out, 4)) = ptr
+											*(*uintptr)(unsafe.Add(out, 8)) = ptr + uintptr(int32(libc.Xstrlen(tls, __ccgo_ts+1916)))
+											ptr = *(*uintptr)(unsafe.Add(out, 8))
+											*(*_NpyTokenType)(out) = int32(_NPY_TOKEN_TYPE_FALSE)
+											return int32(m_VEC0_TOKEN_RESULT_SOME)
+										} else {
+											if Xis_digit(tls, int8(curr)) != 0 {
+												start2 = ptr
+												for ptr < end && Xis_digit(tls, int8(*(*uint8)(__ccgo_ptr(ptr)))) != 0 {
+													ptr = ptr + 1
+												}
+												*(*uintptr)(unsafe.Add(out, 4)) = start2
+												*(*uintptr)(unsafe.Add(out, 8)) = ptr
+												*(*_NpyTokenType)(out) = int32(_NPY_TOKEN_TYPE_NUMBER)
+												return int32(m_VEC0_TOKEN_RESULT_SOME)
+											} else {
+												return int32(m_VEC0_TOKEN_RESULT_ERROR)
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	return int32(m_VEC0_TOKEN_RESULT_ERROR)
+}
+
+func _parse_npy_buffer__ccgo_gp(tls *libc.TLS, pVTab uintptr, buffer uintptr, bufferLength int32, data unsafe.Pointer, numElements unsafe.Pointer, numDimensions unsafe.Pointer, element_type unsafe.Pointer) (r int32) {
+	bp := tls.Alloc(32)
+	defer tls.Free(32)
+	var dataSize, expectedDataSize, totalHeaderLength Ti32
+	var fortran_order, rc int32
+	var header uintptr
+	var major, minor Tu8
+	var _ /* headerLength at bp+0 */ Tuint16_t
+	_, _, _, _, _, _, _, _ = dataSize, expectedDataSize, fortran_order, header, major, minor, rc, totalHeaderLength
+	if bufferLength < int32(10) {
+		// IMP: V03312_20150
+		Xvtab_set_error(tls, pVTab, __ccgo_ts+3171, 0)
+		return int32(m_SQLITE_ERROR)
+	}
+	if libc.Xmemcmp(tls, uintptr(unsafe.Pointer(&_NPY_MAGIC)), buffer, uint32(6)) != 0 {
+		// V11954_28792
+		Xvtab_set_error(tls, pVTab, __ccgo_ts+3193, 0)
+		return int32(m_SQLITE_ERROR)
+	}
+	major = *(*uint8)(__ccgo_ptr(buffer + 6))
+	minor = *(*uint8)(__ccgo_ptr(buffer + 7))
+	*(*Tuint16_t)(__ccgo_ptr(bp)) = uint16(0)
+	libc.Xmemcpy(tls, bp, buffer+8, uint32(2))
+	totalHeaderLength = int32(libc.Uint32FromInt64(6) + libc.Uint32FromInt64(1) + libc.Uint32FromInt64(1) + libc.Uint32FromInt64(2) + uint32(*(*Tuint16_t)(__ccgo_ptr(bp))))
+	dataSize = bufferLength - totalHeaderLength
+	if dataSize < 0 {
+		Xvtab_set_error(tls, pVTab, __ccgo_ts+3241, 0)
+		return int32(m_SQLITE_ERROR)
+	}
+	header = buffer + 10
+	rc = _parse_npy_header__ccgo_gp(tls, pVTab, header, uint32(*(*Tuint16_t)(__ccgo_ptr(bp))), element_type, unsafe.Pointer(&fortran_order), numElements, numDimensions)
+	if rc != m_SQLITE_OK {
+		return rc
+	}
+	expectedDataSize = int32(*(*Tsize_t)(numElements) * Xvector_byte_size(tls, *(*_VectorElementType)(element_type), *(*Tsize_t)(numDimensions)))
+	if expectedDataSize != dataSize {
+		Xvtab_set_error(tls, pVTab, __ccgo_ts+3278, libc.VaList(bp+16, expectedDataSize, dataSize))
+		return int32(m_SQLITE_ERROR)
+	}
+	*(*uintptr)(data) = buffer + uintptr(totalHeaderLength)
+	return m_SQLITE_OK
+}
+
+func _parse_npy_header__ccgo_gp(tls *libc.TLS, pVTab uintptr, header uintptr, headerLength Tsize_t, out_element_type unsafe.Pointer, fortran_order unsafe.Pointer, numElements unsafe.Pointer, numDimensions unsafe.Pointer) (r int32) {
+	var first Tsize_t
+	var key uintptr
+	var rc, v1 int32
+	var scanner TNpyScanner
+	var token TNpyToken
+	_, _, _, _, _, _ = first, key, rc, scanner, token, v1
+	_npy_scanner_init__ccgo_gp(tls, unsafe.Pointer(&scanner), header, int32(headerLength))
+	if _npy_scanner_next__ccgo_gp(tls, unsafe.Pointer(&scanner), unsafe.Pointer(&token)) != int32(m_VEC0_TOKEN_RESULT_SOME) && token.Ftoken_type != int32(_NPY_TOKEN_TYPE_LBRACE) {
+		Xvtab_set_error(tls, pVTab, __ccgo_ts+1922, 0)
+		return int32(m_SQLITE_ERROR)
+	}
+	for int32(1) != 0 {
+		rc = _npy_scanner_next__ccgo_gp(tls, unsafe.Pointer(&scanner), unsafe.Pointer(&token))
+		if rc != int32(m_VEC0_TOKEN_RESULT_SOME) {
+			Xvtab_set_error(tls, pVTab, __ccgo_ts+1985, 0)
+			return int32(m_SQLITE_ERROR)
+		}
+		if token.Ftoken_type == int32(_NPY_TOKEN_TYPE_RBRACE) {
+			break
+		}
+		if token.Ftoken_type != int32(_NPY_TOKEN_TYPE_STRING) {
+			Xvtab_set_error(tls, pVTab, __ccgo_ts+2041, 0)
+			return int32(m_SQLITE_ERROR)
+		}
+		key = token.Fstart
+		rc = _npy_scanner_next__ccgo_gp(tls, unsafe.Pointer(&scanner), unsafe.Pointer(&token))
+		if rc != int32(m_VEC0_TOKEN_RESULT_SOME) || token.Ftoken_type != int32(_NPY_TOKEN_TYPE_COLON) {
+			Xvtab_set_error(tls, pVTab, __ccgo_ts+2109, 0)
+			return int32(m_SQLITE_ERROR)
+		}
+		if libc.Xstrncmp(tls, key, __ccgo_ts+2177, libc.Xstrlen(tls, __ccgo_ts+2177)) == 0 {
+			rc = _npy_scanner_next__ccgo_gp(tls, unsafe.Pointer(&scanner), unsafe.Pointer(&token))
+			if rc != int32(m_VEC0_TOKEN_RESULT_SOME) || token.Ftoken_type != int32(_NPY_TOKEN_TYPE_STRING) {
+				Xvtab_set_error(tls, pVTab, __ccgo_ts+2185, 0)
+				return int32(m_SQLITE_ERROR)
+			}
+			if libc.Xstrncmp(tls, token.Fstart, __ccgo_ts+2254, libc.Xstrlen(tls, __ccgo_ts+2254)) != 0 {
+				Xvtab_set_error(tls, pVTab, __ccgo_ts+2260, 0)
+				return int32(m_SQLITE_ERROR)
+			}
+			*(*_VectorElementType)(out_element_type) = int32(_SQLITE_VEC_ELEMENT_TYPE_FLOAT32)
+		} else {
+			if libc.Xstrncmp(tls, key, __ccgo_ts+2349, libc.Xstrlen(tls, __ccgo_ts+2349)) == 0 {
+				rc = _npy_scanner_next__ccgo_gp(tls, unsafe.Pointer(&scanner), unsafe.Pointer(&token))
+				if rc != int32(m_VEC0_TOKEN_RESULT_SOME) || token.Ftoken_type != int32(_NPY_TOKEN_TYPE_FALSE) {
+					Xvtab_set_error(tls, pVTab, __ccgo_ts+2365, 0)
+					return int32(m_SQLITE_ERROR)
+				}
+				*(*int32)(fortran_order) = 0
+			} else {
+				if libc.Xstrncmp(tls, key, __ccgo_ts+2462, libc.Xstrlen(tls, __ccgo_ts+2462)) == 0 {
+					rc = _npy_scanner_next__ccgo_gp(tls, unsafe.Pointer(&scanner), unsafe.Pointer(&token))
+					if rc != int32(m_VEC0_TOKEN_RESULT_SOME) || token.Ftoken_type != int32(_NPY_TOKEN_TYPE_LPAREN) {
+						Xvtab_set_error(tls, pVTab, __ccgo_ts+2470, 0)
+						return int32(m_SQLITE_ERROR)
+					}
+					rc = _npy_scanner_next__ccgo_gp(tls, unsafe.Pointer(&scanner), unsafe.Pointer(&token))
+					if rc != int32(m_VEC0_TOKEN_RESULT_SOME) || token.Ftoken_type != int32(_NPY_TOKEN_TYPE_NUMBER) {
+						Xvtab_set_error(tls, pVTab, __ccgo_ts+2543, 0)
+						return int32(m_SQLITE_ERROR)
+					}
+					first = uint32(libc.Xstrtol(tls, token.Fstart, libc.UintptrFromInt32(0), int32(10)))
+					rc = _npy_scanner_next__ccgo_gp(tls, unsafe.Pointer(&scanner), unsafe.Pointer(&token))
+					if rc != int32(m_VEC0_TOKEN_RESULT_SOME) || token.Ftoken_type != int32(_NPY_TOKEN_TYPE_COMMA) {
+						Xvtab_set_error(tls, pVTab, __ccgo_ts+2612, 0)
+						return int32(m_SQLITE_ERROR)
+					}
+					rc = _npy_scanner_next__ccgo_gp(tls, unsafe.Pointer(&scanner), unsafe.Pointer(&token))
+					if rc != int32(m_VEC0_TOKEN_RESULT_SOME) {
+						Xvtab_set_error(tls, pVTab, __ccgo_ts+2678, 0)
+						return int32(m_SQLITE_ERROR)
+					}
+					if token.Ftoken_type == int32(_NPY_TOKEN_TYPE_NUMBER) {
+						*(*Tsize_t)(numElements) = first
+						*(*Tsize_t)(numDimensions) = uint32(libc.Xstrtol(tls, token.Fstart, libc.UintptrFromInt32(0), int32(10)))
+						rc = _npy_scanner_next__ccgo_gp(tls, unsafe.Pointer(&scanner), unsafe.Pointer(&token))
+						if rc != int32(m_VEC0_TOKEN_RESULT_SOME) || token.Ftoken_type != int32(_NPY_TOKEN_TYPE_RPAREN) {
+							Xvtab_set_error(tls, pVTab, __ccgo_ts+2747, 0)
+							return int32(m_SQLITE_ERROR)
+						}
+					} else {
+						if token.Ftoken_type == int32(_NPY_TOKEN_TYPE_RPAREN) {
+							// '(0,)' means an empty array!
+							if first != 0 {
+								v1 = int32(1)
+							} else {
+								v1 = 0
+							}
+							*(*Tsize_t)(numElements) = uint32(v1)
+							*(*Tsize_t)(numDimensions) = first
+						} else {
+							Xvtab_set_error(tls, pVTab, __ccgo_ts+2819, 0)
+							return int32(m_SQLITE_ERROR)
+						}
+					}
+				} else {
+					Xvtab_set_error(tls, pVTab, __ccgo_ts+2874, 0)
+					return int32(m_SQLITE_ERROR)
+				}
+			}
+		}
+		rc = _npy_scanner_next__ccgo_gp(tls, unsafe.Pointer(&scanner), unsafe.Pointer(&token))
+		if rc != int32(m_VEC0_TOKEN_RESULT_SOME) || token.Ftoken_type != int32(_NPY_TOKEN_TYPE_COMMA) {
+			Xvtab_set_error(tls, pVTab, __ccgo_ts+2929, 0)
+			return int32(m_SQLITE_ERROR)
+		}
+	}
+	return m_SQLITE_OK
 }
 
 func _vec0BestIndex(tls *libc.TLS, pVTab uintptr, pIdxInfo uintptr) (r int32) {
@@ -3449,11 +2491,11 @@ func _vec0BestIndex(tls *libc.TLS, pVTab uintptr, pIdxInfo uintptr) (r int32) {
 		if libsqlite3.Xsqlite3_libversion_number(tls) >= int32(3038000) {
 			vtabIn = uint8(libsqlite3.Xsqlite3_vtab_in(tls, pIdxInfo, i, -int32(1)))
 		}
-		if !((**(**Tsqlite3_index_constraint)(__ccgo_up((*Tsqlite3_index_info)(unsafe.Pointer(pIdxInfo)).FaConstraint + uintptr(i)*12))).Fusable != 0) {
+		if !((*(*Tsqlite3_index_constraint)(__ccgo_ptr((*Tsqlite3_index_info)(unsafe.Pointer(pIdxInfo)).FaConstraint + uintptr(i)*12))).Fusable != 0) {
 			goto _1
 		}
-		iColumn = (**(**Tsqlite3_index_constraint)(__ccgo_up((*Tsqlite3_index_info)(unsafe.Pointer(pIdxInfo)).FaConstraint + uintptr(i)*12))).FiColumn
-		op = int32((**(**Tsqlite3_index_constraint)(__ccgo_up((*Tsqlite3_index_info)(unsafe.Pointer(pIdxInfo)).FaConstraint + uintptr(i)*12))).Fop)
+		iColumn = (*(*Tsqlite3_index_constraint)(__ccgo_ptr((*Tsqlite3_index_info)(unsafe.Pointer(pIdxInfo)).FaConstraint + uintptr(i)*12))).FiColumn
+		op = int32((*(*Tsqlite3_index_constraint)(__ccgo_ptr((*Tsqlite3_index_info)(unsafe.Pointer(pIdxInfo)).FaConstraint + uintptr(i)*12))).Fop)
 		if op == int32(m_SQLITE_INDEX_CONSTRAINT_LIMIT) {
 			iLimitTerm = i
 		}
@@ -3505,12 +2547,12 @@ func _vec0BestIndex(tls *libc.TLS, pVTab uintptr, pIdxInfo uintptr) (r int32) {
 				rc = int32(m_SQLITE_ERROR)
 				goto done
 			}
-			if (**(**Tsqlite3_index_orderby)(__ccgo_up((*Tsqlite3_index_info)(unsafe.Pointer(pIdxInfo)).FaOrderBy))).FiColumn != Xvec0_column_distance_idx(tls, p) {
+			if (*(*Tsqlite3_index_orderby)(__ccgo_ptr((*Tsqlite3_index_info)(unsafe.Pointer(pIdxInfo)).FaOrderBy))).FiColumn != Xvec0_column_distance_idx(tls, p) {
 				Xvtab_set_error(tls, pVTab, __ccgo_ts+8738, 0)
 				rc = int32(m_SQLITE_ERROR)
 				goto done
 			}
-			if (**(**Tsqlite3_index_orderby)(__ccgo_up((*Tsqlite3_index_info)(unsafe.Pointer(pIdxInfo)).FaOrderBy))).Fdesc != 0 {
+			if (*(*Tsqlite3_index_orderby)(__ccgo_ptr((*Tsqlite3_index_info)(unsafe.Pointer(pIdxInfo)).FaOrderBy))).Fdesc != 0 {
 				Xvtab_set_error(tls, pVTab, __ccgo_ts+8832, 0)
 				rc = int32(m_SQLITE_ERROR)
 				goto done
@@ -3526,20 +2568,20 @@ func _vec0BestIndex(tls *libc.TLS, pVTab uintptr, pIdxInfo uintptr) (r int32) {
 		argvIndex = int32(1)
 		v2 = argvIndex
 		argvIndex = argvIndex + 1
-		(**(**Tsqlite3_index_constraint_usage)(__ccgo_up((*Tsqlite3_index_info)(unsafe.Pointer(pIdxInfo)).FaConstraintUsage + uintptr(iMatchTerm)*8))).FargvIndex = v2
-		(**(**Tsqlite3_index_constraint_usage)(__ccgo_up((*Tsqlite3_index_info)(unsafe.Pointer(pIdxInfo)).FaConstraintUsage + uintptr(iMatchTerm)*8))).Fomit = uint8(1)
+		(*(*Tsqlite3_index_constraint_usage)(__ccgo_ptr((*Tsqlite3_index_info)(unsafe.Pointer(pIdxInfo)).FaConstraintUsage + uintptr(iMatchTerm)*8))).FargvIndex = v2
+		(*(*Tsqlite3_index_constraint_usage)(__ccgo_ptr((*Tsqlite3_index_info)(unsafe.Pointer(pIdxInfo)).FaConstraintUsage + uintptr(iMatchTerm)*8))).Fomit = uint8(1)
 		libsqlite3.Xsqlite3_str_appendchar(tls, idxStr, int32(1), int8(_VEC0_IDXSTR_KIND_KNN_MATCH))
 		libsqlite3.Xsqlite3_str_appendchar(tls, idxStr, int32(3), int8('_'))
 		if iLimitTerm >= 0 {
 			v2 = argvIndex
 			argvIndex = argvIndex + 1
-			(**(**Tsqlite3_index_constraint_usage)(__ccgo_up((*Tsqlite3_index_info)(unsafe.Pointer(pIdxInfo)).FaConstraintUsage + uintptr(iLimitTerm)*8))).FargvIndex = v2
-			(**(**Tsqlite3_index_constraint_usage)(__ccgo_up((*Tsqlite3_index_info)(unsafe.Pointer(pIdxInfo)).FaConstraintUsage + uintptr(iLimitTerm)*8))).Fomit = uint8(1)
+			(*(*Tsqlite3_index_constraint_usage)(__ccgo_ptr((*Tsqlite3_index_info)(unsafe.Pointer(pIdxInfo)).FaConstraintUsage + uintptr(iLimitTerm)*8))).FargvIndex = v2
+			(*(*Tsqlite3_index_constraint_usage)(__ccgo_ptr((*Tsqlite3_index_info)(unsafe.Pointer(pIdxInfo)).FaConstraintUsage + uintptr(iLimitTerm)*8))).Fomit = uint8(1)
 		} else {
 			v2 = argvIndex
 			argvIndex = argvIndex + 1
-			(**(**Tsqlite3_index_constraint_usage)(__ccgo_up((*Tsqlite3_index_info)(unsafe.Pointer(pIdxInfo)).FaConstraintUsage + uintptr(iKTerm)*8))).FargvIndex = v2
-			(**(**Tsqlite3_index_constraint_usage)(__ccgo_up((*Tsqlite3_index_info)(unsafe.Pointer(pIdxInfo)).FaConstraintUsage + uintptr(iKTerm)*8))).Fomit = uint8(1)
+			(*(*Tsqlite3_index_constraint_usage)(__ccgo_ptr((*Tsqlite3_index_info)(unsafe.Pointer(pIdxInfo)).FaConstraintUsage + uintptr(iKTerm)*8))).FargvIndex = v2
+			(*(*Tsqlite3_index_constraint_usage)(__ccgo_ptr((*Tsqlite3_index_info)(unsafe.Pointer(pIdxInfo)).FaConstraintUsage + uintptr(iKTerm)*8))).Fomit = uint8(1)
 		}
 		libsqlite3.Xsqlite3_str_appendchar(tls, idxStr, int32(1), int8(_VEC0_IDXSTR_KIND_KNN_K))
 		libsqlite3.Xsqlite3_str_appendchar(tls, idxStr, int32(3), int8('_'))
@@ -3549,8 +2591,8 @@ func _vec0BestIndex(tls *libc.TLS, pVTab uintptr, pIdxInfo uintptr) (r int32) {
 			libsqlite3.Xsqlite3_vtab_in(tls, pIdxInfo, iRowidInTerm, int32(1))
 			v2 = argvIndex
 			argvIndex = argvIndex + 1
-			(**(**Tsqlite3_index_constraint_usage)(__ccgo_up((*Tsqlite3_index_info)(unsafe.Pointer(pIdxInfo)).FaConstraintUsage + uintptr(iRowidInTerm)*8))).FargvIndex = v2
-			(**(**Tsqlite3_index_constraint_usage)(__ccgo_up((*Tsqlite3_index_info)(unsafe.Pointer(pIdxInfo)).FaConstraintUsage + uintptr(iRowidInTerm)*8))).Fomit = uint8(1)
+			(*(*Tsqlite3_index_constraint_usage)(__ccgo_ptr((*Tsqlite3_index_info)(unsafe.Pointer(pIdxInfo)).FaConstraintUsage + uintptr(iRowidInTerm)*8))).FargvIndex = v2
+			(*(*Tsqlite3_index_constraint_usage)(__ccgo_ptr((*Tsqlite3_index_info)(unsafe.Pointer(pIdxInfo)).FaConstraintUsage + uintptr(iRowidInTerm)*8))).Fomit = uint8(1)
 			libsqlite3.Xsqlite3_str_appendchar(tls, idxStr, int32(1), int8(_VEC0_IDXSTR_KIND_KNN_ROWID_IN))
 			libsqlite3.Xsqlite3_str_appendchar(tls, idxStr, int32(3), int8('_'))
 		}
@@ -3560,11 +2602,11 @@ func _vec0BestIndex(tls *libc.TLS, pVTab uintptr, pIdxInfo uintptr) (r int32) {
 			if !(i1 < (*Tsqlite3_index_info)(unsafe.Pointer(pIdxInfo)).FnConstraint) {
 				break
 			}
-			if !((**(**Tsqlite3_index_constraint)(__ccgo_up((*Tsqlite3_index_info)(unsafe.Pointer(pIdxInfo)).FaConstraint + uintptr(i1)*12))).Fusable != 0) {
+			if !((*(*Tsqlite3_index_constraint)(__ccgo_ptr((*Tsqlite3_index_info)(unsafe.Pointer(pIdxInfo)).FaConstraint + uintptr(i1)*12))).Fusable != 0) {
 				goto _6
 			}
-			iColumn1 = (**(**Tsqlite3_index_constraint)(__ccgo_up((*Tsqlite3_index_info)(unsafe.Pointer(pIdxInfo)).FaConstraint + uintptr(i1)*12))).FiColumn
-			op1 = int32((**(**Tsqlite3_index_constraint)(__ccgo_up((*Tsqlite3_index_info)(unsafe.Pointer(pIdxInfo)).FaConstraint + uintptr(i1)*12))).Fop)
+			iColumn1 = (*(*Tsqlite3_index_constraint)(__ccgo_ptr((*Tsqlite3_index_info)(unsafe.Pointer(pIdxInfo)).FaConstraint + uintptr(i1)*12))).FiColumn
+			op1 = int32((*(*Tsqlite3_index_constraint)(__ccgo_ptr((*Tsqlite3_index_info)(unsafe.Pointer(pIdxInfo)).FaConstraint + uintptr(i1)*12))).Fop)
 			if op1 == int32(m_SQLITE_INDEX_CONSTRAINT_LIMIT) || op1 == int32(m_SQLITE_INDEX_CONSTRAINT_OFFSET) {
 				goto _6
 			}
@@ -3591,8 +2633,8 @@ func _vec0BestIndex(tls *libc.TLS, pVTab uintptr, pIdxInfo uintptr) (r int32) {
 			if value != 0 {
 				v2 = argvIndex
 				argvIndex = argvIndex + 1
-				(**(**Tsqlite3_index_constraint_usage)(__ccgo_up((*Tsqlite3_index_info)(unsafe.Pointer(pIdxInfo)).FaConstraintUsage + uintptr(i1)*8))).FargvIndex = v2
-				(**(**Tsqlite3_index_constraint_usage)(__ccgo_up((*Tsqlite3_index_info)(unsafe.Pointer(pIdxInfo)).FaConstraintUsage + uintptr(i1)*8))).Fomit = uint8(1)
+				(*(*Tsqlite3_index_constraint_usage)(__ccgo_ptr((*Tsqlite3_index_info)(unsafe.Pointer(pIdxInfo)).FaConstraintUsage + uintptr(i1)*8))).FargvIndex = v2
+				(*(*Tsqlite3_index_constraint_usage)(__ccgo_ptr((*Tsqlite3_index_info)(unsafe.Pointer(pIdxInfo)).FaConstraintUsage + uintptr(i1)*8))).Fomit = uint8(1)
 				libsqlite3.Xsqlite3_str_appendchar(tls, idxStr, int32(1), int8(_VEC0_IDXSTR_KIND_KNN_PARTITON_CONSTRAINT))
 				libsqlite3.Xsqlite3_str_appendchar(tls, idxStr, int32(1), int8(int32('A')+partition_idx))
 				libsqlite3.Xsqlite3_str_appendchar(tls, idxStr, int32(1), value)
@@ -3609,11 +2651,11 @@ func _vec0BestIndex(tls *libc.TLS, pVTab uintptr, pIdxInfo uintptr) (r int32) {
 			if !(i2 < (*Tsqlite3_index_info)(unsafe.Pointer(pIdxInfo)).FnConstraint) {
 				break
 			}
-			if !((**(**Tsqlite3_index_constraint)(__ccgo_up((*Tsqlite3_index_info)(unsafe.Pointer(pIdxInfo)).FaConstraint + uintptr(i2)*12))).Fusable != 0) {
+			if !((*(*Tsqlite3_index_constraint)(__ccgo_ptr((*Tsqlite3_index_info)(unsafe.Pointer(pIdxInfo)).FaConstraint + uintptr(i2)*12))).Fusable != 0) {
 				goto _8
 			}
-			iColumn2 = (**(**Tsqlite3_index_constraint)(__ccgo_up((*Tsqlite3_index_info)(unsafe.Pointer(pIdxInfo)).FaConstraint + uintptr(i2)*12))).FiColumn
-			op2 = int32((**(**Tsqlite3_index_constraint)(__ccgo_up((*Tsqlite3_index_info)(unsafe.Pointer(pIdxInfo)).FaConstraint + uintptr(i2)*12))).Fop)
+			iColumn2 = (*(*Tsqlite3_index_constraint)(__ccgo_ptr((*Tsqlite3_index_info)(unsafe.Pointer(pIdxInfo)).FaConstraint + uintptr(i2)*12))).FiColumn
+			op2 = int32((*(*Tsqlite3_index_constraint)(__ccgo_ptr((*Tsqlite3_index_info)(unsafe.Pointer(pIdxInfo)).FaConstraint + uintptr(i2)*12))).Fop)
 			if op2 == int32(m_SQLITE_INDEX_CONSTRAINT_LIMIT) || op2 == int32(m_SQLITE_INDEX_CONSTRAINT_OFFSET) {
 				goto _8
 			}
@@ -3629,7 +2671,7 @@ func _vec0BestIndex(tls *libc.TLS, pVTab uintptr, pIdxInfo uintptr) (r int32) {
 					vtabIn1 = libsqlite3.Xsqlite3_vtab_in(tls, pIdxInfo, i2, -int32(1))
 				}
 				if vtabIn1 != 0 {
-					switch (**(**TVec0MetadataColumnDefinition)(__ccgo_up(p + 1000 + uintptr(metadata_idx)*12))).Fkind {
+					switch (*(*TVec0MetadataColumnDefinition)(__ccgo_ptr(p + 1000 + uintptr(metadata_idx)*12))).Fkind {
 					case int32(_VEC0_METADATA_COLUMN_KIND_FLOAT):
 						fallthrough
 					case int32(_VEC0_METADATA_COLUMN_KIND_BOOLEAN):
@@ -3663,7 +2705,7 @@ func _vec0BestIndex(tls *libc.TLS, pVTab uintptr, pIdxInfo uintptr) (r int32) {
 				Xvtab_set_error(tls, pVTab, __ccgo_ts+9070, 0)
 				goto done
 			}
-			if (**(**TVec0MetadataColumnDefinition)(__ccgo_up(p + 1000 + uintptr(metadata_idx)*12))).Fkind == int32(_VEC0_METADATA_COLUMN_KIND_BOOLEAN) {
+			if (*(*TVec0MetadataColumnDefinition)(__ccgo_ptr(p + 1000 + uintptr(metadata_idx)*12))).Fkind == int32(_VEC0_METADATA_COLUMN_KIND_BOOLEAN) {
 				if !(int32(value1) == int32(_VEC0_METADATA_OPERATOR_EQ) || int32(value1) == int32(_VEC0_METADATA_OPERATOR_NE)) {
 					// IMP: V10145_26984
 					rc = int32(m_SQLITE_ERROR)
@@ -3673,8 +2715,8 @@ func _vec0BestIndex(tls *libc.TLS, pVTab uintptr, pIdxInfo uintptr) (r int32) {
 			}
 			v2 = argvIndex
 			argvIndex = argvIndex + 1
-			(**(**Tsqlite3_index_constraint_usage)(__ccgo_up((*Tsqlite3_index_info)(unsafe.Pointer(pIdxInfo)).FaConstraintUsage + uintptr(i2)*8))).FargvIndex = v2
-			(**(**Tsqlite3_index_constraint_usage)(__ccgo_up((*Tsqlite3_index_info)(unsafe.Pointer(pIdxInfo)).FaConstraintUsage + uintptr(i2)*8))).Fomit = uint8(1)
+			(*(*Tsqlite3_index_constraint_usage)(__ccgo_ptr((*Tsqlite3_index_info)(unsafe.Pointer(pIdxInfo)).FaConstraintUsage + uintptr(i2)*8))).FargvIndex = v2
+			(*(*Tsqlite3_index_constraint_usage)(__ccgo_ptr((*Tsqlite3_index_info)(unsafe.Pointer(pIdxInfo)).FaConstraintUsage + uintptr(i2)*8))).Fomit = uint8(1)
 			libsqlite3.Xsqlite3_str_appendchar(tls, idxStr, int32(1), int8(_VEC0_IDXSTR_KIND_METADATA_CONSTRAINT))
 			libsqlite3.Xsqlite3_str_appendchar(tls, idxStr, int32(1), int8(int32('A')+metadata_idx))
 			libsqlite3.Xsqlite3_str_appendchar(tls, idxStr, int32(1), value1)
@@ -3690,11 +2732,11 @@ func _vec0BestIndex(tls *libc.TLS, pVTab uintptr, pIdxInfo uintptr) (r int32) {
 			if !(i3 < (*Tsqlite3_index_info)(unsafe.Pointer(pIdxInfo)).FnConstraint) {
 				break
 			}
-			if !((**(**Tsqlite3_index_constraint)(__ccgo_up((*Tsqlite3_index_info)(unsafe.Pointer(pIdxInfo)).FaConstraint + uintptr(i3)*12))).Fusable != 0) {
+			if !((*(*Tsqlite3_index_constraint)(__ccgo_ptr((*Tsqlite3_index_info)(unsafe.Pointer(pIdxInfo)).FaConstraint + uintptr(i3)*12))).Fusable != 0) {
 				goto _10
 			}
-			iColumn3 = (**(**Tsqlite3_index_constraint)(__ccgo_up((*Tsqlite3_index_info)(unsafe.Pointer(pIdxInfo)).FaConstraint + uintptr(i3)*12))).FiColumn
-			op3 = int32((**(**Tsqlite3_index_constraint)(__ccgo_up((*Tsqlite3_index_info)(unsafe.Pointer(pIdxInfo)).FaConstraint + uintptr(i3)*12))).Fop)
+			iColumn3 = (*(*Tsqlite3_index_constraint)(__ccgo_ptr((*Tsqlite3_index_info)(unsafe.Pointer(pIdxInfo)).FaConstraint + uintptr(i3)*12))).FiColumn
+			op3 = int32((*(*Tsqlite3_index_constraint)(__ccgo_ptr((*Tsqlite3_index_info)(unsafe.Pointer(pIdxInfo)).FaConstraint + uintptr(i3)*12))).Fop)
 			if op3 == int32(m_SQLITE_INDEX_CONSTRAINT_LIMIT) || op3 == int32(m_SQLITE_INDEX_CONSTRAINT_OFFSET) {
 				goto _10
 			}
@@ -3719,8 +2761,8 @@ func _vec0BestIndex(tls *libc.TLS, pVTab uintptr, pIdxInfo uintptr) (r int32) {
 			}
 			v2 = argvIndex
 			argvIndex = argvIndex + 1
-			(**(**Tsqlite3_index_constraint_usage)(__ccgo_up((*Tsqlite3_index_info)(unsafe.Pointer(pIdxInfo)).FaConstraintUsage + uintptr(i3)*8))).FargvIndex = v2
-			(**(**Tsqlite3_index_constraint_usage)(__ccgo_up((*Tsqlite3_index_info)(unsafe.Pointer(pIdxInfo)).FaConstraintUsage + uintptr(i3)*8))).Fomit = uint8(1)
+			(*(*Tsqlite3_index_constraint_usage)(__ccgo_ptr((*Tsqlite3_index_info)(unsafe.Pointer(pIdxInfo)).FaConstraintUsage + uintptr(i3)*8))).FargvIndex = v2
+			(*(*Tsqlite3_index_constraint_usage)(__ccgo_ptr((*Tsqlite3_index_info)(unsafe.Pointer(pIdxInfo)).FaConstraintUsage + uintptr(i3)*8))).Fomit = uint8(1)
 			libsqlite3.Xsqlite3_str_appendchar(tls, idxStr, int32(1), int8(_VEC0_IDXSTR_KIND_KNN_DISTANCE_CONSTRAINT))
 			libsqlite3.Xsqlite3_str_appendchar(tls, idxStr, int32(1), value2)
 			libsqlite3.Xsqlite3_str_appendchar(tls, idxStr, int32(1), int8('_'))
@@ -3736,8 +2778,8 @@ func _vec0BestIndex(tls *libc.TLS, pVTab uintptr, pIdxInfo uintptr) (r int32) {
 	} else {
 		if iRowidTerm >= 0 {
 			libsqlite3.Xsqlite3_str_appendchar(tls, idxStr, int32(1), int8(_VEC0_QUERY_PLAN_POINT))
-			(**(**Tsqlite3_index_constraint_usage)(__ccgo_up((*Tsqlite3_index_info)(unsafe.Pointer(pIdxInfo)).FaConstraintUsage + uintptr(iRowidTerm)*8))).FargvIndex = int32(1)
-			(**(**Tsqlite3_index_constraint_usage)(__ccgo_up((*Tsqlite3_index_info)(unsafe.Pointer(pIdxInfo)).FaConstraintUsage + uintptr(iRowidTerm)*8))).Fomit = uint8(1)
+			(*(*Tsqlite3_index_constraint_usage)(__ccgo_ptr((*Tsqlite3_index_info)(unsafe.Pointer(pIdxInfo)).FaConstraintUsage + uintptr(iRowidTerm)*8))).FargvIndex = int32(1)
+			(*(*Tsqlite3_index_constraint_usage)(__ccgo_ptr((*Tsqlite3_index_info)(unsafe.Pointer(pIdxInfo)).FaConstraintUsage + uintptr(iRowidTerm)*8))).Fomit = uint8(1)
 			libsqlite3.Xsqlite3_str_appendchar(tls, idxStr, int32(1), int8(_VEC0_IDXSTR_KIND_POINT_ID))
 			libsqlite3.Xsqlite3_str_appendchar(tls, idxStr, int32(3), int8('_'))
 			(*Tsqlite3_index_info)(unsafe.Pointer(pIdxInfo)).FidxNum = int32((*Tsqlite3_index_info)(unsafe.Pointer(pIdxInfo)).FcolUsed)
@@ -3767,16 +2809,12 @@ done:
 }
 
 func _vec0Column_fullscan(tls *libc.TLS, pVtab uintptr, pCur uintptr, context uintptr, i int32) (r int32) {
-	bp := tls.Alloc(48)
-	defer tls.Free(48)
-	var auxiliary_idx, metadata_idx, partition_idx, rc, rc1, rc2, rc3, vector_idx int32
+	bp := tls.Alloc(32)
+	defer tls.Free(32)
+	var auxiliary_idx, metadata_idx, partition_idx, rc, rc1, rc2, rc3, sz, vector_idx int32
 	var rowid Ti64
-	var zErr uintptr
-	var _ /* sz at bp+4 */ int32
-	var _ /* v at bp+0 */ uintptr
-	var _ /* v at bp+12 */ uintptr
-	var _ /* v at bp+8 */ uintptr
-	_, _, _, _, _, _, _, _, _, _ = auxiliary_idx, metadata_idx, partition_idx, rc, rc1, rc2, rc3, rowid, vector_idx, zErr
+	var v, v1, v2, zErr uintptr
+	_, _, _, _, _, _, _, _, _, _, _, _, _, _ = auxiliary_idx, metadata_idx, partition_idx, rc, rc1, rc2, rc3, rowid, sz, v, v1, v2, vector_idx, zErr
 	if !((*Tvec0_cursor)(unsafe.Pointer(pCur)).Ffullscan_data != 0) {
 		libsqlite3.Xsqlite3_result_error(tls, context, __ccgo_ts+10841, -int32(1))
 		return int32(m_SQLITE_ERROR)
@@ -3787,32 +2825,32 @@ func _vec0Column_fullscan(tls *libc.TLS, pVtab uintptr, pCur uintptr, context ui
 	} else {
 		if Xvec0_column_idx_is_vector(tls, pVtab, i) != 0 {
 			vector_idx = Xvec0_column_idx_to_vector_idx(tls, pVtab, i)
-			rc = Xvec0_get_vector_data(tls, pVtab, rowid, vector_idx, bp, bp+4)
+			rc = _vec0_get_vector_data__ccgo_gp(tls, pVtab, rowid, vector_idx, unsafe.Pointer(&v), unsafe.Pointer(&sz))
 			if rc != m_SQLITE_OK {
 				return rc
 			}
-			libsqlite3.Xsqlite3_result_blob(tls, context, **(**uintptr)(__ccgo_up(bp)), **(**int32)(__ccgo_up(bp + 4)), __ccgo_fp(libsqlite3.Xsqlite3_free))
-			libsqlite3.Xsqlite3_result_subtype(tls, context, uint32((**(**TVectorColumnDefinition)(__ccgo_up(pVtab + 440 + uintptr(vector_idx)*20))).Felement_type))
+			libsqlite3.Xsqlite3_result_blob(tls, context, v, sz, __ccgo_fp(libsqlite3.Xsqlite3_free))
+			libsqlite3.Xsqlite3_result_subtype(tls, context, uint32((*(*TVectorColumnDefinition)(__ccgo_ptr(pVtab + 440 + uintptr(vector_idx)*20))).Felement_type))
 		} else {
 			if i == Xvec0_column_distance_idx(tls, pVtab) {
 				libsqlite3.Xsqlite3_result_null(tls, context)
 			} else {
 				if Xvec0_column_idx_is_partition(tls, pVtab, i) != 0 {
 					partition_idx = Xvec0_column_idx_to_partition_idx(tls, pVtab, i)
-					rc1 = Xvec0_get_partition_value_for_rowid(tls, pVtab, rowid, partition_idx, bp+8)
+					rc1 = _vec0_get_partition_value_for_rowid__ccgo_gp(tls, pVtab, rowid, partition_idx, unsafe.Pointer(&v1))
 					if rc1 == m_SQLITE_OK {
-						libsqlite3.Xsqlite3_result_value(tls, context, **(**uintptr)(__ccgo_up(bp + 8)))
-						libsqlite3.Xsqlite3_value_free(tls, **(**uintptr)(__ccgo_up(bp + 8)))
+						libsqlite3.Xsqlite3_result_value(tls, context, v1)
+						libsqlite3.Xsqlite3_value_free(tls, v1)
 					} else {
 						libsqlite3.Xsqlite3_result_error_code(tls, context, rc1)
 					}
 				} else {
 					if Xvec0_column_idx_is_auxiliary(tls, pVtab, i) != 0 {
 						auxiliary_idx = Xvec0_column_idx_to_auxiliary_idx(tls, pVtab, i)
-						rc2 = Xvec0_get_auxiliary_value_for_rowid(tls, pVtab, rowid, auxiliary_idx, bp+12)
+						rc2 = _vec0_get_auxiliary_value_for_rowid__ccgo_gp(tls, pVtab, rowid, auxiliary_idx, unsafe.Pointer(&v2))
 						if rc2 == m_SQLITE_OK {
-							libsqlite3.Xsqlite3_result_value(tls, context, **(**uintptr)(__ccgo_up(bp + 12)))
-							libsqlite3.Xsqlite3_value_free(tls, **(**uintptr)(__ccgo_up(bp + 12)))
+							libsqlite3.Xsqlite3_result_value(tls, context, v2)
+							libsqlite3.Xsqlite3_value_free(tls, v2)
 						} else {
 							libsqlite3.Xsqlite3_result_error_code(tls, context, rc2)
 						}
@@ -3825,7 +2863,7 @@ func _vec0Column_fullscan(tls *libc.TLS, pVtab uintptr, pCur uintptr, context ui
 							rc3 = Xvec0_result_metadata_value_for_rowid(tls, pVtab, rowid, metadata_idx, context)
 							if rc3 != m_SQLITE_OK {
 								// IMP: V15466_32305
-								zErr = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+10891, libc.VaList(bp+24, (**(**TVec0MetadataColumnDefinition)(__ccgo_up(pVtab + 1000 + uintptr(metadata_idx)*12))).Fname_length, (**(**TVec0MetadataColumnDefinition)(__ccgo_up(pVtab + 1000 + uintptr(metadata_idx)*12))).Fname, rowid))
+								zErr = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+10891, libc.VaList(bp+8, (*(*TVec0MetadataColumnDefinition)(__ccgo_ptr(pVtab + 1000 + uintptr(metadata_idx)*12))).Fname_length, (*(*TVec0MetadataColumnDefinition)(__ccgo_ptr(pVtab + 1000 + uintptr(metadata_idx)*12))).Fname, rowid))
 								if zErr != 0 {
 									libsqlite3.Xsqlite3_result_error(tls, context, zErr, -int32(1))
 									libsqlite3.Xsqlite3_free(tls, zErr)
@@ -3843,66 +2881,62 @@ func _vec0Column_fullscan(tls *libc.TLS, pVtab uintptr, pCur uintptr, context ui
 }
 
 func _vec0Column_knn(tls *libc.TLS, pVtab uintptr, pCur uintptr, context uintptr, i int32) (r int32) {
-	bp := tls.Alloc(48)
-	defer tls.Free(48)
-	var auxiliary_idx, metadata_idx, partition_idx, rc, rc1, rc2, rc3, vector_idx int32
+	bp := tls.Alloc(32)
+	defer tls.Free(32)
+	var auxiliary_idx, metadata_idx, partition_idx, rc, rc1, rc2, rc3, sz, vector_idx int32
+	var out, v, v1, zErr uintptr
 	var rowid, rowid1, rowid2, rowid3 Ti64
-	var zErr uintptr
-	var _ /* out at bp+0 */ uintptr
-	var _ /* sz at bp+4 */ int32
-	var _ /* v at bp+12 */ uintptr
-	var _ /* v at bp+8 */ uintptr
-	_, _, _, _, _, _, _, _, _, _, _, _, _ = auxiliary_idx, metadata_idx, partition_idx, rc, rc1, rc2, rc3, rowid, rowid1, rowid2, rowid3, vector_idx, zErr
+	_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _ = auxiliary_idx, metadata_idx, out, partition_idx, rc, rc1, rc2, rc3, rowid, rowid1, rowid2, rowid3, sz, v, v1, vector_idx, zErr
 	if !((*Tvec0_cursor)(unsafe.Pointer(pCur)).Fknn_data != 0) {
 		libsqlite3.Xsqlite3_result_error(tls, context, __ccgo_ts+11001, -int32(1))
 		return int32(m_SQLITE_ERROR)
 	}
 	if i == m_VEC0_COLUMN_ID {
-		rowid = **(**Ti64)(__ccgo_up((*Tvec0_query_knn_data)(unsafe.Pointer((*Tvec0_cursor)(unsafe.Pointer(pCur)).Fknn_data)).Frowids + uintptr((*Tvec0_query_knn_data)(unsafe.Pointer((*Tvec0_cursor)(unsafe.Pointer(pCur)).Fknn_data)).Fcurrent_idx)*8))
+		rowid = *(*Ti64)(__ccgo_ptr((*Tvec0_query_knn_data)(unsafe.Pointer((*Tvec0_cursor)(unsafe.Pointer(pCur)).Fknn_data)).Frowids + uintptr((*Tvec0_query_knn_data)(unsafe.Pointer((*Tvec0_cursor)(unsafe.Pointer(pCur)).Fknn_data)).Fcurrent_idx)*8))
 		return Xvec0_result_id(tls, pVtab, context, rowid)
 	} else {
 		if i == Xvec0_column_distance_idx(tls, pVtab) {
-			libsqlite3.Xsqlite3_result_double(tls, context, float64(**(**Tf32)(__ccgo_up((*Tvec0_query_knn_data)(unsafe.Pointer((*Tvec0_cursor)(unsafe.Pointer(pCur)).Fknn_data)).Fdistances + uintptr((*Tvec0_query_knn_data)(unsafe.Pointer((*Tvec0_cursor)(unsafe.Pointer(pCur)).Fknn_data)).Fcurrent_idx)*4))))
+			libsqlite3.Xsqlite3_result_double(tls, context, float64(*(*Tf32)(__ccgo_ptr((*Tvec0_query_knn_data)(unsafe.Pointer((*Tvec0_cursor)(unsafe.Pointer(pCur)).Fknn_data)).Fdistances + uintptr((*Tvec0_query_knn_data)(unsafe.Pointer((*Tvec0_cursor)(unsafe.Pointer(pCur)).Fknn_data)).Fcurrent_idx)*4))))
 			return m_SQLITE_OK
 		} else {
 			if Xvec0_column_idx_is_vector(tls, pVtab, i) != 0 {
 				vector_idx = Xvec0_column_idx_to_vector_idx(tls, pVtab, i)
-				rc = Xvec0_get_vector_data(tls, pVtab, **(**Ti64)(__ccgo_up((*Tvec0_query_knn_data)(unsafe.Pointer((*Tvec0_cursor)(unsafe.Pointer(pCur)).Fknn_data)).Frowids + uintptr((*Tvec0_query_knn_data)(unsafe.Pointer((*Tvec0_cursor)(unsafe.Pointer(pCur)).Fknn_data)).Fcurrent_idx)*8)), vector_idx, bp, bp+4)
+				rc = _vec0_get_vector_data__ccgo_gp(tls, pVtab, *(*Ti64)(__ccgo_ptr((*Tvec0_query_knn_data)(unsafe.Pointer((*Tvec0_cursor)(unsafe.Pointer(pCur)).Fknn_data)).Frowids + uintptr((*Tvec0_query_knn_data)(unsafe.Pointer((*Tvec0_cursor)(unsafe.Pointer(pCur)).Fknn_data)).Fcurrent_idx)*8)), vector_idx, unsafe.Pointer(&out), unsafe.Pointer(&sz))
 				if rc != m_SQLITE_OK {
 					return rc
 				}
-				libsqlite3.Xsqlite3_result_blob(tls, context, **(**uintptr)(__ccgo_up(bp)), **(**int32)(__ccgo_up(bp + 4)), __ccgo_fp(libsqlite3.Xsqlite3_free))
-				libsqlite3.Xsqlite3_result_subtype(tls, context, uint32((**(**TVectorColumnDefinition)(__ccgo_up(pVtab + 440 + uintptr(vector_idx)*20))).Felement_type))
+				libsqlite3.Xsqlite3_result_blob(tls, context, out, sz, __ccgo_fp(libsqlite3.Xsqlite3_free))
+				libsqlite3.Xsqlite3_result_subtype(tls, context, uint32((*(*TVectorColumnDefinition)(__ccgo_ptr(pVtab + 440 + uintptr(vector_idx)*20))).Felement_type))
 				return m_SQLITE_OK
 			} else {
 				if Xvec0_column_idx_is_partition(tls, pVtab, i) != 0 {
 					partition_idx = Xvec0_column_idx_to_partition_idx(tls, pVtab, i)
-					rowid1 = **(**Ti64)(__ccgo_up((*Tvec0_query_knn_data)(unsafe.Pointer((*Tvec0_cursor)(unsafe.Pointer(pCur)).Fknn_data)).Frowids + uintptr((*Tvec0_query_knn_data)(unsafe.Pointer((*Tvec0_cursor)(unsafe.Pointer(pCur)).Fknn_data)).Fcurrent_idx)*8))
-					rc1 = Xvec0_get_partition_value_for_rowid(tls, pVtab, rowid1, partition_idx, bp+8)
+					rowid1 = *(*Ti64)(__ccgo_ptr((*Tvec0_query_knn_data)(unsafe.Pointer((*Tvec0_cursor)(unsafe.Pointer(pCur)).Fknn_data)).Frowids + uintptr((*Tvec0_query_knn_data)(unsafe.Pointer((*Tvec0_cursor)(unsafe.Pointer(pCur)).Fknn_data)).Fcurrent_idx)*8))
+					rc1 = _vec0_get_partition_value_for_rowid__ccgo_gp(tls, pVtab, rowid1, partition_idx, unsafe.Pointer(&v))
 					if rc1 == m_SQLITE_OK {
-						libsqlite3.Xsqlite3_result_value(tls, context, **(**uintptr)(__ccgo_up(bp + 8)))
-						libsqlite3.Xsqlite3_value_free(tls, **(**uintptr)(__ccgo_up(bp + 8)))
+						libsqlite3.Xsqlite3_result_value(tls, context, v)
+						libsqlite3.Xsqlite3_value_free(tls, v)
 					} else {
 						libsqlite3.Xsqlite3_result_error_code(tls, context, rc1)
 					}
 				} else {
 					if Xvec0_column_idx_is_auxiliary(tls, pVtab, i) != 0 {
 						auxiliary_idx = Xvec0_column_idx_to_auxiliary_idx(tls, pVtab, i)
-						rowid2 = **(**Ti64)(__ccgo_up((*Tvec0_query_knn_data)(unsafe.Pointer((*Tvec0_cursor)(unsafe.Pointer(pCur)).Fknn_data)).Frowids + uintptr((*Tvec0_query_knn_data)(unsafe.Pointer((*Tvec0_cursor)(unsafe.Pointer(pCur)).Fknn_data)).Fcurrent_idx)*8))
-						rc2 = Xvec0_get_auxiliary_value_for_rowid(tls, pVtab, rowid2, auxiliary_idx, bp+12)
+						rowid2 = *(*Ti64)(__ccgo_ptr((*Tvec0_query_knn_data)(unsafe.Pointer((*Tvec0_cursor)(unsafe.Pointer(pCur)).Fknn_data)).Frowids + uintptr((*Tvec0_query_knn_data)(unsafe.Pointer((*Tvec0_cursor)(unsafe.Pointer(pCur)).Fknn_data)).Fcurrent_idx)*8))
+						rc2 = _vec0_get_auxiliary_value_for_rowid__ccgo_gp(tls, pVtab, rowid2, auxiliary_idx, unsafe.Pointer(&v1))
 						if rc2 == m_SQLITE_OK {
-							libsqlite3.Xsqlite3_result_value(tls, context, **(**uintptr)(__ccgo_up(bp + 12)))
-							libsqlite3.Xsqlite3_value_free(tls, **(**uintptr)(__ccgo_up(bp + 12)))
+							libsqlite3.Xsqlite3_result_value(tls, context, v1)
+							libsqlite3.Xsqlite3_value_free(tls, v1)
 						} else {
 							libsqlite3.Xsqlite3_result_error_code(tls, context, rc2)
 						}
 					} else {
 						if Xvec0_column_idx_is_metadata(tls, pVtab, i) != 0 {
 							metadata_idx = Xvec0_column_idx_to_metadata_idx(tls, pVtab, i)
-							rowid3 = **(**Ti64)(__ccgo_up((*Tvec0_query_knn_data)(unsafe.Pointer((*Tvec0_cursor)(unsafe.Pointer(pCur)).Fknn_data)).Frowids + uintptr((*Tvec0_query_knn_data)(unsafe.Pointer((*Tvec0_cursor)(unsafe.Pointer(pCur)).Fknn_data)).Fcurrent_idx)*8))
+							rowid3 = *(*Ti64)(__ccgo_ptr((*Tvec0_query_knn_data)(unsafe.Pointer((*Tvec0_cursor)(unsafe.Pointer(pCur)).Fknn_data)).Frowids + uintptr((*Tvec0_query_knn_data)(unsafe.Pointer((*Tvec0_cursor)(unsafe.Pointer(pCur)).Fknn_data)).Fcurrent_idx)*8))
 							rc3 = Xvec0_result_metadata_value_for_rowid(tls, pVtab, rowid3, metadata_idx, context)
 							if rc3 != m_SQLITE_OK {
-								zErr = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+10891, libc.VaList(bp+24, (**(**TVec0MetadataColumnDefinition)(__ccgo_up(pVtab + 1000 + uintptr(metadata_idx)*12))).Fname_length, (**(**TVec0MetadataColumnDefinition)(__ccgo_up(pVtab + 1000 + uintptr(metadata_idx)*12))).Fname, rowid3))
+								zErr = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+10891, libc.VaList(bp+8, (*(*TVec0MetadataColumnDefinition)(__ccgo_ptr(pVtab + 1000 + uintptr(metadata_idx)*12))).Fname_length, (*(*TVec0MetadataColumnDefinition)(__ccgo_ptr(pVtab + 1000 + uintptr(metadata_idx)*12))).Fname, rowid3))
 								if zErr != 0 {
 									libsqlite3.Xsqlite3_result_error(tls, context, zErr, -int32(1))
 									libsqlite3.Xsqlite3_free(tls, zErr)
@@ -3920,14 +2954,12 @@ func _vec0Column_knn(tls *libc.TLS, pVtab uintptr, pCur uintptr, context uintptr
 }
 
 func _vec0Column_point(tls *libc.TLS, pVtab uintptr, pCur uintptr, context uintptr, i int32) (r int32) {
-	bp := tls.Alloc(48)
-	defer tls.Free(48)
+	bp := tls.Alloc(32)
+	defer tls.Free(32)
 	var auxiliary_idx, metadata_idx, partition_idx, rc, rc1, rc2, vector_idx int32
 	var rowid, rowid1, rowid2 Ti64
-	var zErr uintptr
-	var _ /* v at bp+0 */ uintptr
-	var _ /* v at bp+4 */ uintptr
-	_, _, _, _, _, _, _, _, _, _, _ = auxiliary_idx, metadata_idx, partition_idx, rc, rc1, rc2, rowid, rowid1, rowid2, vector_idx, zErr
+	var v, v1, zErr uintptr
+	_, _, _, _, _, _, _, _, _, _, _, _, _ = auxiliary_idx, metadata_idx, partition_idx, rc, rc1, rc2, rowid, rowid1, rowid2, v, v1, vector_idx, zErr
 	if !((*Tvec0_cursor)(unsafe.Pointer(pCur)).Fpoint_data != 0) {
 		libsqlite3.Xsqlite3_result_error(tls, context, __ccgo_ts+10954, -int32(1))
 		return int32(m_SQLITE_ERROR)
@@ -3945,8 +2977,8 @@ func _vec0Column_point(tls *libc.TLS, pVtab uintptr, pCur uintptr, context uintp
 					return m_SQLITE_OK
 				}
 				vector_idx = Xvec0_column_idx_to_vector_idx(tls, pVtab, i)
-				libsqlite3.Xsqlite3_result_blob(tls, context, **(**uintptr)(__ccgo_up((*Tvec0_cursor)(unsafe.Pointer(pCur)).Fpoint_data + 8 + uintptr(vector_idx)*4)), int32(Xvector_column_byte_size(tls, **(**TVectorColumnDefinition)(__ccgo_up(pVtab + 440 + uintptr(vector_idx)*20)))), uintptr(-libc.Int32FromInt32(1)))
-				libsqlite3.Xsqlite3_result_subtype(tls, context, uint32((**(**TVectorColumnDefinition)(__ccgo_up(pVtab + 440 + uintptr(vector_idx)*20))).Felement_type))
+				libsqlite3.Xsqlite3_result_blob(tls, context, *(*uintptr)(__ccgo_ptr((*Tvec0_cursor)(unsafe.Pointer(pCur)).Fpoint_data + 8 + uintptr(vector_idx)*4)), int32(Xvector_column_byte_size(tls, *(*TVectorColumnDefinition)(__ccgo_ptr(pVtab + 440 + uintptr(vector_idx)*20)))), uintptr(-libc.Int32FromInt32(1)))
+				libsqlite3.Xsqlite3_result_subtype(tls, context, uint32((*(*TVectorColumnDefinition)(__ccgo_ptr(pVtab + 440 + uintptr(vector_idx)*20))).Felement_type))
 				return m_SQLITE_OK
 			} else {
 				if Xvec0_column_idx_is_partition(tls, pVtab, i) != 0 {
@@ -3955,10 +2987,10 @@ func _vec0Column_point(tls *libc.TLS, pVtab uintptr, pCur uintptr, context uintp
 					}
 					partition_idx = Xvec0_column_idx_to_partition_idx(tls, pVtab, i)
 					rowid = (*Tvec0_query_point_data)(unsafe.Pointer((*Tvec0_cursor)(unsafe.Pointer(pCur)).Fpoint_data)).Frowid
-					rc = Xvec0_get_partition_value_for_rowid(tls, pVtab, rowid, partition_idx, bp)
+					rc = _vec0_get_partition_value_for_rowid__ccgo_gp(tls, pVtab, rowid, partition_idx, unsafe.Pointer(&v))
 					if rc == m_SQLITE_OK {
-						libsqlite3.Xsqlite3_result_value(tls, context, **(**uintptr)(__ccgo_up(bp)))
-						libsqlite3.Xsqlite3_value_free(tls, **(**uintptr)(__ccgo_up(bp)))
+						libsqlite3.Xsqlite3_result_value(tls, context, v)
+						libsqlite3.Xsqlite3_value_free(tls, v)
 					} else {
 						libsqlite3.Xsqlite3_result_error_code(tls, context, rc)
 					}
@@ -3969,10 +3001,10 @@ func _vec0Column_point(tls *libc.TLS, pVtab uintptr, pCur uintptr, context uintp
 						}
 						rowid1 = (*Tvec0_query_point_data)(unsafe.Pointer((*Tvec0_cursor)(unsafe.Pointer(pCur)).Fpoint_data)).Frowid
 						auxiliary_idx = Xvec0_column_idx_to_auxiliary_idx(tls, pVtab, i)
-						rc1 = Xvec0_get_auxiliary_value_for_rowid(tls, pVtab, rowid1, auxiliary_idx, bp+4)
+						rc1 = _vec0_get_auxiliary_value_for_rowid__ccgo_gp(tls, pVtab, rowid1, auxiliary_idx, unsafe.Pointer(&v1))
 						if rc1 == m_SQLITE_OK {
-							libsqlite3.Xsqlite3_result_value(tls, context, **(**uintptr)(__ccgo_up(bp + 4)))
-							libsqlite3.Xsqlite3_value_free(tls, **(**uintptr)(__ccgo_up(bp + 4)))
+							libsqlite3.Xsqlite3_result_value(tls, context, v1)
+							libsqlite3.Xsqlite3_value_free(tls, v1)
 						} else {
 							libsqlite3.Xsqlite3_result_error_code(tls, context, rc1)
 						}
@@ -3985,7 +3017,7 @@ func _vec0Column_point(tls *libc.TLS, pVtab uintptr, pCur uintptr, context uintp
 							metadata_idx = Xvec0_column_idx_to_metadata_idx(tls, pVtab, i)
 							rc2 = Xvec0_result_metadata_value_for_rowid(tls, pVtab, rowid2, metadata_idx, context)
 							if rc2 != m_SQLITE_OK {
-								zErr = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+10891, libc.VaList(bp+16, (**(**TVec0MetadataColumnDefinition)(__ccgo_up(pVtab + 1000 + uintptr(metadata_idx)*12))).Fname_length, (**(**TVec0MetadataColumnDefinition)(__ccgo_up(pVtab + 1000 + uintptr(metadata_idx)*12))).Fname, rowid2))
+								zErr = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+10891, libc.VaList(bp+8, (*(*TVec0MetadataColumnDefinition)(__ccgo_ptr(pVtab + 1000 + uintptr(metadata_idx)*12))).Fname_length, (*(*TVec0MetadataColumnDefinition)(__ccgo_ptr(pVtab + 1000 + uintptr(metadata_idx)*12))).Fname, rowid2))
 								if zErr != 0 {
 									libsqlite3.Xsqlite3_result_error(tls, context, zErr, -int32(1))
 									libsqlite3.Xsqlite3_free(tls, zErr)
@@ -4002,26 +3034,764 @@ func _vec0Column_point(tls *libc.TLS, pVtab uintptr, pCur uintptr, context uintp
 	return m_SQLITE_OK
 }
 
+func _vec0Filter_knn_chunks_iter__ccgo_gp(tls *libc.TLS, p uintptr, stmtChunks uintptr, vector_column uintptr, vectorColumnIdx int32, arrayRowidsIn uintptr, aMetadataIn uintptr, idxStr uintptr, argc int32, argv uintptr, queryVector uintptr, k Ti64, out_topk_rowids unsafe.Pointer, out_topk_distances unsafe.Pointer, out_used unsafe.Pointer) (r int32) {
+	bp := tls.Alloc(112)
+	defer tls.Free(112)
+	var b, bTaken, baseVectors, base_i, base_i1, base_i2, bmMetadata, bmRowids, chunkRowids, chunkValidity, chunk_distances, chunk_topk_idxs, in, tmp_topk_distances, tmp_topk_rowids, topk_distances, topk_rowids, v1 uintptr
+	var baseVectorsSize, chunk_id, currentBaseVectorsSize, expectedBaseVectorsSize, k_used, rowidsSize, used, validitySize Ti64
+	var hasDistanceConstraints, hasMetadataFilters, i, i1, i10, i2, i3, i4, i5, i6, i7, i8, i9, idx, idx1, idx2, idxStrLength, metadata_idx, numValueEntries, operator, rc, used1, v4 int32
+	var kind, kind1, kind2 int8
+	var op Tvec0_distance_constraint_operator
+	var result, target Tf32
+	var v12, v13, v14 int64
+	var _ /* blobVectors at bp+0 */ uintptr
+	var _ /* metadataBlobs at bp+4 */ [16]uintptr
+	var _ /* rowid at bp+72 */ Ti64
+	_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _ = b, bTaken, baseVectors, baseVectorsSize, base_i, base_i1, base_i2, bmMetadata, bmRowids, chunkRowids, chunkValidity, chunk_distances, chunk_id, chunk_topk_idxs, currentBaseVectorsSize, expectedBaseVectorsSize, hasDistanceConstraints, hasMetadataFilters, i, i1, i10, i2, i3, i4, i5, i6, i7, i8, i9, idx, idx1, idx2, idxStrLength, in, k_used, kind, kind1, kind2, metadata_idx, numValueEntries, op, operator, rc, result, rowidsSize, target, tmp_topk_distances, tmp_topk_rowids, topk_distances, topk_rowids, used, used1, validitySize, v1, v12, v13, v14, v4
+	// for each chunk, get top min(k, chunk_size) rowid + distances to query vec.
+	// then reconcile all topk_chunks for a true top k.
+	// output only rowids + distances for now
+	rc = m_SQLITE_OK
+	*(*uintptr)(__ccgo_ptr(bp)) = libc.UintptrFromInt32(0)
+	baseVectors = libc.UintptrFromInt32(0) // memory: chunk_size * dimensions * element_size
+	// OWNED BY CALLER ON SUCCESS
+	topk_rowids = libc.UintptrFromInt32(0) // memory: k * 4
+	// OWNED BY CALLER ON SUCCESS
+	topk_distances = libc.UintptrFromInt32(0)     // memory: k * 4
+	tmp_topk_rowids = libc.UintptrFromInt32(0)    // memory: k * 4
+	tmp_topk_distances = libc.UintptrFromInt32(0) // memory: k * 4
+	chunk_distances = libc.UintptrFromInt32(0)    // memory: chunk_size * 4
+	b = libc.UintptrFromInt32(0)                  // memory: chunk_size / 8
+	bTaken = libc.UintptrFromInt32(0)             // memory: chunk_size / 8
+	chunk_topk_idxs = libc.UintptrFromInt32(0)    // memory: k * 4
+	bmRowids = libc.UintptrFromInt32(0)           // memory: chunk_size / 8
+	bmMetadata = libc.UintptrFromInt32(0)         // memory: chunk_size / 8
+	//                        // total: a lot???
+	// 6 * (k * 4) + (k * 2) + (chunk_size / 8) + (chunk_size * dimensions * 4)
+	topk_rowids = libsqlite3.Xsqlite3_malloc(tls, int32(k*int64(8)))
+	if !(topk_rowids != 0) {
+		rc = int32(m_SQLITE_NOMEM)
+		goto cleanup
+	}
+	libc.Xmemset(tls, topk_rowids, 0, uint32(k*int64(8)))
+	topk_distances = libsqlite3.Xsqlite3_malloc(tls, int32(k*int64(4)))
+	if !(topk_distances != 0) {
+		rc = int32(m_SQLITE_NOMEM)
+		goto cleanup
+	}
+	libc.Xmemset(tls, topk_distances, 0, uint32(k*int64(4)))
+	tmp_topk_rowids = libsqlite3.Xsqlite3_malloc(tls, int32(k*int64(8)))
+	if !(tmp_topk_rowids != 0) {
+		rc = int32(m_SQLITE_NOMEM)
+		goto cleanup
+	}
+	libc.Xmemset(tls, tmp_topk_rowids, 0, uint32(k*int64(8)))
+	tmp_topk_distances = libsqlite3.Xsqlite3_malloc(tls, int32(k*int64(4)))
+	if !(tmp_topk_distances != 0) {
+		rc = int32(m_SQLITE_NOMEM)
+		goto cleanup
+	}
+	libc.Xmemset(tls, tmp_topk_distances, 0, uint32(k*int64(4)))
+	k_used = 0
+	baseVectorsSize = int64(uint32((*Tvec0_vtab)(unsafe.Pointer(p)).Fchunk_size) * Xvector_column_byte_size(tls, *(*TVectorColumnDefinition)(__ccgo_ptr(vector_column))))
+	baseVectors = libsqlite3.Xsqlite3_malloc(tls, int32(baseVectorsSize))
+	if !(baseVectors != 0) {
+		rc = int32(m_SQLITE_NOMEM)
+		goto cleanup
+	}
+	chunk_distances = libsqlite3.Xsqlite3_malloc(tls, int32(uint32((*Tvec0_vtab)(unsafe.Pointer(p)).Fchunk_size)*uint32(4)))
+	if !(chunk_distances != 0) {
+		rc = int32(m_SQLITE_NOMEM)
+		goto cleanup
+	}
+	b = Xbitmap_new(tls, (*Tvec0_vtab)(unsafe.Pointer(p)).Fchunk_size)
+	if !(b != 0) {
+		rc = int32(m_SQLITE_NOMEM)
+		goto cleanup
+	}
+	bTaken = Xbitmap_new(tls, (*Tvec0_vtab)(unsafe.Pointer(p)).Fchunk_size)
+	if !(bTaken != 0) {
+		rc = int32(m_SQLITE_NOMEM)
+		goto cleanup
+	}
+	chunk_topk_idxs = libsqlite3.Xsqlite3_malloc(tls, int32(k*int64(4)))
+	if !(chunk_topk_idxs != 0) {
+		rc = int32(m_SQLITE_NOMEM)
+		goto cleanup
+	}
+	if arrayRowidsIn != 0 {
+		v1 = Xbitmap_new(tls, (*Tvec0_vtab)(unsafe.Pointer(p)).Fchunk_size)
+	} else {
+		v1 = libc.UintptrFromInt32(0)
+	}
+	bmRowids = v1
+	if arrayRowidsIn != 0 && !(bmRowids != 0) {
+		rc = int32(m_SQLITE_NOMEM)
+		goto cleanup
+	}
+	libc.Xmemset(tls, bp+4, 0, libc.Uint32FromInt64(4)*libc.Uint32FromInt32(m_VEC0_MAX_METADATA_COLUMNS))
+	bmMetadata = Xbitmap_new(tls, (*Tvec0_vtab)(unsafe.Pointer(p)).Fchunk_size)
+	if !(bmMetadata != 0) {
+		rc = int32(m_SQLITE_NOMEM)
+		goto cleanup
+	}
+	idxStrLength = int32(libc.Xstrlen(tls, idxStr))
+	numValueEntries = (idxStrLength - int32(1)) / int32(4)
+	hasMetadataFilters = 0
+	hasDistanceConstraints = 0
+	i = 0
+	for {
+		if !(i < argc) {
+			break
+		}
+		idx = int32(1) + i*int32(4)
+		kind = *(*int8)(__ccgo_ptr(idxStr + uintptr(idx+0)))
+		if int32(kind) == int32(_VEC0_IDXSTR_KIND_METADATA_CONSTRAINT) {
+			hasMetadataFilters = int32(1)
+		} else {
+			if int32(kind) == int32(_VEC0_IDXSTR_KIND_KNN_DISTANCE_CONSTRAINT) {
+				hasDistanceConstraints = int32(1)
+			}
+		}
+		goto _2
+	_2:
+		;
+		i = i + 1
+	}
+	for int32(m_true) != 0 {
+		rc = libsqlite3.Xsqlite3_step(tls, stmtChunks)
+		if rc == int32(m_SQLITE_DONE) {
+			break
+		}
+		if rc != int32(m_SQLITE_ROW) {
+			Xvtab_set_error(tls, p, __ccgo_ts+9697, 0)
+			rc = int32(m_SQLITE_ERROR)
+			goto cleanup
+		}
+		libc.Xmemset(tls, chunk_distances, 0, uint32((*Tvec0_vtab)(unsafe.Pointer(p)).Fchunk_size)*uint32(4))
+		libc.Xmemset(tls, chunk_topk_idxs, 0, uint32(k*int64(4)))
+		Xbitmap_clear(tls, b, (*Tvec0_vtab)(unsafe.Pointer(p)).Fchunk_size)
+		chunk_id = libsqlite3.Xsqlite3_column_int64(tls, stmtChunks, 0)
+		chunkValidity = libsqlite3.Xsqlite3_column_blob(tls, stmtChunks, int32(1))
+		validitySize = int64(libsqlite3.Xsqlite3_column_bytes(tls, stmtChunks, int32(1)))
+		if validitySize != int64((*Tvec0_vtab)(unsafe.Pointer(p)).Fchunk_size/int32(m___CHAR_BIT__)) {
+			// IMP: V05271_22109
+			Xvtab_set_error(tls, p, __ccgo_ts+9715, libc.VaList(bp+88, (*Tvec0_vtab)(unsafe.Pointer(p)).Fchunk_size/int32(m___CHAR_BIT__), validitySize))
+			rc = int32(m_SQLITE_ERROR)
+			goto cleanup
+		}
+		chunkRowids = libsqlite3.Xsqlite3_column_blob(tls, stmtChunks, int32(2))
+		rowidsSize = int64(libsqlite3.Xsqlite3_column_bytes(tls, stmtChunks, int32(2)))
+		if rowidsSize != int64(uint32((*Tvec0_vtab)(unsafe.Pointer(p)).Fchunk_size)*uint32(8)) {
+			// IMP: V02796_19635
+			Xvtab_set_error(tls, p, __ccgo_ts+9777, 0)
+			Xvtab_set_error(tls, p, __ccgo_ts+9803, libc.VaList(bp+88, uint32((*Tvec0_vtab)(unsafe.Pointer(p)).Fchunk_size)*uint32(8), rowidsSize))
+			rc = int32(m_SQLITE_ERROR)
+			goto cleanup
+		}
+		// open the vector chunk blob for the current chunk
+		rc = libsqlite3.Xsqlite3_blob_open(tls, (*Tvec0_vtab)(unsafe.Pointer(p)).Fdb, (*Tvec0_vtab)(unsafe.Pointer(p)).FschemaName, *(*uintptr)(__ccgo_ptr(p + 312 + uintptr(vectorColumnIdx)*4)), __ccgo_ts+3712, chunk_id, 0, bp)
+		if rc != m_SQLITE_OK {
+			Xvtab_set_error(tls, p, __ccgo_ts+9863, libc.VaList(bp+88, chunk_id))
+			rc = int32(m_SQLITE_ERROR)
+			goto cleanup
+		}
+		currentBaseVectorsSize = int64(libsqlite3.Xsqlite3_blob_bytes(tls, *(*uintptr)(__ccgo_ptr(bp))))
+		expectedBaseVectorsSize = int64(uint32((*Tvec0_vtab)(unsafe.Pointer(p)).Fchunk_size) * Xvector_column_byte_size(tls, *(*TVectorColumnDefinition)(__ccgo_ptr(vector_column))))
+		if currentBaseVectorsSize != expectedBaseVectorsSize {
+			// IMP: V16465_00535
+			Xvtab_set_error(tls, p, __ccgo_ts+9906, libc.VaList(bp+88, expectedBaseVectorsSize, currentBaseVectorsSize))
+			rc = int32(m_SQLITE_ERROR)
+			goto cleanup
+		}
+		rc = libsqlite3.Xsqlite3_blob_read(tls, *(*uintptr)(__ccgo_ptr(bp)), baseVectors, int32(currentBaseVectorsSize), 0)
+		if rc != m_SQLITE_OK {
+			Xvtab_set_error(tls, p, __ccgo_ts+9966, libc.VaList(bp+88, chunk_id))
+			rc = int32(m_SQLITE_ERROR)
+			goto cleanup
+		}
+		Xbitmap_copy(tls, b, chunkValidity, (*Tvec0_vtab)(unsafe.Pointer(p)).Fchunk_size)
+		if arrayRowidsIn != 0 {
+			Xbitmap_clear(tls, bmRowids, (*Tvec0_vtab)(unsafe.Pointer(p)).Fchunk_size)
+			i1 = 0
+			for {
+				if !(i1 < (*Tvec0_vtab)(unsafe.Pointer(p)).Fchunk_size) {
+					break
+				}
+				if !(Xbitmap_get(tls, chunkValidity, i1) != 0) {
+					goto _3
+				}
+				*(*Ti64)(__ccgo_ptr(bp + 72)) = *(*Ti64)(__ccgo_ptr(chunkRowids + uintptr(i1)*8))
+				in = libc.Xbsearch(tls, bp+72, (*TArray)(unsafe.Pointer(arrayRowidsIn)).Fz, (*TArray)(unsafe.Pointer(arrayRowidsIn)).Flength, uint32(8), __ccgo_fp(X_cmp))
+				if in != 0 {
+					v4 = int32(1)
+				} else {
+					v4 = 0
+				}
+				Xbitmap_set(tls, bmRowids, i1, v4)
+				goto _3
+			_3:
+				;
+				i1 = i1 + 1
+			}
+			Xbitmap_and_inplace(tls, b, bmRowids, (*Tvec0_vtab)(unsafe.Pointer(p)).Fchunk_size)
+		}
+		if hasMetadataFilters != 0 {
+			i2 = 0
+			for {
+				if !(i2 < argc) {
+					break
+				}
+				idx1 = int32(1) + i2*int32(4)
+				kind1 = *(*int8)(__ccgo_ptr(idxStr + uintptr(idx1+0)))
+				if int32(kind1) != int32(_VEC0_IDXSTR_KIND_METADATA_CONSTRAINT) {
+					goto _5
+				}
+				metadata_idx = int32(*(*int8)(__ccgo_ptr(idxStr + uintptr(idx1+int32(1))))) - int32('A')
+				operator = int32(*(*int8)(__ccgo_ptr(idxStr + uintptr(idx1+int32(2)))))
+				if !((*(*[16]uintptr)(__ccgo_ptr(bp + 4)))[metadata_idx] != 0) {
+					rc = libsqlite3.Xsqlite3_blob_open(tls, (*Tvec0_vtab)(unsafe.Pointer(p)).Fdb, (*Tvec0_vtab)(unsafe.Pointer(p)).FschemaName, *(*uintptr)(__ccgo_ptr(p + 376 + uintptr(metadata_idx)*4)), __ccgo_ts+4053, chunk_id, 0, bp+4+uintptr(metadata_idx)*4)
+					Xvtab_set_error(tls, p, __ccgo_ts+9999, 0)
+					if rc != m_SQLITE_OK {
+						goto cleanup
+					}
+				}
+				Xbitmap_clear(tls, bmMetadata, (*Tvec0_vtab)(unsafe.Pointer(p)).Fchunk_size)
+				rc = Xvec0_set_metadata_filter_bitmap(tls, p, metadata_idx, operator, *(*uintptr)(__ccgo_ptr(argv + uintptr(i2)*4)), (*(*[16]uintptr)(__ccgo_ptr(bp + 4)))[metadata_idx], chunk_id, bmMetadata, (*Tvec0_vtab)(unsafe.Pointer(p)).Fchunk_size, aMetadataIn, i2)
+				if rc != m_SQLITE_OK {
+					Xvtab_set_error(tls, p, __ccgo_ts+10028, 0)
+					if rc != m_SQLITE_OK {
+						goto cleanup
+					}
+				}
+				Xbitmap_and_inplace(tls, b, bmMetadata, (*Tvec0_vtab)(unsafe.Pointer(p)).Fchunk_size)
+				goto _5
+			_5:
+				;
+				i2 = i2 + 1
+			}
+		}
+		i3 = 0
+		for {
+			if !(i3 < (*Tvec0_vtab)(unsafe.Pointer(p)).Fchunk_size) {
+				break
+			}
+			if !(Xbitmap_get(tls, b, i3) != 0) {
+				goto _6
+			}
+			switch (*TVectorColumnDefinition)(unsafe.Pointer(vector_column)).Felement_type {
+			case int32(_SQLITE_VEC_ELEMENT_TYPE_FLOAT32):
+				base_i = baseVectors + uintptr(uint32(i3)*(*TVectorColumnDefinition)(unsafe.Pointer(vector_column)).Fdimensions)*4
+				switch (*TVectorColumnDefinition)(unsafe.Pointer(vector_column)).Fdistance_metric {
+				case int32(_VEC0_DISTANCE_METRIC_L2):
+					result = _distance_l2_sqr_float(tls, base_i, queryVector, unsafe.Pointer(vector_column+8))
+				case int32(_VEC0_DISTANCE_METRIC_L1):
+					result = float32(_distance_l1_f32(tls, base_i, queryVector, unsafe.Pointer(vector_column+8)))
+				case int32(_VEC0_DISTANCE_METRIC_COSINE):
+					result = _distance_cosine_float(tls, base_i, queryVector, unsafe.Pointer(vector_column+8))
+					break
+				}
+			case int32(_SQLITE_VEC_ELEMENT_TYPE_INT8):
+				base_i1 = baseVectors + uintptr(uint32(i3)*(*TVectorColumnDefinition)(unsafe.Pointer(vector_column)).Fdimensions)
+				switch (*TVectorColumnDefinition)(unsafe.Pointer(vector_column)).Fdistance_metric {
+				case int32(_VEC0_DISTANCE_METRIC_L2):
+					result = _distance_l2_sqr_int8(tls, base_i1, queryVector, unsafe.Pointer(vector_column+8))
+				case int32(_VEC0_DISTANCE_METRIC_L1):
+					result = float32(_distance_l1_int8(tls, base_i1, queryVector, unsafe.Pointer(vector_column+8)))
+				case int32(_VEC0_DISTANCE_METRIC_COSINE):
+					result = _distance_cosine_int8(tls, base_i1, queryVector, unsafe.Pointer(vector_column+8))
+					break
+				}
+			case int32(_SQLITE_VEC_ELEMENT_TYPE_BIT):
+				base_i2 = baseVectors + uintptr(uint32(i3)*((*TVectorColumnDefinition)(unsafe.Pointer(vector_column)).Fdimensions/libc.Uint32FromInt32(m___CHAR_BIT__)))
+				result = _distance_hamming(tls, base_i2, queryVector, unsafe.Pointer(vector_column+8))
+				break
+			}
+			*(*Tf32)(__ccgo_ptr(chunk_distances + uintptr(i3)*4)) = result
+			goto _6
+		_6:
+			;
+			i3 = i3 + 1
+		}
+		if hasDistanceConstraints != 0 {
+			i4 = 0
+			for {
+				if !(i4 < argc) {
+					break
+				}
+				idx2 = int32(1) + i4*int32(4)
+				kind2 = *(*int8)(__ccgo_ptr(idxStr + uintptr(idx2+0)))
+				// TODO casts f64 to f32, is that a problem?
+				target = float32(libsqlite3.Xsqlite3_value_double(tls, *(*uintptr)(__ccgo_ptr(argv + uintptr(i4)*4))))
+				if int32(kind2) != int32(_VEC0_IDXSTR_KIND_KNN_DISTANCE_CONSTRAINT) {
+					goto _7
+				}
+				op = int32(*(*int8)(__ccgo_ptr(idxStr + uintptr(idx2+int32(1)))))
+				switch op {
+				case int32(_VEC0_DISTANCE_CONSTRAINT_GE):
+					i5 = 0
+					for {
+						if !(i5 < (*Tvec0_vtab)(unsafe.Pointer(p)).Fchunk_size) {
+							break
+						}
+						if Xbitmap_get(tls, b, i5) != 0 && !(*(*Tf32)(__ccgo_ptr(chunk_distances + uintptr(i5)*4)) >= target) {
+							Xbitmap_set(tls, b, i5, 0)
+						}
+						goto _8
+					_8:
+						;
+						i5 = i5 + 1
+					}
+				case int32(_VEC0_DISTANCE_CONSTRAINT_GT):
+					i6 = 0
+					for {
+						if !(i6 < (*Tvec0_vtab)(unsafe.Pointer(p)).Fchunk_size) {
+							break
+						}
+						if Xbitmap_get(tls, b, i6) != 0 && !(*(*Tf32)(__ccgo_ptr(chunk_distances + uintptr(i6)*4)) > target) {
+							Xbitmap_set(tls, b, i6, 0)
+						}
+						goto _9
+					_9:
+						;
+						i6 = i6 + 1
+					}
+				case int32(_VEC0_DISTANCE_CONSTRAINT_LE):
+					i7 = 0
+					for {
+						if !(i7 < (*Tvec0_vtab)(unsafe.Pointer(p)).Fchunk_size) {
+							break
+						}
+						if Xbitmap_get(tls, b, i7) != 0 && !(*(*Tf32)(__ccgo_ptr(chunk_distances + uintptr(i7)*4)) <= target) {
+							Xbitmap_set(tls, b, i7, 0)
+						}
+						goto _10
+					_10:
+						;
+						i7 = i7 + 1
+					}
+				case int32(_VEC0_DISTANCE_CONSTRAINT_LT):
+					i8 = 0
+					for {
+						if !(i8 < (*Tvec0_vtab)(unsafe.Pointer(p)).Fchunk_size) {
+							break
+						}
+						if Xbitmap_get(tls, b, i8) != 0 && !(*(*Tf32)(__ccgo_ptr(chunk_distances + uintptr(i8)*4)) < target) {
+							Xbitmap_set(tls, b, i8, 0)
+						}
+						goto _11
+					_11:
+						;
+						i8 = i8 + 1
+					}
+					break
+				}
+				goto _7
+			_7:
+				;
+				i4 = i4 + 1
+			}
+		}
+		if k <= int64((*Tvec0_vtab)(unsafe.Pointer(p)).Fchunk_size) {
+			v12 = k
+		} else {
+			v12 = int64((*Tvec0_vtab)(unsafe.Pointer(p)).Fchunk_size)
+		}
+		_min_idx__ccgo_gp(tls, chunk_distances, (*Tvec0_vtab)(unsafe.Pointer(p)).Fchunk_size, b, chunk_topk_idxs, int32(v12), bTaken, unsafe.Pointer(&used1))
+		if k <= int64((*Tvec0_vtab)(unsafe.Pointer(p)).Fchunk_size) {
+			v13 = k
+		} else {
+			v13 = int64((*Tvec0_vtab)(unsafe.Pointer(p)).Fchunk_size)
+		}
+		if v13 <= int64(used1) {
+			if k <= int64((*Tvec0_vtab)(unsafe.Pointer(p)).Fchunk_size) {
+				v14 = k
+			} else {
+				v14 = int64((*Tvec0_vtab)(unsafe.Pointer(p)).Fchunk_size)
+			}
+			v12 = v14
+		} else {
+			v12 = int64(used1)
+		}
+		_merge_sorted_lists__ccgo_gp(tls, topk_distances, topk_rowids, k_used, chunk_distances, chunkRowids, chunk_topk_idxs, v12, tmp_topk_distances, tmp_topk_rowids, k, unsafe.Pointer(&used))
+		i9 = 0
+		for {
+			if !(int64(i9) < used) {
+				break
+			}
+			*(*Ti64)(__ccgo_ptr(topk_rowids + uintptr(i9)*8)) = *(*Ti64)(__ccgo_ptr(tmp_topk_rowids + uintptr(i9)*8))
+			*(*Tf32)(__ccgo_ptr(topk_distances + uintptr(i9)*4)) = *(*Tf32)(__ccgo_ptr(tmp_topk_distances + uintptr(i9)*4))
+			goto _16
+		_16:
+			;
+			i9 = i9 + 1
+		}
+		k_used = used
+		// blobVectors is always opened with read-only permissions, so this never
+		// fails.
+		libsqlite3.Xsqlite3_blob_close(tls, *(*uintptr)(__ccgo_ptr(bp)))
+		*(*uintptr)(__ccgo_ptr(bp)) = libc.UintptrFromInt32(0)
+	}
+	*(*uintptr)(out_topk_rowids) = topk_rowids
+	*(*uintptr)(out_topk_distances) = topk_distances
+	*(*Ti64)(out_used) = k_used
+	rc = m_SQLITE_OK
+	goto cleanup
+cleanup:
+	;
+	if rc != m_SQLITE_OK {
+		libsqlite3.Xsqlite3_free(tls, topk_rowids)
+		libsqlite3.Xsqlite3_free(tls, topk_distances)
+	}
+	libsqlite3.Xsqlite3_free(tls, chunk_topk_idxs)
+	libsqlite3.Xsqlite3_free(tls, tmp_topk_rowids)
+	libsqlite3.Xsqlite3_free(tls, tmp_topk_distances)
+	libsqlite3.Xsqlite3_free(tls, b)
+	libsqlite3.Xsqlite3_free(tls, bTaken)
+	libsqlite3.Xsqlite3_free(tls, bmRowids)
+	libsqlite3.Xsqlite3_free(tls, baseVectors)
+	libsqlite3.Xsqlite3_free(tls, chunk_distances)
+	libsqlite3.Xsqlite3_free(tls, bmMetadata)
+	i10 = 0
+	for {
+		if !(i10 < int32(m_VEC0_MAX_METADATA_COLUMNS)) {
+			break
+		}
+		libsqlite3.Xsqlite3_blob_close(tls, (*(*[16]uintptr)(__ccgo_ptr(bp + 4)))[i10])
+		goto _17
+	_17:
+		;
+		i10 = i10 + 1
+	}
+	// blobVectors is always opened with read-only permissions, so this never
+	// fails.
+	libsqlite3.Xsqlite3_blob_close(tls, *(*uintptr)(__ccgo_ptr(bp)))
+	return rc
+}
+
+func _vec0Update_Delete_DeleteChunkIfEmpty__ccgo_gp(tls *libc.TLS, p uintptr, chunk_id Ti64, deleted unsafe.Pointer) (r int32) {
+	bp := tls.Alloc(48)
+	defer tls.Free(48)
+	var allZero, brc, i, i1, i2, rc, validitySize int32
+	var validityBuf, zSql uintptr
+	var _ /* blobValidity at bp+0 */ uintptr
+	var _ /* stmt at bp+4 */ uintptr
+	_, _, _, _, _, _, _, _, _ = allZero, brc, i, i1, i2, rc, validityBuf, validitySize, zSql
+	*(*uintptr)(__ccgo_ptr(bp)) = libc.UintptrFromInt32(0)
+	*(*int32)(deleted) = 0
+	rc = libsqlite3.Xsqlite3_blob_open(tls, (*Tvec0_vtab)(unsafe.Pointer(p)).Fdb, (*Tvec0_vtab)(unsafe.Pointer(p)).FschemaName, (*Tvec0_vtab)(unsafe.Pointer(p)).FshadowChunksName, __ccgo_ts+11207, chunk_id, 0, bp)
+	if rc != m_SQLITE_OK {
+		Xvtab_set_error(tls, p, __ccgo_ts+14414, libc.VaList(bp+16, chunk_id))
+		return int32(m_SQLITE_ERROR)
+	}
+	validitySize = libsqlite3.Xsqlite3_blob_bytes(tls, *(*uintptr)(__ccgo_ptr(bp)))
+	validityBuf = libsqlite3.Xsqlite3_malloc(tls, validitySize)
+	if !(validityBuf != 0) {
+		libsqlite3.Xsqlite3_blob_close(tls, *(*uintptr)(__ccgo_ptr(bp)))
+		return int32(m_SQLITE_NOMEM)
+	}
+	rc = libsqlite3.Xsqlite3_blob_read(tls, *(*uintptr)(__ccgo_ptr(bp)), validityBuf, validitySize, 0)
+	brc = libsqlite3.Xsqlite3_blob_close(tls, *(*uintptr)(__ccgo_ptr(bp)))
+	if rc != m_SQLITE_OK {
+		libsqlite3.Xsqlite3_free(tls, validityBuf)
+		return rc
+	}
+	if brc != m_SQLITE_OK {
+		libsqlite3.Xsqlite3_free(tls, validityBuf)
+		return brc
+	}
+	allZero = int32(1)
+	i = 0
+	for {
+		if !(i < validitySize) {
+			break
+		}
+		if int32(*(*uint8)(__ccgo_ptr(validityBuf + uintptr(i)))) != 0 {
+			allZero = 0
+			break
+		}
+		goto _1
+	_1:
+		;
+		i = i + 1
+	}
+	libsqlite3.Xsqlite3_free(tls, validityBuf)
+	if !(allZero != 0) {
+		return m_SQLITE_OK
+	}
+	// Delete from _chunks
+	zSql = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+14458, libc.VaList(bp+16, (*Tvec0_vtab)(unsafe.Pointer(p)).FschemaName, (*Tvec0_vtab)(unsafe.Pointer(p)).FtableName))
+	if !(zSql != 0) {
+		return int32(m_SQLITE_NOMEM)
+	}
+	rc = libsqlite3.Xsqlite3_prepare_v2(tls, (*Tvec0_vtab)(unsafe.Pointer(p)).Fdb, zSql, -int32(1), bp+4, libc.UintptrFromInt32(0))
+	libsqlite3.Xsqlite3_free(tls, zSql)
+	if rc != m_SQLITE_OK {
+		return rc
+	}
+	libsqlite3.Xsqlite3_bind_int64(tls, *(*uintptr)(__ccgo_ptr(bp + 4)), int32(1), chunk_id)
+	rc = libsqlite3.Xsqlite3_step(tls, *(*uintptr)(__ccgo_ptr(bp + 4)))
+	libsqlite3.Xsqlite3_finalize(tls, *(*uintptr)(__ccgo_ptr(bp + 4)))
+	if rc != int32(m_SQLITE_DONE) {
+		return int32(m_SQLITE_ERROR)
+	}
+	// Delete from each _vector_chunksNN
+	i1 = 0
+	for {
+		if !(i1 < (*Tvec0_vtab)(unsafe.Pointer(p)).FnumVectorColumns) {
+			break
+		}
+		zSql = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+14503, libc.VaList(bp+16, (*Tvec0_vtab)(unsafe.Pointer(p)).FschemaName, (*Tvec0_vtab)(unsafe.Pointer(p)).FtableName, i1))
+		if !(zSql != 0) {
+			return int32(m_SQLITE_NOMEM)
+		}
+		rc = libsqlite3.Xsqlite3_prepare_v2(tls, (*Tvec0_vtab)(unsafe.Pointer(p)).Fdb, zSql, -int32(1), bp+4, libc.UintptrFromInt32(0))
+		libsqlite3.Xsqlite3_free(tls, zSql)
+		if rc != m_SQLITE_OK {
+			return rc
+		}
+		libsqlite3.Xsqlite3_bind_int64(tls, *(*uintptr)(__ccgo_ptr(bp + 4)), int32(1), chunk_id)
+		rc = libsqlite3.Xsqlite3_step(tls, *(*uintptr)(__ccgo_ptr(bp + 4)))
+		libsqlite3.Xsqlite3_finalize(tls, *(*uintptr)(__ccgo_ptr(bp + 4)))
+		if rc != int32(m_SQLITE_DONE) {
+			return int32(m_SQLITE_ERROR)
+		}
+		goto _2
+	_2:
+		;
+		i1 = i1 + 1
+	}
+	// Delete from each _metadatachunksNN
+	i2 = 0
+	for {
+		if !(i2 < (*Tvec0_vtab)(unsafe.Pointer(p)).FnumMetadataColumns) {
+			break
+		}
+		zSql = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+14559, libc.VaList(bp+16, (*Tvec0_vtab)(unsafe.Pointer(p)).FschemaName, (*Tvec0_vtab)(unsafe.Pointer(p)).FtableName, i2))
+		if !(zSql != 0) {
+			return int32(m_SQLITE_NOMEM)
+		}
+		rc = libsqlite3.Xsqlite3_prepare_v2(tls, (*Tvec0_vtab)(unsafe.Pointer(p)).Fdb, zSql, -int32(1), bp+4, libc.UintptrFromInt32(0))
+		libsqlite3.Xsqlite3_free(tls, zSql)
+		if rc != m_SQLITE_OK {
+			return rc
+		}
+		libsqlite3.Xsqlite3_bind_int64(tls, *(*uintptr)(__ccgo_ptr(bp + 4)), int32(1), chunk_id)
+		rc = libsqlite3.Xsqlite3_step(tls, *(*uintptr)(__ccgo_ptr(bp + 4)))
+		libsqlite3.Xsqlite3_finalize(tls, *(*uintptr)(__ccgo_ptr(bp + 4)))
+		if rc != int32(m_SQLITE_DONE) {
+			return int32(m_SQLITE_ERROR)
+		}
+		goto _3
+	_3:
+		;
+		i2 = i2 + 1
+	}
+	// Invalidate cached stmtLatestChunk so it gets re-prepared on next insert
+	if (*Tvec0_vtab)(unsafe.Pointer(p)).FstmtLatestChunk != 0 {
+		libsqlite3.Xsqlite3_finalize(tls, (*Tvec0_vtab)(unsafe.Pointer(p)).FstmtLatestChunk)
+		(*Tvec0_vtab)(unsafe.Pointer(p)).FstmtLatestChunk = libc.UintptrFromInt32(0)
+	}
+	*(*int32)(deleted) = int32(1)
+	return m_SQLITE_OK
+}
+
+// C documentation
+//
+//	/**
+//	 * @brief
+//	 *
+//	 * @param p vec0 virtual table
+//	 * @param chunk_rowid: which chunk to write to
+//	 * @param chunk_offset: the offset inside the chunk to write the vector to.
+//	 * @param rowid: the rowid of the inserting row
+//	 * @param vectorDatas: array of the vector data to insert
+//	 * @param blobValidity: writeable validity blob of the row's assigned chunk.
+//	 * @param validity: snapshot buffer of the valdity column from the row's
+//	 * assigned chunk.
+//	 * @return int SQLITE_OK on success, error code on failure
+//	 */
+func _vec0Update_InsertWriteFinalStep__ccgo_gp(tls *libc.TLS, p uintptr, chunk_rowid Ti64, chunk_offset Ti64, _rowid Ti64, vectorDatas unsafe.Pointer, blobChunksValidity uintptr, bufferChunksValidity uintptr) (r int32) {
+	bp := tls.Alloc(80)
+	defer tls.Free(80)
+	*(*Ti64)(unsafe.Pointer(bp)) = _rowid
+	var actual, actual1, expected, expected1 Ti64
+	var brc, i, rc int32
+	var _ /* blobChunksRowids at bp+8 */ uintptr
+	var _ /* blobVectors at bp+16 */ uintptr
+	var _ /* bx at bp+12 */ uint8
+	_, _, _, _, _, _, _ = actual, actual1, brc, expected, expected1, i, rc
+	*(*uintptr)(__ccgo_ptr(bp + 8)) = libc.UintptrFromInt32(0)
+	// mark the validity bit for this row in the chunk's validity bitmap
+	// Get the byte offset of the bitmap
+	*(*uint8)(__ccgo_ptr(bp + 12)) = *(*uint8)(__ccgo_ptr(bufferChunksValidity + uintptr(chunk_offset/int64(m___CHAR_BIT__))))
+	// set the bit at the chunk_offset position inside that byte
+	*(*uint8)(__ccgo_ptr(bp + 12)) = uint8(int32(*(*uint8)(__ccgo_ptr(bp + 12))) | int32(1)<<(chunk_offset%int64(m___CHAR_BIT__)))
+	// write that 1 byte
+	rc = libsqlite3.Xsqlite3_blob_write(tls, blobChunksValidity, bp+12, int32(1), int32(chunk_offset/int64(m___CHAR_BIT__)))
+	if rc != m_SQLITE_OK {
+		Xvtab_set_error(tls, p, __ccgo_ts+11995, 0)
+		return rc
+	}
+	// Go insert the vector data into the vector chunk shadow tables
+	i = 0
+	for {
+		if !(i < (*Tvec0_vtab)(unsafe.Pointer(p)).FnumVectorColumns) {
+			break
+		}
+		rc = libsqlite3.Xsqlite3_blob_open(tls, (*Tvec0_vtab)(unsafe.Pointer(p)).Fdb, (*Tvec0_vtab)(unsafe.Pointer(p)).FschemaName, *(*uintptr)(__ccgo_ptr(p + 312 + uintptr(i)*4)), __ccgo_ts+3712, chunk_rowid, int32(1), bp+16)
+		if rc != m_SQLITE_OK {
+			Xvtab_set_error(tls, p, __ccgo_ts+12051, libc.VaList(bp+32, (*Tvec0_vtab)(unsafe.Pointer(p)).FschemaName, *(*uintptr)(__ccgo_ptr(p + 312 + uintptr(i)*4)), chunk_rowid))
+			goto cleanup
+		}
+		expected = int64(uint32((*Tvec0_vtab)(unsafe.Pointer(p)).Fchunk_size) * Xvector_column_byte_size(tls, *(*TVectorColumnDefinition)(__ccgo_ptr(p + 440 + uintptr(i)*20))))
+		actual = int64(libsqlite3.Xsqlite3_blob_bytes(tls, *(*uintptr)(__ccgo_ptr(bp + 16))))
+		if actual != expected {
+			// IMP: V16386_00456
+			Xvtab_set_error(tls, p, __ccgo_ts+12091, libc.VaList(bp+32, (*Tvec0_vtab)(unsafe.Pointer(p)).FschemaName, *(*uintptr)(__ccgo_ptr(p + 312 + uintptr(i)*4)), chunk_rowid, expected, actual))
+			rc = int32(m_SQLITE_ERROR)
+			// already error, can ignore result code
+			libsqlite3.Xsqlite3_blob_close(tls, *(*uintptr)(__ccgo_ptr(bp + 16)))
+			goto cleanup
+		}
+		rc = _vec0_write_vector_to_vector_blob(tls, *(*uintptr)(__ccgo_ptr(bp + 16)), chunk_offset, *(*uintptr)(unsafe.Add(vectorDatas, uintptr(i)*4)), (*(*TVectorColumnDefinition)(__ccgo_ptr(p + 440 + uintptr(i)*20))).Fdimensions, (*(*TVectorColumnDefinition)(__ccgo_ptr(p + 440 + uintptr(i)*20))).Felement_type)
+		if rc != m_SQLITE_OK {
+			Xvtab_set_error(tls, p, __ccgo_ts+12186, libc.VaList(bp+32, (*Tvec0_vtab)(unsafe.Pointer(p)).FschemaName, *(*uintptr)(__ccgo_ptr(p + 312 + uintptr(i)*4)), chunk_rowid))
+			rc = int32(m_SQLITE_ERROR)
+			// already error, can ignore result code
+			libsqlite3.Xsqlite3_blob_close(tls, *(*uintptr)(__ccgo_ptr(bp + 16)))
+			goto cleanup
+		}
+		rc = libsqlite3.Xsqlite3_blob_close(tls, *(*uintptr)(__ccgo_ptr(bp + 16)))
+		if rc != m_SQLITE_OK {
+			Xvtab_set_error(tls, p, __ccgo_ts+12255, libc.VaList(bp+32, (*Tvec0_vtab)(unsafe.Pointer(p)).FschemaName, *(*uintptr)(__ccgo_ptr(p + 312 + uintptr(i)*4)), chunk_rowid))
+			rc = int32(m_SQLITE_ERROR)
+			goto cleanup
+		}
+		goto _1
+	_1:
+		;
+		i = i + 1
+	}
+	// write the new rowid to the rowids column of the _chunks table
+	rc = libsqlite3.Xsqlite3_blob_open(tls, (*Tvec0_vtab)(unsafe.Pointer(p)).Fdb, (*Tvec0_vtab)(unsafe.Pointer(p)).FschemaName, (*Tvec0_vtab)(unsafe.Pointer(p)).FshadowChunksName, __ccgo_ts+9690, chunk_rowid, int32(1), bp+8)
+	if rc != m_SQLITE_OK {
+		// IMP: V09221_26060
+		Xvtab_set_error(tls, p, __ccgo_ts+12324, libc.VaList(bp+32, (*Tvec0_vtab)(unsafe.Pointer(p)).FschemaName, (*Tvec0_vtab)(unsafe.Pointer(p)).FshadowChunksName, chunk_rowid))
+		goto cleanup
+	}
+	expected1 = int64(uint32((*Tvec0_vtab)(unsafe.Pointer(p)).Fchunk_size) * uint32(8))
+	actual1 = int64(libsqlite3.Xsqlite3_blob_bytes(tls, *(*uintptr)(__ccgo_ptr(bp + 8))))
+	if expected1 != actual1 {
+		// IMP: V12779_29618
+		Xvtab_set_error(tls, p, __ccgo_ts+12392, libc.VaList(bp+32, (*Tvec0_vtab)(unsafe.Pointer(p)).FschemaName, (*Tvec0_vtab)(unsafe.Pointer(p)).FshadowChunksName, chunk_rowid, expected1, actual1))
+		rc = int32(m_SQLITE_ERROR)
+		goto cleanup
+	}
+	rc = libsqlite3.Xsqlite3_blob_write(tls, *(*uintptr)(__ccgo_ptr(bp + 8)), bp, int32(8), int32(chunk_offset*int64(8)))
+	if rc != m_SQLITE_OK {
+		Xvtab_set_error(tls, p, __ccgo_ts+12487, libc.VaList(bp+32, (*Tvec0_vtab)(unsafe.Pointer(p)).FschemaName, (*Tvec0_vtab)(unsafe.Pointer(p)).FshadowChunksName, chunk_rowid))
+		rc = int32(m_SQLITE_ERROR)
+		goto cleanup
+	}
+	// Now with all the vectors inserted, go back and update the _rowids table
+	// with the new chunk_rowid/chunk_offset values
+	rc = Xvec0_rowids_update_position(tls, p, *(*Ti64)(__ccgo_ptr(bp)), chunk_rowid, chunk_offset)
+	goto cleanup
+cleanup:
+	;
+	brc = libsqlite3.Xsqlite3_blob_close(tls, *(*uintptr)(__ccgo_ptr(bp + 8)))
+	if rc == m_SQLITE_OK && brc != m_SQLITE_OK {
+		Xvtab_set_error(tls, p, __ccgo_ts+12556, libc.VaList(bp+32, (*Tvec0_vtab)(unsafe.Pointer(p)).FschemaName, (*Tvec0_vtab)(unsafe.Pointer(p)).FshadowChunksName, chunk_rowid))
+		return brc
+	}
+	return rc
+}
+
+// C documentation
+//
+//	/**
+//	 * @brief
+//	 *
+//	 * @param pVtab: virtual table to query
+//	 * @param rowid: row to lookup
+//	 * @param vector_column_idx: which vector column to query
+//	 * @param outVector: Output pointer to the vector buffer.
+//	 *                    Must be sqlite3_free()'ed.
+//	 * @param outVectorSize: Pointer to a int where the size of outVector
+//	 *                       will be stored.
+//	 * @return int SQLITE_OK on success.
+//	 */
+func _vec0_get_vector_data__ccgo_gp(tls *libc.TLS, pVtab uintptr, rowid Ti64, vector_column_idx int32, outVector unsafe.Pointer, outVectorSize unsafe.Pointer) (r int32) {
+	bp := tls.Alloc(32)
+	defer tls.Free(32)
+	var blobOffset, brc, rc int32
+	var buf, p uintptr
+	var chunk_id, chunk_offset Ti64
+	var size Tsize_t
+	var _ /* vectorBlob at bp+0 */ uintptr
+	_, _, _, _, _, _, _, _ = blobOffset, brc, buf, chunk_id, chunk_offset, p, rc, size
+	p = pVtab
+	buf = libc.UintptrFromInt32(0)
+	*(*uintptr)(__ccgo_ptr(bp)) = libc.UintptrFromInt32(0)
+	rc = _vec0_get_chunk_position__ccgo_gp(tls, pVtab, rowid, nil, unsafe.Pointer(&chunk_id), unsafe.Pointer(&chunk_offset))
+	if rc == int32(m_SQLITE_EMPTY) {
+		Xvtab_set_error(tls, pVtab, __ccgo_ts+3675, libc.VaList(bp+16, rowid))
+		goto cleanup
+	}
+	if rc != m_SQLITE_OK {
+		goto cleanup
+	}
+	rc = libsqlite3.Xsqlite3_blob_open(tls, (*Tvec0_vtab)(unsafe.Pointer(p)).Fdb, (*Tvec0_vtab)(unsafe.Pointer(p)).FschemaName, *(*uintptr)(__ccgo_ptr(p + 312 + uintptr(vector_column_idx)*4)), __ccgo_ts+3712, chunk_id, 0, bp)
+	if rc != m_SQLITE_OK {
+		Xvtab_set_error(tls, pVtab, __ccgo_ts+3720, libc.VaList(bp+16, rowid))
+		rc = int32(m_SQLITE_ERROR)
+		goto cleanup
+	}
+	size = Xvector_column_byte_size(tls, *(*TVectorColumnDefinition)(__ccgo_ptr(pVtab + 440 + uintptr(vector_column_idx)*20)))
+	blobOffset = int32(chunk_offset * int64(size))
+	buf = libsqlite3.Xsqlite3_malloc(tls, int32(size))
+	if !(buf != 0) {
+		rc = int32(m_SQLITE_NOMEM)
+		goto cleanup
+	}
+	rc = libsqlite3.Xsqlite3_blob_read(tls, *(*uintptr)(__ccgo_ptr(bp)), buf, int32(size), blobOffset)
+	if rc != m_SQLITE_OK {
+		libsqlite3.Xsqlite3_free(tls, buf)
+		buf = libc.UintptrFromInt32(0)
+		Xvtab_set_error(tls, pVtab, __ccgo_ts+3778, libc.VaList(bp+16, rowid))
+		rc = int32(m_SQLITE_ERROR)
+		goto cleanup
+	}
+	*(*uintptr)(outVector) = buf
+	if outVectorSize != nil {
+		*(*int32)(outVectorSize) = int32(size)
+	}
+	rc = m_SQLITE_OK
+	goto cleanup
+cleanup:
+	;
+	brc = libsqlite3.Xsqlite3_blob_close(tls, *(*uintptr)(__ccgo_ptr(bp)))
+	if rc == m_SQLITE_OK && brc != m_SQLITE_OK {
+		Xvtab_set_error(tls, p, __ccgo_ts+3841, 0)
+		return brc
+	}
+	return rc
+}
+
 func _vec0_init(tls *libc.TLS, db uintptr, pAux uintptr, argc int32, argv uintptr, ppVtab uintptr, pzErr uintptr, isCreate uint8) (r int32) {
-	bp := tls.Alloc(128)
-	defer tls.Free(128)
-	var auxiliary_idx, chunk_size, i, i1, i2, i3, i4, i5, i6, i7, metadata_idx, numAuxiliaryColumns, numMetadataColumns, numPartitionColumns, numVectorColumns, partition_idx, pkColumnNameLength, pkColumnType, rc, rc1, user_column_idx, vector_idx int32
-	var createStr, pNew, pkColumnName, s, s1, schemaName, tableName, zCreateInfo, zCreateShadowChunks, zCreateShadowRowids, zSeedInfo, zSql, zSql1, zSql2, zSql3, zSql4 uintptr
+	bp := tls.Alloc(96)
+	defer tls.Free(96)
+	var auxiliary_idx, cNameLength, cType, chunk_size, i, i1, i2, i3, i4, i5, i6, i7, keyLength, metadata_idx, numAuxiliaryColumns, numMetadataColumns, numPartitionColumns, numVectorColumns, partition_idx, pkColumnNameLength, pkColumnType, rc, rc1, user_column_idx, valueLength, vector_idx int32
+	var cName, createStr, key, pNew, pkColumnName, s, s1, schemaName, tableName, value, zCreateInfo, zCreateShadowChunks, zCreateShadowRowids, zSeedInfo, zSql, zSql1, zSql2, zSql3, zSql4 uintptr
+	var kind Tvec0_metadata_column_kind
 	var _ /* auxColumn at bp+32 */ TVec0AuxiliaryColumnDefinition
-	var _ /* cName at bp+56 */ uintptr
-	var _ /* cNameLength at bp+60 */ int32
-	var _ /* cType at bp+64 */ int32
-	var _ /* key at bp+72 */ uintptr
-	var _ /* keyLength at bp+80 */ int32
-	var _ /* kind at bp+68 */ Tvec0_metadata_column_kind
 	var _ /* metadataColumn at bp+44 */ TVec0MetadataColumnDefinition
 	var _ /* partitionColumn at bp+20 */ TVec0PartitionColumnDefinition
-	var _ /* stmt at bp+88 */ uintptr
-	var _ /* stmt at bp+92 */ uintptr
-	var _ /* value at bp+76 */ uintptr
-	var _ /* valueLength at bp+84 */ int32
+	var _ /* stmt at bp+56 */ uintptr
+	var _ /* stmt at bp+60 */ uintptr
 	var _ /* vecColumn at bp+0 */ TVectorColumnDefinition
-	_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _ = auxiliary_idx, chunk_size, createStr, i, i1, i2, i3, i4, i5, i6, i7, metadata_idx, numAuxiliaryColumns, numMetadataColumns, numPartitionColumns, numVectorColumns, pNew, partition_idx, pkColumnName, pkColumnNameLength, pkColumnType, rc, rc1, s, s1, schemaName, tableName, user_column_idx, vector_idx, zCreateInfo, zCreateShadowChunks, zCreateShadowRowids, zSeedInfo, zSql, zSql1, zSql2, zSql3, zSql4
+	_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _ = auxiliary_idx, cName, cNameLength, cType, chunk_size, createStr, i, i1, i2, i3, i4, i5, i6, i7, key, keyLength, kind, metadata_idx, numAuxiliaryColumns, numMetadataColumns, numPartitionColumns, numVectorColumns, pNew, partition_idx, pkColumnName, pkColumnNameLength, pkColumnType, rc, rc1, s, s1, schemaName, tableName, user_column_idx, value, valueLength, vector_idx, zCreateInfo, zCreateShadowChunks, zCreateShadowRowids, zSeedInfo, zSql, zSql1, zSql2, zSql3, zSql4
 	_ = pAux
 	pNew = libsqlite3.Xsqlite3_malloc(tls, int32(1216))
 	if pNew == uintptr(0) {
@@ -4045,26 +3815,26 @@ func _vec0_init(tls *libc.TLS, db uintptr, pAux uintptr, argc int32, argv uintpt
 		if !(i < argc) {
 			break
 		}
-		**(**uintptr)(__ccgo_up(bp + 56)) = libc.UintptrFromInt32(0)
+		cName = libc.UintptrFromInt32(0)
 		// Scenario #1: Constructor argument is a vector column definition, ie `foo float[1024]`
-		rc = Xvec0_parse_vector_column(tls, **(**uintptr)(__ccgo_up(argv + uintptr(i)*4)), int32(libc.Xstrlen(tls, **(**uintptr)(__ccgo_up(argv + uintptr(i)*4)))), bp)
+		rc = _vec0_parse_vector_column__ccgo_gp(tls, *(*uintptr)(__ccgo_ptr(argv + uintptr(i)*4)), int32(libc.Xstrlen(tls, *(*uintptr)(__ccgo_ptr(argv + uintptr(i)*4)))), __ccgo_ptr(bp))
 		if rc == int32(m_SQLITE_ERROR) {
-			**(**uintptr)(__ccgo_up(pzErr)) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+5489, libc.VaList(bp+104, **(**uintptr)(__ccgo_up(argv + uintptr(i)*4))))
+			*(*uintptr)(__ccgo_ptr(pzErr)) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+5489, libc.VaList(bp+72, *(*uintptr)(__ccgo_ptr(argv + uintptr(i)*4))))
 			goto error
 		}
 		if rc == m_SQLITE_OK {
 			if numVectorColumns >= int32(m_VEC0_MAX_VECTOR_COLUMNS) {
-				libsqlite3.Xsqlite3_free(tls, (**(**TVectorColumnDefinition)(__ccgo_up(bp))).Fname)
-				**(**uintptr)(__ccgo_up(pzErr)) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+5548, libc.VaList(bp+104, int32(m_VEC0_MAX_VECTOR_COLUMNS)))
+				libsqlite3.Xsqlite3_free(tls, (*(*TVectorColumnDefinition)(__ccgo_ptr(bp))).Fname)
+				*(*uintptr)(__ccgo_ptr(pzErr)) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+5548, libc.VaList(bp+72, int32(m_VEC0_MAX_VECTOR_COLUMNS)))
 				goto error
 			}
-			if (**(**TVectorColumnDefinition)(__ccgo_up(bp))).Fdimensions > uint32(m_SQLITE_VEC_VEC0_MAX_DIMENSIONS) {
-				libsqlite3.Xsqlite3_free(tls, (**(**TVectorColumnDefinition)(__ccgo_up(bp))).Fname)
-				**(**uintptr)(__ccgo_up(pzErr)) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+5617, libc.VaList(bp+104, int64((**(**TVectorColumnDefinition)(__ccgo_up(bp))).Fdimensions), int32(m_SQLITE_VEC_VEC0_MAX_DIMENSIONS)))
+			if (*(*TVectorColumnDefinition)(__ccgo_ptr(bp))).Fdimensions > uint32(m_SQLITE_VEC_VEC0_MAX_DIMENSIONS) {
+				libsqlite3.Xsqlite3_free(tls, (*(*TVectorColumnDefinition)(__ccgo_ptr(bp))).Fname)
+				*(*uintptr)(__ccgo_ptr(pzErr)) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+5617, libc.VaList(bp+72, int64((*(*TVectorColumnDefinition)(__ccgo_ptr(bp))).Fdimensions), int32(m_SQLITE_VEC_VEC0_MAX_DIMENSIONS)))
 				goto error
 			}
-			**(**Tvec0_user_column_kind)(__ccgo_up(pNew + 52 + uintptr(user_column_idx)*4)) = int32(_SQLITE_VEC0_USER_COLUMN_KIND_VECTOR)
-			**(**Tuint8_t)(__ccgo_up(pNew + 260 + uintptr(user_column_idx))) = uint8(numVectorColumns)
+			*(*Tvec0_user_column_kind)(__ccgo_ptr(pNew + 52 + uintptr(user_column_idx)*4)) = int32(_SQLITE_VEC0_USER_COLUMN_KIND_VECTOR)
+			*(*Tuint8_t)(__ccgo_ptr(pNew + 260 + uintptr(user_column_idx))) = uint8(numVectorColumns)
 			libc.Xmemcpy(tls, pNew+440+uintptr(numVectorColumns)*20, bp, uint32(20))
 			numVectorColumns = numVectorColumns + 1
 			(*Tvec0_vtab)(unsafe.Pointer(pNew)).FnumVectorColumns = numVectorColumns
@@ -4072,21 +3842,21 @@ func _vec0_init(tls *libc.TLS, db uintptr, pAux uintptr, argc int32, argv uintpt
 			goto _1
 		}
 		// Scenario #2: Constructor argument is a partition key column definition, ie `user_id text partition key`
-		rc = Xvec0_parse_partition_key_definition(tls, **(**uintptr)(__ccgo_up(argv + uintptr(i)*4)), int32(libc.Xstrlen(tls, **(**uintptr)(__ccgo_up(argv + uintptr(i)*4)))), bp+56, bp+60, bp+64)
+		rc = _vec0_parse_partition_key_definition__ccgo_gp(tls, *(*uintptr)(__ccgo_ptr(argv + uintptr(i)*4)), int32(libc.Xstrlen(tls, *(*uintptr)(__ccgo_ptr(argv + uintptr(i)*4)))), unsafe.Pointer(&cName), unsafe.Pointer(&cNameLength), unsafe.Pointer(&cType))
 		if rc == m_SQLITE_OK {
 			if numPartitionColumns >= int32(m_VEC0_MAX_PARTITION_COLUMNS) {
-				**(**uintptr)(__ccgo_up(pzErr)) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+5707, libc.VaList(bp+104, int32(m_VEC0_MAX_PARTITION_COLUMNS)))
+				*(*uintptr)(__ccgo_ptr(pzErr)) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+5707, libc.VaList(bp+72, int32(m_VEC0_MAX_PARTITION_COLUMNS)))
 				goto error
 			}
-			(**(**TVec0PartitionColumnDefinition)(__ccgo_up(bp + 20))).Ftype1 = **(**int32)(__ccgo_up(bp + 64))
-			(**(**TVec0PartitionColumnDefinition)(__ccgo_up(bp + 20))).Fname_length = **(**int32)(__ccgo_up(bp + 60))
-			(**(**TVec0PartitionColumnDefinition)(__ccgo_up(bp + 20))).Fname = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+1874, libc.VaList(bp+104, **(**int32)(__ccgo_up(bp + 60)), **(**uintptr)(__ccgo_up(bp + 56))))
-			if !((**(**TVec0PartitionColumnDefinition)(__ccgo_up(bp + 20))).Fname != 0) {
+			(*(*TVec0PartitionColumnDefinition)(__ccgo_ptr(bp + 20))).Ftype1 = cType
+			(*(*TVec0PartitionColumnDefinition)(__ccgo_ptr(bp + 20))).Fname_length = cNameLength
+			(*(*TVec0PartitionColumnDefinition)(__ccgo_ptr(bp + 20))).Fname = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+1874, libc.VaList(bp+72, cNameLength, cName))
+			if !((*(*TVec0PartitionColumnDefinition)(__ccgo_ptr(bp + 20))).Fname != 0) {
 				rc = int32(m_SQLITE_NOMEM)
 				goto error
 			}
-			**(**Tvec0_user_column_kind)(__ccgo_up(pNew + 52 + uintptr(user_column_idx)*4)) = int32(_SQLITE_VEC0_USER_COLUMN_KIND_PARTITION)
-			**(**Tuint8_t)(__ccgo_up(pNew + 260 + uintptr(user_column_idx))) = uint8(numPartitionColumns)
+			*(*Tvec0_user_column_kind)(__ccgo_ptr(pNew + 52 + uintptr(user_column_idx)*4)) = int32(_SQLITE_VEC0_USER_COLUMN_KIND_PARTITION)
+			*(*Tuint8_t)(__ccgo_ptr(pNew + 260 + uintptr(user_column_idx))) = uint8(numPartitionColumns)
 			libc.Xmemcpy(tls, pNew+760+uintptr(numPartitionColumns)*12, bp+20, uint32(12))
 			numPartitionColumns = numPartitionColumns + 1
 			(*Tvec0_vtab)(unsafe.Pointer(pNew)).FnumPartitionColumns = numPartitionColumns
@@ -4094,91 +3864,91 @@ func _vec0_init(tls *libc.TLS, db uintptr, pAux uintptr, argc int32, argv uintpt
 			goto _1
 		}
 		// Scenario #3: Constructor argument is a primary key column definition, ie `article_id text primary key`
-		rc = Xvec0_parse_primary_key_definition(tls, **(**uintptr)(__ccgo_up(argv + uintptr(i)*4)), int32(libc.Xstrlen(tls, **(**uintptr)(__ccgo_up(argv + uintptr(i)*4)))), bp+56, bp+60, bp+64)
+		rc = _vec0_parse_primary_key_definition__ccgo_gp(tls, *(*uintptr)(__ccgo_ptr(argv + uintptr(i)*4)), int32(libc.Xstrlen(tls, *(*uintptr)(__ccgo_ptr(argv + uintptr(i)*4)))), unsafe.Pointer(&cName), unsafe.Pointer(&cNameLength), unsafe.Pointer(&cType))
 		if rc == m_SQLITE_OK {
 			if pkColumnName != 0 {
-				**(**uintptr)(__ccgo_up(pzErr)) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+5780, libc.VaList(bp+104, **(**uintptr)(__ccgo_up(argv + uintptr(i)*4))))
+				*(*uintptr)(__ccgo_ptr(pzErr)) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+5780, libc.VaList(bp+72, *(*uintptr)(__ccgo_ptr(argv + uintptr(i)*4))))
 				goto error
 			}
-			pkColumnName = **(**uintptr)(__ccgo_up(bp + 56))
-			pkColumnNameLength = **(**int32)(__ccgo_up(bp + 60))
-			pkColumnType = **(**int32)(__ccgo_up(bp + 64))
+			pkColumnName = cName
+			pkColumnNameLength = cNameLength
+			pkColumnType = cType
 			goto _1
 		}
 		// Scenario #4: Constructor argument is a auxiliary column definition, ie `+contents text`
-		rc = Xvec0_parse_auxiliary_column_definition(tls, **(**uintptr)(__ccgo_up(argv + uintptr(i)*4)), int32(libc.Xstrlen(tls, **(**uintptr)(__ccgo_up(argv + uintptr(i)*4)))), bp+56, bp+60, bp+64)
+		rc = _vec0_parse_auxiliary_column_definition__ccgo_gp(tls, *(*uintptr)(__ccgo_ptr(argv + uintptr(i)*4)), int32(libc.Xstrlen(tls, *(*uintptr)(__ccgo_ptr(argv + uintptr(i)*4)))), unsafe.Pointer(&cName), unsafe.Pointer(&cNameLength), unsafe.Pointer(&cType))
 		if rc == m_SQLITE_OK {
 			if numAuxiliaryColumns >= int32(m_VEC0_MAX_AUXILIARY_COLUMNS) {
-				**(**uintptr)(__ccgo_up(pzErr)) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+5901, libc.VaList(bp+104, int32(m_VEC0_MAX_AUXILIARY_COLUMNS)))
+				*(*uintptr)(__ccgo_ptr(pzErr)) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+5901, libc.VaList(bp+72, int32(m_VEC0_MAX_AUXILIARY_COLUMNS)))
 				goto error
 			}
-			(**(**TVec0AuxiliaryColumnDefinition)(__ccgo_up(bp + 32))).Ftype1 = **(**int32)(__ccgo_up(bp + 64))
-			(**(**TVec0AuxiliaryColumnDefinition)(__ccgo_up(bp + 32))).Fname_length = **(**int32)(__ccgo_up(bp + 60))
-			(**(**TVec0AuxiliaryColumnDefinition)(__ccgo_up(bp + 32))).Fname = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+1874, libc.VaList(bp+104, **(**int32)(__ccgo_up(bp + 60)), **(**uintptr)(__ccgo_up(bp + 56))))
-			if !((**(**TVec0AuxiliaryColumnDefinition)(__ccgo_up(bp + 32))).Fname != 0) {
+			(*(*TVec0AuxiliaryColumnDefinition)(__ccgo_ptr(bp + 32))).Ftype1 = cType
+			(*(*TVec0AuxiliaryColumnDefinition)(__ccgo_ptr(bp + 32))).Fname_length = cNameLength
+			(*(*TVec0AuxiliaryColumnDefinition)(__ccgo_ptr(bp + 32))).Fname = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+1874, libc.VaList(bp+72, cNameLength, cName))
+			if !((*(*TVec0AuxiliaryColumnDefinition)(__ccgo_ptr(bp + 32))).Fname != 0) {
 				rc = int32(m_SQLITE_NOMEM)
 				goto error
 			}
-			**(**Tvec0_user_column_kind)(__ccgo_up(pNew + 52 + uintptr(user_column_idx)*4)) = int32(_SQLITE_VEC0_USER_COLUMN_KIND_AUXILIARY)
-			**(**Tuint8_t)(__ccgo_up(pNew + 260 + uintptr(user_column_idx))) = uint8(numAuxiliaryColumns)
+			*(*Tvec0_user_column_kind)(__ccgo_ptr(pNew + 52 + uintptr(user_column_idx)*4)) = int32(_SQLITE_VEC0_USER_COLUMN_KIND_AUXILIARY)
+			*(*Tuint8_t)(__ccgo_ptr(pNew + 260 + uintptr(user_column_idx))) = uint8(numAuxiliaryColumns)
 			libc.Xmemcpy(tls, pNew+808+uintptr(numAuxiliaryColumns)*12, bp+32, uint32(12))
 			numAuxiliaryColumns = numAuxiliaryColumns + 1
 			(*Tvec0_vtab)(unsafe.Pointer(pNew)).FnumAuxiliaryColumns = numAuxiliaryColumns
 			user_column_idx = user_column_idx + 1
 			goto _1
 		}
-		rc = Xvec0_parse_metadata_column_definition(tls, **(**uintptr)(__ccgo_up(argv + uintptr(i)*4)), int32(libc.Xstrlen(tls, **(**uintptr)(__ccgo_up(argv + uintptr(i)*4)))), bp+56, bp+60, bp+68)
+		rc = _vec0_parse_metadata_column_definition__ccgo_gp(tls, *(*uintptr)(__ccgo_ptr(argv + uintptr(i)*4)), int32(libc.Xstrlen(tls, *(*uintptr)(__ccgo_ptr(argv + uintptr(i)*4)))), unsafe.Pointer(&cName), unsafe.Pointer(&cNameLength), unsafe.Pointer(&kind))
 		if rc == m_SQLITE_OK {
 			if numMetadataColumns >= int32(m_VEC0_MAX_METADATA_COLUMNS) {
-				**(**uintptr)(__ccgo_up(pzErr)) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+5970, libc.VaList(bp+104, int32(m_VEC0_MAX_METADATA_COLUMNS)))
+				*(*uintptr)(__ccgo_ptr(pzErr)) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+5970, libc.VaList(bp+72, int32(m_VEC0_MAX_METADATA_COLUMNS)))
 				goto error
 			}
-			(**(**TVec0MetadataColumnDefinition)(__ccgo_up(bp + 44))).Fkind = **(**Tvec0_metadata_column_kind)(__ccgo_up(bp + 68))
-			(**(**TVec0MetadataColumnDefinition)(__ccgo_up(bp + 44))).Fname_length = **(**int32)(__ccgo_up(bp + 60))
-			(**(**TVec0MetadataColumnDefinition)(__ccgo_up(bp + 44))).Fname = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+1874, libc.VaList(bp+104, **(**int32)(__ccgo_up(bp + 60)), **(**uintptr)(__ccgo_up(bp + 56))))
-			if !((**(**TVec0MetadataColumnDefinition)(__ccgo_up(bp + 44))).Fname != 0) {
+			(*(*TVec0MetadataColumnDefinition)(__ccgo_ptr(bp + 44))).Fkind = kind
+			(*(*TVec0MetadataColumnDefinition)(__ccgo_ptr(bp + 44))).Fname_length = cNameLength
+			(*(*TVec0MetadataColumnDefinition)(__ccgo_ptr(bp + 44))).Fname = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+1874, libc.VaList(bp+72, cNameLength, cName))
+			if !((*(*TVec0MetadataColumnDefinition)(__ccgo_ptr(bp + 44))).Fname != 0) {
 				rc = int32(m_SQLITE_NOMEM)
 				goto error
 			}
-			**(**Tvec0_user_column_kind)(__ccgo_up(pNew + 52 + uintptr(user_column_idx)*4)) = int32(_SQLITE_VEC0_USER_COLUMN_KIND_METADATA)
-			**(**Tuint8_t)(__ccgo_up(pNew + 260 + uintptr(user_column_idx))) = uint8(numMetadataColumns)
+			*(*Tvec0_user_column_kind)(__ccgo_ptr(pNew + 52 + uintptr(user_column_idx)*4)) = int32(_SQLITE_VEC0_USER_COLUMN_KIND_METADATA)
+			*(*Tuint8_t)(__ccgo_ptr(pNew + 260 + uintptr(user_column_idx))) = uint8(numMetadataColumns)
 			libc.Xmemcpy(tls, pNew+1000+uintptr(numMetadataColumns)*12, bp+44, uint32(12))
 			numMetadataColumns = numMetadataColumns + 1
 			(*Tvec0_vtab)(unsafe.Pointer(pNew)).FnumMetadataColumns = numMetadataColumns
 			user_column_idx = user_column_idx + 1
 			goto _1
 		}
-		rc = Xvec0_parse_table_option(tls, **(**uintptr)(__ccgo_up(argv + uintptr(i)*4)), int32(libc.Xstrlen(tls, **(**uintptr)(__ccgo_up(argv + uintptr(i)*4)))), bp+72, bp+80, bp+76, bp+84)
+		rc = _vec0_parse_table_option__ccgo_gp(tls, *(*uintptr)(__ccgo_ptr(argv + uintptr(i)*4)), int32(libc.Xstrlen(tls, *(*uintptr)(__ccgo_ptr(argv + uintptr(i)*4)))), unsafe.Pointer(&key), unsafe.Pointer(&keyLength), unsafe.Pointer(&value), unsafe.Pointer(&valueLength))
 		if rc == int32(m_SQLITE_ERROR) {
-			**(**uintptr)(__ccgo_up(pzErr)) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+6038, libc.VaList(bp+104, **(**uintptr)(__ccgo_up(argv + uintptr(i)*4))))
+			*(*uintptr)(__ccgo_ptr(pzErr)) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+6038, libc.VaList(bp+72, *(*uintptr)(__ccgo_ptr(argv + uintptr(i)*4))))
 			goto error
 		}
 		if rc == m_SQLITE_OK {
-			if libsqlite3.Xsqlite3_strnicmp(tls, **(**uintptr)(__ccgo_up(bp + 72)), __ccgo_ts+6096, **(**int32)(__ccgo_up(bp + 80))) == 0 {
-				chunk_size = libc.Xatoi(tls, **(**uintptr)(__ccgo_up(bp + 76)))
+			if libsqlite3.Xsqlite3_strnicmp(tls, key, __ccgo_ts+6096, keyLength) == 0 {
+				chunk_size = libc.Xatoi(tls, value)
 				if chunk_size <= 0 {
 					// IMP: V01931_18769
-					**(**uintptr)(__ccgo_up(pzErr)) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+6107, 0)
+					*(*uintptr)(__ccgo_ptr(pzErr)) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+6107, 0)
 					goto error
 				}
 				if chunk_size%int32(8) != 0 {
 					// IMP: V14110_30948
-					**(**uintptr)(__ccgo_up(pzErr)) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+6178, 0)
+					*(*uintptr)(__ccgo_ptr(pzErr)) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+6178, 0)
 					goto error
 				}
 				if chunk_size > int32(m_SQLITE_VEC_CHUNK_SIZE_MAX) {
-					**(**uintptr)(__ccgo_up(pzErr)) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+6236, 0)
+					*(*uintptr)(__ccgo_ptr(pzErr)) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+6236, 0)
 					goto error
 				}
 			} else {
 				// IMP: V27642_11712
-				**(**uintptr)(__ccgo_up(pzErr)) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+6281, libc.VaList(bp+104, **(**int32)(__ccgo_up(bp + 80)), **(**uintptr)(__ccgo_up(bp + 72))))
+				*(*uintptr)(__ccgo_ptr(pzErr)) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+6281, libc.VaList(bp+72, keyLength, key))
 				goto error
 			}
 			goto _1
 		}
 		// Scenario #5: Unknown constructor argument
-		**(**uintptr)(__ccgo_up(pzErr)) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+6332, libc.VaList(bp+104, **(**uintptr)(__ccgo_up(argv + uintptr(i)*4))))
+		*(*uintptr)(__ccgo_ptr(pzErr)) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+6332, libc.VaList(bp+72, *(*uintptr)(__ccgo_ptr(argv + uintptr(i)*4))))
 		goto error
 		goto _1
 	_1:
@@ -4189,13 +3959,13 @@ func _vec0_init(tls *libc.TLS, db uintptr, pAux uintptr, argc int32, argv uintpt
 		chunk_size = int32(1024)
 	}
 	if numVectorColumns <= 0 {
-		**(**uintptr)(__ccgo_up(pzErr)) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+6377, 0)
+		*(*uintptr)(__ccgo_ptr(pzErr)) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+6377, 0)
 		goto error
 	}
 	createStr = libsqlite3.Xsqlite3_str_new(tls, libc.UintptrFromInt32(0))
 	libsqlite3.Xsqlite3_str_appendall(tls, createStr, __ccgo_ts+6440)
 	if pkColumnName != 0 {
-		libsqlite3.Xsqlite3_str_appendf(tls, createStr, __ccgo_ts+6456, libc.VaList(bp+104, pkColumnNameLength, pkColumnName))
+		libsqlite3.Xsqlite3_str_appendf(tls, createStr, __ccgo_ts+6456, libc.VaList(bp+72, pkColumnNameLength, pkColumnName))
 	} else {
 		libsqlite3.Xsqlite3_str_appendall(tls, createStr, __ccgo_ts+6477)
 	}
@@ -4204,19 +3974,19 @@ func _vec0_init(tls *libc.TLS, db uintptr, pAux uintptr, argc int32, argv uintpt
 		if !(i1 < numVectorColumns+numPartitionColumns+numAuxiliaryColumns+numMetadataColumns) {
 			break
 		}
-		switch **(**Tvec0_user_column_kind)(__ccgo_up(pNew + 52 + uintptr(i1)*4)) {
+		switch *(*Tvec0_user_column_kind)(__ccgo_ptr(pNew + 52 + uintptr(i1)*4)) {
 		case int32(_SQLITE_VEC0_USER_COLUMN_KIND_VECTOR):
-			vector_idx = int32(**(**Tuint8_t)(__ccgo_up(pNew + 260 + uintptr(i1))))
-			libsqlite3.Xsqlite3_str_appendf(tls, createStr, __ccgo_ts+6485, libc.VaList(bp+104, (**(**TVectorColumnDefinition)(__ccgo_up(pNew + 440 + uintptr(vector_idx)*20))).Fname_length, (**(**TVectorColumnDefinition)(__ccgo_up(pNew + 440 + uintptr(vector_idx)*20))).Fname))
+			vector_idx = int32(*(*Tuint8_t)(__ccgo_ptr(pNew + 260 + uintptr(i1))))
+			libsqlite3.Xsqlite3_str_appendf(tls, createStr, __ccgo_ts+6485, libc.VaList(bp+72, (*(*TVectorColumnDefinition)(__ccgo_ptr(pNew + 440 + uintptr(vector_idx)*20))).Fname_length, (*(*TVectorColumnDefinition)(__ccgo_ptr(pNew + 440 + uintptr(vector_idx)*20))).Fname))
 		case int32(_SQLITE_VEC0_USER_COLUMN_KIND_PARTITION):
-			partition_idx = int32(**(**Tuint8_t)(__ccgo_up(pNew + 260 + uintptr(i1))))
-			libsqlite3.Xsqlite3_str_appendf(tls, createStr, __ccgo_ts+6485, libc.VaList(bp+104, (**(**TVec0PartitionColumnDefinition)(__ccgo_up(pNew + 760 + uintptr(partition_idx)*12))).Fname_length, (**(**TVec0PartitionColumnDefinition)(__ccgo_up(pNew + 760 + uintptr(partition_idx)*12))).Fname))
+			partition_idx = int32(*(*Tuint8_t)(__ccgo_ptr(pNew + 260 + uintptr(i1))))
+			libsqlite3.Xsqlite3_str_appendf(tls, createStr, __ccgo_ts+6485, libc.VaList(bp+72, (*(*TVec0PartitionColumnDefinition)(__ccgo_ptr(pNew + 760 + uintptr(partition_idx)*12))).Fname_length, (*(*TVec0PartitionColumnDefinition)(__ccgo_ptr(pNew + 760 + uintptr(partition_idx)*12))).Fname))
 		case int32(_SQLITE_VEC0_USER_COLUMN_KIND_AUXILIARY):
-			auxiliary_idx = int32(**(**Tuint8_t)(__ccgo_up(pNew + 260 + uintptr(i1))))
-			libsqlite3.Xsqlite3_str_appendf(tls, createStr, __ccgo_ts+6485, libc.VaList(bp+104, (**(**TVec0AuxiliaryColumnDefinition)(__ccgo_up(pNew + 808 + uintptr(auxiliary_idx)*12))).Fname_length, (**(**TVec0AuxiliaryColumnDefinition)(__ccgo_up(pNew + 808 + uintptr(auxiliary_idx)*12))).Fname))
+			auxiliary_idx = int32(*(*Tuint8_t)(__ccgo_ptr(pNew + 260 + uintptr(i1))))
+			libsqlite3.Xsqlite3_str_appendf(tls, createStr, __ccgo_ts+6485, libc.VaList(bp+72, (*(*TVec0AuxiliaryColumnDefinition)(__ccgo_ptr(pNew + 808 + uintptr(auxiliary_idx)*12))).Fname_length, (*(*TVec0AuxiliaryColumnDefinition)(__ccgo_ptr(pNew + 808 + uintptr(auxiliary_idx)*12))).Fname))
 		case int32(_SQLITE_VEC0_USER_COLUMN_KIND_METADATA):
-			metadata_idx = int32(**(**Tuint8_t)(__ccgo_up(pNew + 260 + uintptr(i1))))
-			libsqlite3.Xsqlite3_str_appendf(tls, createStr, __ccgo_ts+6485, libc.VaList(bp+104, (**(**TVec0MetadataColumnDefinition)(__ccgo_up(pNew + 1000 + uintptr(metadata_idx)*12))).Fname_length, (**(**TVec0MetadataColumnDefinition)(__ccgo_up(pNew + 1000 + uintptr(metadata_idx)*12))).Fname))
+			metadata_idx = int32(*(*Tuint8_t)(__ccgo_ptr(pNew + 260 + uintptr(i1))))
+			libsqlite3.Xsqlite3_str_appendf(tls, createStr, __ccgo_ts+6485, libc.VaList(bp+72, (*(*TVec0MetadataColumnDefinition)(__ccgo_ptr(pNew + 1000 + uintptr(metadata_idx)*12))).Fname_length, (*(*TVec0MetadataColumnDefinition)(__ccgo_ptr(pNew + 1000 + uintptr(metadata_idx)*12))).Fname))
 			break
 		}
 		goto _2
@@ -4235,26 +4005,26 @@ func _vec0_init(tls *libc.TLS, db uintptr, pAux uintptr, argc int32, argv uintpt
 	rc = libsqlite3.Xsqlite3_declare_vtab(tls, db, zSql)
 	libsqlite3.Xsqlite3_free(tls, zSql)
 	if rc != m_SQLITE_OK {
-		**(**uintptr)(__ccgo_up(pzErr)) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+6538, libc.VaList(bp+104, libsqlite3.Xsqlite3_errmsg(tls, db)))
+		*(*uintptr)(__ccgo_ptr(pzErr)) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+6538, libc.VaList(bp+72, libsqlite3.Xsqlite3_errmsg(tls, db)))
 		goto error
 	}
-	schemaName = **(**uintptr)(__ccgo_up(argv + 1*4))
-	tableName = **(**uintptr)(__ccgo_up(argv + 2*4))
+	schemaName = *(*uintptr)(__ccgo_ptr(argv + 1*4))
+	tableName = *(*uintptr)(__ccgo_ptr(argv + 2*4))
 	(*Tvec0_vtab)(unsafe.Pointer(pNew)).Fdb = db
 	(*Tvec0_vtab)(unsafe.Pointer(pNew)).FpkIsText = libc.BoolInt32(pkColumnType == int32(m_SQLITE_TEXT))
-	(*Tvec0_vtab)(unsafe.Pointer(pNew)).FschemaName = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+6600, libc.VaList(bp+104, schemaName))
+	(*Tvec0_vtab)(unsafe.Pointer(pNew)).FschemaName = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+6600, libc.VaList(bp+72, schemaName))
 	if !((*Tvec0_vtab)(unsafe.Pointer(pNew)).FschemaName != 0) {
 		goto error
 	}
-	(*Tvec0_vtab)(unsafe.Pointer(pNew)).FtableName = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+6600, libc.VaList(bp+104, tableName))
+	(*Tvec0_vtab)(unsafe.Pointer(pNew)).FtableName = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+6600, libc.VaList(bp+72, tableName))
 	if !((*Tvec0_vtab)(unsafe.Pointer(pNew)).FtableName != 0) {
 		goto error
 	}
-	(*Tvec0_vtab)(unsafe.Pointer(pNew)).FshadowRowidsName = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+6603, libc.VaList(bp+104, tableName))
+	(*Tvec0_vtab)(unsafe.Pointer(pNew)).FshadowRowidsName = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+6603, libc.VaList(bp+72, tableName))
 	if !((*Tvec0_vtab)(unsafe.Pointer(pNew)).FshadowRowidsName != 0) {
 		goto error
 	}
-	(*Tvec0_vtab)(unsafe.Pointer(pNew)).FshadowChunksName = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+6613, libc.VaList(bp+104, tableName))
+	(*Tvec0_vtab)(unsafe.Pointer(pNew)).FshadowChunksName = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+6613, libc.VaList(bp+72, tableName))
 	if !((*Tvec0_vtab)(unsafe.Pointer(pNew)).FshadowChunksName != 0) {
 		goto error
 	}
@@ -4267,8 +4037,8 @@ func _vec0_init(tls *libc.TLS, db uintptr, pAux uintptr, argc int32, argv uintpt
 		if !(i2 < (*Tvec0_vtab)(unsafe.Pointer(pNew)).FnumVectorColumns) {
 			break
 		}
-		**(**uintptr)(__ccgo_up(pNew + 312 + uintptr(i2)*4)) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+6623, libc.VaList(bp+104, tableName, i2))
-		if !(**(**uintptr)(__ccgo_up(pNew + 312 + uintptr(i2)*4)) != 0) {
+		*(*uintptr)(__ccgo_ptr(pNew + 312 + uintptr(i2)*4)) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+6623, libc.VaList(bp+72, tableName, i2))
+		if !(*(*uintptr)(__ccgo_ptr(pNew + 312 + uintptr(i2)*4)) != 0) {
 			goto error
 		}
 		goto _3
@@ -4281,8 +4051,8 @@ func _vec0_init(tls *libc.TLS, db uintptr, pAux uintptr, argc int32, argv uintpt
 		if !(i3 < (*Tvec0_vtab)(unsafe.Pointer(pNew)).FnumMetadataColumns) {
 			break
 		}
-		**(**uintptr)(__ccgo_up(pNew + 376 + uintptr(i3)*4)) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+6644, libc.VaList(bp+104, tableName, i3))
-		if !(**(**uintptr)(__ccgo_up(pNew + 376 + uintptr(i3)*4)) != 0) {
+		*(*uintptr)(__ccgo_ptr(pNew + 376 + uintptr(i3)*4)) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+6644, libc.VaList(bp+72, tableName, i3))
+		if !(*(*uintptr)(__ccgo_ptr(pNew + 376 + uintptr(i3)*4)) != 0) {
 			goto error
 		}
 		goto _4
@@ -4293,51 +4063,51 @@ func _vec0_init(tls *libc.TLS, db uintptr, pAux uintptr, argc int32, argv uintpt
 	(*Tvec0_vtab)(unsafe.Pointer(pNew)).Fchunk_size = chunk_size
 	// if xCreate, then create the necessary shadow tables
 	if isCreate != 0 {
-		zCreateInfo = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+6666, libc.VaList(bp+104, (*Tvec0_vtab)(unsafe.Pointer(pNew)).FschemaName, (*Tvec0_vtab)(unsafe.Pointer(pNew)).FtableName))
+		zCreateInfo = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+6666, libc.VaList(bp+72, (*Tvec0_vtab)(unsafe.Pointer(pNew)).FschemaName, (*Tvec0_vtab)(unsafe.Pointer(pNew)).FtableName))
 		if !(zCreateInfo != 0) {
 			goto error
 		}
-		rc1 = libsqlite3.Xsqlite3_prepare_v2(tls, db, zCreateInfo, -int32(1), bp+88, libc.UintptrFromInt32(0))
+		rc1 = libsqlite3.Xsqlite3_prepare_v2(tls, db, zCreateInfo, -int32(1), bp+56, libc.UintptrFromInt32(0))
 		libsqlite3.Xsqlite3_free(tls, zCreateInfo)
-		if rc1 != m_SQLITE_OK || libsqlite3.Xsqlite3_step(tls, **(**uintptr)(__ccgo_up(bp + 88))) != int32(m_SQLITE_DONE) {
+		if rc1 != m_SQLITE_OK || libsqlite3.Xsqlite3_step(tls, *(*uintptr)(__ccgo_ptr(bp + 56))) != int32(m_SQLITE_DONE) {
 			// TODO(IMP)
-			libsqlite3.Xsqlite3_finalize(tls, **(**uintptr)(__ccgo_up(bp + 88)))
-			**(**uintptr)(__ccgo_up(pzErr)) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+6728, libc.VaList(bp+104, libsqlite3.Xsqlite3_errmsg(tls, db)))
+			libsqlite3.Xsqlite3_finalize(tls, *(*uintptr)(__ccgo_ptr(bp + 56)))
+			*(*uintptr)(__ccgo_ptr(pzErr)) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+6728, libc.VaList(bp+72, libsqlite3.Xsqlite3_errmsg(tls, db)))
 			goto error
 		}
-		libsqlite3.Xsqlite3_finalize(tls, **(**uintptr)(__ccgo_up(bp + 88)))
-		zSeedInfo = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+6770, libc.VaList(bp+104, (*Tvec0_vtab)(unsafe.Pointer(pNew)).FschemaName, (*Tvec0_vtab)(unsafe.Pointer(pNew)).FtableName))
+		libsqlite3.Xsqlite3_finalize(tls, *(*uintptr)(__ccgo_ptr(bp + 56)))
+		zSeedInfo = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+6770, libc.VaList(bp+72, (*Tvec0_vtab)(unsafe.Pointer(pNew)).FschemaName, (*Tvec0_vtab)(unsafe.Pointer(pNew)).FtableName))
 		if !(zSeedInfo != 0) {
 			goto error
 		}
-		rc1 = libsqlite3.Xsqlite3_prepare_v2(tls, db, zSeedInfo, -int32(1), bp+88, libc.UintptrFromInt32(0))
+		rc1 = libsqlite3.Xsqlite3_prepare_v2(tls, db, zSeedInfo, -int32(1), bp+56, libc.UintptrFromInt32(0))
 		libsqlite3.Xsqlite3_free(tls, zSeedInfo)
 		if rc1 != m_SQLITE_OK {
 			// TODO(IMP)
-			libsqlite3.Xsqlite3_finalize(tls, **(**uintptr)(__ccgo_up(bp + 88)))
-			**(**uintptr)(__ccgo_up(pzErr)) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+6856, libc.VaList(bp+104, libsqlite3.Xsqlite3_errmsg(tls, db)))
+			libsqlite3.Xsqlite3_finalize(tls, *(*uintptr)(__ccgo_ptr(bp + 56)))
+			*(*uintptr)(__ccgo_ptr(pzErr)) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+6856, libc.VaList(bp+72, libsqlite3.Xsqlite3_errmsg(tls, db)))
 			goto error
 		}
-		libsqlite3.Xsqlite3_bind_text(tls, **(**uintptr)(__ccgo_up(bp + 88)), int32(1), __ccgo_ts+6896, -int32(1), libc.UintptrFromInt32(0))
-		libsqlite3.Xsqlite3_bind_text(tls, **(**uintptr)(__ccgo_up(bp + 88)), int32(2), __ccgo_ts+6911, -int32(1), libc.UintptrFromInt32(0))
-		libsqlite3.Xsqlite3_bind_text(tls, **(**uintptr)(__ccgo_up(bp + 88)), int32(3), __ccgo_ts+6918, -int32(1), libc.UintptrFromInt32(0))
-		libsqlite3.Xsqlite3_bind_int(tls, **(**uintptr)(__ccgo_up(bp + 88)), int32(4), m_SQLITE_VEC_VERSION_MAJOR)
-		libsqlite3.Xsqlite3_bind_text(tls, **(**uintptr)(__ccgo_up(bp + 88)), int32(5), __ccgo_ts+6939, -int32(1), libc.UintptrFromInt32(0))
-		libsqlite3.Xsqlite3_bind_int(tls, **(**uintptr)(__ccgo_up(bp + 88)), int32(6), int32(m_SQLITE_VEC_VERSION_MINOR))
-		libsqlite3.Xsqlite3_bind_text(tls, **(**uintptr)(__ccgo_up(bp + 88)), int32(7), __ccgo_ts+6960, -int32(1), libc.UintptrFromInt32(0))
-		libsqlite3.Xsqlite3_bind_int(tls, **(**uintptr)(__ccgo_up(bp + 88)), int32(8), int32(m_SQLITE_VEC_VERSION_PATCH))
-		if libsqlite3.Xsqlite3_step(tls, **(**uintptr)(__ccgo_up(bp + 88))) != int32(m_SQLITE_DONE) {
+		libsqlite3.Xsqlite3_bind_text(tls, *(*uintptr)(__ccgo_ptr(bp + 56)), int32(1), __ccgo_ts+6896, -int32(1), libc.UintptrFromInt32(0))
+		libsqlite3.Xsqlite3_bind_text(tls, *(*uintptr)(__ccgo_ptr(bp + 56)), int32(2), __ccgo_ts+6911, -int32(1), libc.UintptrFromInt32(0))
+		libsqlite3.Xsqlite3_bind_text(tls, *(*uintptr)(__ccgo_ptr(bp + 56)), int32(3), __ccgo_ts+6918, -int32(1), libc.UintptrFromInt32(0))
+		libsqlite3.Xsqlite3_bind_int(tls, *(*uintptr)(__ccgo_ptr(bp + 56)), int32(4), m_SQLITE_VEC_VERSION_MAJOR)
+		libsqlite3.Xsqlite3_bind_text(tls, *(*uintptr)(__ccgo_ptr(bp + 56)), int32(5), __ccgo_ts+6939, -int32(1), libc.UintptrFromInt32(0))
+		libsqlite3.Xsqlite3_bind_int(tls, *(*uintptr)(__ccgo_ptr(bp + 56)), int32(6), int32(m_SQLITE_VEC_VERSION_MINOR))
+		libsqlite3.Xsqlite3_bind_text(tls, *(*uintptr)(__ccgo_ptr(bp + 56)), int32(7), __ccgo_ts+6960, -int32(1), libc.UintptrFromInt32(0))
+		libsqlite3.Xsqlite3_bind_int(tls, *(*uintptr)(__ccgo_ptr(bp + 56)), int32(8), int32(m_SQLITE_VEC_VERSION_PATCH))
+		if libsqlite3.Xsqlite3_step(tls, *(*uintptr)(__ccgo_ptr(bp + 56))) != int32(m_SQLITE_DONE) {
 			// TODO(IMP)
-			libsqlite3.Xsqlite3_finalize(tls, **(**uintptr)(__ccgo_up(bp + 88)))
-			**(**uintptr)(__ccgo_up(pzErr)) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+6856, libc.VaList(bp+104, libsqlite3.Xsqlite3_errmsg(tls, db)))
+			libsqlite3.Xsqlite3_finalize(tls, *(*uintptr)(__ccgo_ptr(bp + 56)))
+			*(*uintptr)(__ccgo_ptr(pzErr)) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+6856, libc.VaList(bp+72, libsqlite3.Xsqlite3_errmsg(tls, db)))
 			goto error
 		}
-		libsqlite3.Xsqlite3_finalize(tls, **(**uintptr)(__ccgo_up(bp + 88)))
+		libsqlite3.Xsqlite3_finalize(tls, *(*uintptr)(__ccgo_ptr(bp + 56)))
 		// create the _chunks shadow table
 		zCreateShadowChunks = libc.UintptrFromInt32(0)
 		if (*Tvec0_vtab)(unsafe.Pointer(pNew)).FnumPartitionColumns != 0 {
 			s = libsqlite3.Xsqlite3_str_new(tls, libc.UintptrFromInt32(0))
-			libsqlite3.Xsqlite3_str_appendf(tls, s, __ccgo_ts+6981, libc.VaList(bp+104, (*Tvec0_vtab)(unsafe.Pointer(pNew)).FschemaName, (*Tvec0_vtab)(unsafe.Pointer(pNew)).FtableName))
+			libsqlite3.Xsqlite3_str_appendf(tls, s, __ccgo_ts+6981, libc.VaList(bp+72, (*Tvec0_vtab)(unsafe.Pointer(pNew)).FschemaName, (*Tvec0_vtab)(unsafe.Pointer(pNew)).FtableName))
 			libsqlite3.Xsqlite3_str_appendall(tls, s, __ccgo_ts+7012)
 			libsqlite3.Xsqlite3_str_appendall(tls, s, __ccgo_ts+7078)
 			i4 = 0
@@ -4345,7 +4115,7 @@ func _vec0_init(tls *libc.TLS, db uintptr, pAux uintptr, argc int32, argv uintpt
 				if !(i4 < (*Tvec0_vtab)(unsafe.Pointer(pNew)).FnumPartitionColumns) {
 					break
 				}
-				libsqlite3.Xsqlite3_str_appendf(tls, s, __ccgo_ts+7099, libc.VaList(bp+104, i4))
+				libsqlite3.Xsqlite3_str_appendf(tls, s, __ccgo_ts+7099, libc.VaList(bp+72, i4))
 				goto _5
 			_5:
 				;
@@ -4354,56 +4124,56 @@ func _vec0_init(tls *libc.TLS, db uintptr, pAux uintptr, argc int32, argv uintpt
 			libsqlite3.Xsqlite3_str_appendall(tls, s, __ccgo_ts+7114)
 			zCreateShadowChunks = libsqlite3.Xsqlite3_str_finish(tls, s)
 		} else {
-			zCreateShadowChunks = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+7161, libc.VaList(bp+104, (*Tvec0_vtab)(unsafe.Pointer(pNew)).FschemaName, (*Tvec0_vtab)(unsafe.Pointer(pNew)).FtableName))
+			zCreateShadowChunks = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+7161, libc.VaList(bp+72, (*Tvec0_vtab)(unsafe.Pointer(pNew)).FschemaName, (*Tvec0_vtab)(unsafe.Pointer(pNew)).FtableName))
 		}
 		if !(zCreateShadowChunks != 0) {
 			goto error
 		}
-		rc1 = libsqlite3.Xsqlite3_prepare_v2(tls, db, zCreateShadowChunks, -int32(1), bp+88, uintptr(0))
+		rc1 = libsqlite3.Xsqlite3_prepare_v2(tls, db, zCreateShadowChunks, -int32(1), bp+56, uintptr(0))
 		libsqlite3.Xsqlite3_free(tls, zCreateShadowChunks)
-		if rc1 != m_SQLITE_OK || libsqlite3.Xsqlite3_step(tls, **(**uintptr)(__ccgo_up(bp + 88))) != int32(m_SQLITE_DONE) {
+		if rc1 != m_SQLITE_OK || libsqlite3.Xsqlite3_step(tls, *(*uintptr)(__ccgo_ptr(bp + 56))) != int32(m_SQLITE_DONE) {
 			// IMP: V17740_01811
-			libsqlite3.Xsqlite3_finalize(tls, **(**uintptr)(__ccgo_up(bp + 88)))
-			**(**uintptr)(__ccgo_up(pzErr)) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+7302, libc.VaList(bp+104, libsqlite3.Xsqlite3_errmsg(tls, db)))
+			libsqlite3.Xsqlite3_finalize(tls, *(*uintptr)(__ccgo_ptr(bp + 56)))
+			*(*uintptr)(__ccgo_ptr(pzErr)) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+7302, libc.VaList(bp+72, libsqlite3.Xsqlite3_errmsg(tls, db)))
 			goto error
 		}
-		libsqlite3.Xsqlite3_finalize(tls, **(**uintptr)(__ccgo_up(bp + 88)))
+		libsqlite3.Xsqlite3_finalize(tls, *(*uintptr)(__ccgo_ptr(bp + 56)))
 		if (*Tvec0_vtab)(unsafe.Pointer(pNew)).FpkIsText != 0 {
 			// adds a "text unique not null" constraint to the id column
-			zCreateShadowRowids = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+7346, libc.VaList(bp+104, (*Tvec0_vtab)(unsafe.Pointer(pNew)).FschemaName, (*Tvec0_vtab)(unsafe.Pointer(pNew)).FtableName))
+			zCreateShadowRowids = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+7346, libc.VaList(bp+72, (*Tvec0_vtab)(unsafe.Pointer(pNew)).FschemaName, (*Tvec0_vtab)(unsafe.Pointer(pNew)).FtableName))
 		} else {
-			zCreateShadowRowids = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+7480, libc.VaList(bp+104, (*Tvec0_vtab)(unsafe.Pointer(pNew)).FschemaName, (*Tvec0_vtab)(unsafe.Pointer(pNew)).FtableName))
+			zCreateShadowRowids = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+7480, libc.VaList(bp+72, (*Tvec0_vtab)(unsafe.Pointer(pNew)).FschemaName, (*Tvec0_vtab)(unsafe.Pointer(pNew)).FtableName))
 		}
 		if !(zCreateShadowRowids != 0) {
 			goto error
 		}
-		rc1 = libsqlite3.Xsqlite3_prepare_v2(tls, db, zCreateShadowRowids, -int32(1), bp+88, uintptr(0))
+		rc1 = libsqlite3.Xsqlite3_prepare_v2(tls, db, zCreateShadowRowids, -int32(1), bp+56, uintptr(0))
 		libsqlite3.Xsqlite3_free(tls, zCreateShadowRowids)
-		if rc1 != m_SQLITE_OK || libsqlite3.Xsqlite3_step(tls, **(**uintptr)(__ccgo_up(bp + 88))) != int32(m_SQLITE_DONE) {
+		if rc1 != m_SQLITE_OK || libsqlite3.Xsqlite3_step(tls, *(*uintptr)(__ccgo_ptr(bp + 56))) != int32(m_SQLITE_DONE) {
 			// IMP: V11631_28470
-			libsqlite3.Xsqlite3_finalize(tls, **(**uintptr)(__ccgo_up(bp + 88)))
-			**(**uintptr)(__ccgo_up(pzErr)) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+7593, libc.VaList(bp+104, libsqlite3.Xsqlite3_errmsg(tls, db)))
+			libsqlite3.Xsqlite3_finalize(tls, *(*uintptr)(__ccgo_ptr(bp + 56)))
+			*(*uintptr)(__ccgo_ptr(pzErr)) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+7593, libc.VaList(bp+72, libsqlite3.Xsqlite3_errmsg(tls, db)))
 			goto error
 		}
-		libsqlite3.Xsqlite3_finalize(tls, **(**uintptr)(__ccgo_up(bp + 88)))
+		libsqlite3.Xsqlite3_finalize(tls, *(*uintptr)(__ccgo_ptr(bp + 56)))
 		i5 = 0
 		for {
 			if !(i5 < (*Tvec0_vtab)(unsafe.Pointer(pNew)).FnumVectorColumns) {
 				break
 			}
-			zSql1 = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+7637, libc.VaList(bp+104, (*Tvec0_vtab)(unsafe.Pointer(pNew)).FschemaName, (*Tvec0_vtab)(unsafe.Pointer(pNew)).FtableName, i5))
+			zSql1 = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+7637, libc.VaList(bp+72, (*Tvec0_vtab)(unsafe.Pointer(pNew)).FschemaName, (*Tvec0_vtab)(unsafe.Pointer(pNew)).FtableName, i5))
 			if !(zSql1 != 0) {
 				goto error
 			}
-			rc1 = libsqlite3.Xsqlite3_prepare_v2(tls, db, zSql1, -int32(1), bp+88, uintptr(0))
+			rc1 = libsqlite3.Xsqlite3_prepare_v2(tls, db, zSql1, -int32(1), bp+56, uintptr(0))
 			libsqlite3.Xsqlite3_free(tls, zSql1)
-			if rc1 != m_SQLITE_OK || libsqlite3.Xsqlite3_step(tls, **(**uintptr)(__ccgo_up(bp + 88))) != int32(m_SQLITE_DONE) {
+			if rc1 != m_SQLITE_OK || libsqlite3.Xsqlite3_step(tls, *(*uintptr)(__ccgo_ptr(bp + 56))) != int32(m_SQLITE_DONE) {
 				// IMP: V25919_09989
-				libsqlite3.Xsqlite3_finalize(tls, **(**uintptr)(__ccgo_up(bp + 88)))
-				**(**uintptr)(__ccgo_up(pzErr)) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+7720, libc.VaList(bp+104, i5, libsqlite3.Xsqlite3_errmsg(tls, db)))
+				libsqlite3.Xsqlite3_finalize(tls, *(*uintptr)(__ccgo_ptr(bp + 56)))
+				*(*uintptr)(__ccgo_ptr(pzErr)) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+7720, libc.VaList(bp+72, i5, libsqlite3.Xsqlite3_errmsg(tls, db)))
 				goto error
 			}
-			libsqlite3.Xsqlite3_finalize(tls, **(**uintptr)(__ccgo_up(bp + 88)))
+			libsqlite3.Xsqlite3_finalize(tls, *(*uintptr)(__ccgo_ptr(bp + 56)))
 			goto _6
 		_6:
 			;
@@ -4416,31 +4186,31 @@ func _vec0_init(tls *libc.TLS, db uintptr, pAux uintptr, argc int32, argv uintpt
 			if !(i6 < (*Tvec0_vtab)(unsafe.Pointer(pNew)).FnumMetadataColumns) {
 				break
 			}
-			zSql2 = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+7775, libc.VaList(bp+104, (*Tvec0_vtab)(unsafe.Pointer(pNew)).FschemaName, (*Tvec0_vtab)(unsafe.Pointer(pNew)).FtableName, i6))
+			zSql2 = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+7775, libc.VaList(bp+72, (*Tvec0_vtab)(unsafe.Pointer(pNew)).FschemaName, (*Tvec0_vtab)(unsafe.Pointer(pNew)).FtableName, i6))
 			if !(zSql2 != 0) {
 				goto error
 			}
-			rc1 = libsqlite3.Xsqlite3_prepare_v2(tls, db, zSql2, -int32(1), bp+88, uintptr(0))
+			rc1 = libsqlite3.Xsqlite3_prepare_v2(tls, db, zSql2, -int32(1), bp+56, uintptr(0))
 			libsqlite3.Xsqlite3_free(tls, zSql2)
-			if rc1 != m_SQLITE_OK || libsqlite3.Xsqlite3_step(tls, **(**uintptr)(__ccgo_up(bp + 88))) != int32(m_SQLITE_DONE) {
-				libsqlite3.Xsqlite3_finalize(tls, **(**uintptr)(__ccgo_up(bp + 88)))
-				**(**uintptr)(__ccgo_up(pzErr)) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+7857, libc.VaList(bp+104, i6, libsqlite3.Xsqlite3_errmsg(tls, db)))
+			if rc1 != m_SQLITE_OK || libsqlite3.Xsqlite3_step(tls, *(*uintptr)(__ccgo_ptr(bp + 56))) != int32(m_SQLITE_DONE) {
+				libsqlite3.Xsqlite3_finalize(tls, *(*uintptr)(__ccgo_ptr(bp + 56)))
+				*(*uintptr)(__ccgo_ptr(pzErr)) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+7857, libc.VaList(bp+72, i6, libsqlite3.Xsqlite3_errmsg(tls, db)))
 				goto error
 			}
-			libsqlite3.Xsqlite3_finalize(tls, **(**uintptr)(__ccgo_up(bp + 88)))
-			if (**(**TVec0MetadataColumnDefinition)(__ccgo_up(pNew + 1000 + uintptr(i6)*12))).Fkind == int32(_VEC0_METADATA_COLUMN_KIND_TEXT) {
-				zSql3 = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+7912, libc.VaList(bp+104, (*Tvec0_vtab)(unsafe.Pointer(pNew)).FschemaName, (*Tvec0_vtab)(unsafe.Pointer(pNew)).FtableName, i6))
+			libsqlite3.Xsqlite3_finalize(tls, *(*uintptr)(__ccgo_ptr(bp + 56)))
+			if (*(*TVec0MetadataColumnDefinition)(__ccgo_ptr(pNew + 1000 + uintptr(i6)*12))).Fkind == int32(_VEC0_METADATA_COLUMN_KIND_TEXT) {
+				zSql3 = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+7912, libc.VaList(bp+72, (*Tvec0_vtab)(unsafe.Pointer(pNew)).FschemaName, (*Tvec0_vtab)(unsafe.Pointer(pNew)).FtableName, i6))
 				if !(zSql3 != 0) {
 					goto error
 				}
-				rc1 = libsqlite3.Xsqlite3_prepare_v2(tls, db, zSql3, -int32(1), bp+88, uintptr(0))
+				rc1 = libsqlite3.Xsqlite3_prepare_v2(tls, db, zSql3, -int32(1), bp+56, uintptr(0))
 				libsqlite3.Xsqlite3_free(tls, zSql3)
-				if rc1 != m_SQLITE_OK || libsqlite3.Xsqlite3_step(tls, **(**uintptr)(__ccgo_up(bp + 88))) != int32(m_SQLITE_DONE) {
-					libsqlite3.Xsqlite3_finalize(tls, **(**uintptr)(__ccgo_up(bp + 88)))
-					**(**uintptr)(__ccgo_up(pzErr)) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+7983, libc.VaList(bp+104, i6, libsqlite3.Xsqlite3_errmsg(tls, db)))
+				if rc1 != m_SQLITE_OK || libsqlite3.Xsqlite3_step(tls, *(*uintptr)(__ccgo_ptr(bp + 56))) != int32(m_SQLITE_DONE) {
+					libsqlite3.Xsqlite3_finalize(tls, *(*uintptr)(__ccgo_ptr(bp + 56)))
+					*(*uintptr)(__ccgo_ptr(pzErr)) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+7983, libc.VaList(bp+72, i6, libsqlite3.Xsqlite3_errmsg(tls, db)))
 					goto error
 				}
-				libsqlite3.Xsqlite3_finalize(tls, **(**uintptr)(__ccgo_up(bp + 88)))
+				libsqlite3.Xsqlite3_finalize(tls, *(*uintptr)(__ccgo_ptr(bp + 56)))
 			}
 			goto _7
 		_7:
@@ -4449,13 +4219,13 @@ func _vec0_init(tls *libc.TLS, db uintptr, pAux uintptr, argc int32, argv uintpt
 		}
 		if (*Tvec0_vtab)(unsafe.Pointer(pNew)).FnumAuxiliaryColumns > 0 {
 			s1 = libsqlite3.Xsqlite3_str_new(tls, libc.UintptrFromInt32(0))
-			libsqlite3.Xsqlite3_str_appendf(tls, s1, __ccgo_ts+8037, libc.VaList(bp+104, (*Tvec0_vtab)(unsafe.Pointer(pNew)).FschemaName, (*Tvec0_vtab)(unsafe.Pointer(pNew)).FtableName))
+			libsqlite3.Xsqlite3_str_appendf(tls, s1, __ccgo_ts+8037, libc.VaList(bp+72, (*Tvec0_vtab)(unsafe.Pointer(pNew)).FschemaName, (*Tvec0_vtab)(unsafe.Pointer(pNew)).FtableName))
 			i7 = 0
 			for {
 				if !(i7 < (*Tvec0_vtab)(unsafe.Pointer(pNew)).FnumAuxiliaryColumns) {
 					break
 				}
-				libsqlite3.Xsqlite3_str_appendf(tls, s1, __ccgo_ts+8098, libc.VaList(bp+104, i7))
+				libsqlite3.Xsqlite3_str_appendf(tls, s1, __ccgo_ts+8098, libc.VaList(bp+72, i7))
 				goto _8
 			_8:
 				;
@@ -4466,16 +4236,16 @@ func _vec0_init(tls *libc.TLS, db uintptr, pAux uintptr, argc int32, argv uintpt
 			if !(zSql4 != 0) {
 				goto error
 			}
-			rc1 = libsqlite3.Xsqlite3_prepare_v2(tls, db, zSql4, -int32(1), bp+92, libc.UintptrFromInt32(0))
-			if rc1 != m_SQLITE_OK || libsqlite3.Xsqlite3_step(tls, **(**uintptr)(__ccgo_up(bp + 92))) != int32(m_SQLITE_DONE) {
-				libsqlite3.Xsqlite3_finalize(tls, **(**uintptr)(__ccgo_up(bp + 92)))
-				**(**uintptr)(__ccgo_up(pzErr)) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+8110, libc.VaList(bp+104, libsqlite3.Xsqlite3_errmsg(tls, db)))
+			rc1 = libsqlite3.Xsqlite3_prepare_v2(tls, db, zSql4, -int32(1), bp+60, libc.UintptrFromInt32(0))
+			if rc1 != m_SQLITE_OK || libsqlite3.Xsqlite3_step(tls, *(*uintptr)(__ccgo_ptr(bp + 60))) != int32(m_SQLITE_DONE) {
+				libsqlite3.Xsqlite3_finalize(tls, *(*uintptr)(__ccgo_ptr(bp + 60)))
+				*(*uintptr)(__ccgo_ptr(pzErr)) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+8110, libc.VaList(bp+72, libsqlite3.Xsqlite3_errmsg(tls, db)))
 				goto error
 			}
-			libsqlite3.Xsqlite3_finalize(tls, **(**uintptr)(__ccgo_up(bp + 92)))
+			libsqlite3.Xsqlite3_finalize(tls, *(*uintptr)(__ccgo_ptr(bp + 60)))
 		}
 	}
-	**(**uintptr)(__ccgo_up(ppVtab)) = pNew
+	*(*uintptr)(__ccgo_ptr(ppVtab)) = pNew
 	return m_SQLITE_OK
 	goto error
 error:
@@ -4483,6 +4253,307 @@ error:
 	Xvec0_free(tls, pNew)
 	libsqlite3.Xsqlite3_free(tls, pNew)
 	return int32(m_SQLITE_ERROR)
+}
+
+// C documentation
+//
+//	/**
+//	 * @brief Adds a new chunk for the vec0 table, and the corresponding vector
+//	 * chunks.
+//	 *
+//	 * Inserts a new row into the _chunks table, with blank data, and uses that new
+//	 * rowid to insert new blank rows into _vector_chunksXX tables.
+//	 *
+//	 * @param p: vec0 table to add new chunk
+//	 * @param paritionKeyValues: Array of partition key valeus for the new chunk, if available
+//	 * @param chunk_rowid: Output pointer, if not NULL, then will be filled with the
+//	 * new chunk rowid.
+//	 * @return int SQLITE_OK on success, error code otherwise.
+//	 */
+func _vec0_new_chunk__ccgo_gp(tls *libc.TLS, p uintptr, partitionKeyValues unsafe.Pointer, chunk_rowid unsafe.Pointer) (r int32) {
+	bp := tls.Alloc(48)
+	defer tls.Free(48)
+	var failed, i, i1, i2, i3, i4, metadata_column_idx, rc, vector_column_idx int32
+	var rowid, vectorsSize Ti64
+	var s, zSql uintptr
+	var _ /* stmt at bp+0 */ uintptr
+	_, _, _, _, _, _, _, _, _, _, _, _, _ = failed, i, i1, i2, i3, i4, metadata_column_idx, rc, rowid, s, vector_column_idx, vectorsSize, zSql
+	// Step 1: Insert a new row in _chunks, capture that new rowid
+	if (*Tvec0_vtab)(unsafe.Pointer(p)).FnumPartitionColumns > 0 {
+		s = libsqlite3.Xsqlite3_str_new(tls, libc.UintptrFromInt32(0))
+		libsqlite3.Xsqlite3_str_appendf(tls, s, __ccgo_ts+5165, libc.VaList(bp+16, (*Tvec0_vtab)(unsafe.Pointer(p)).FschemaName, (*Tvec0_vtab)(unsafe.Pointer(p)).FtableName))
+		libsqlite3.Xsqlite3_str_appendall(tls, s, __ccgo_ts+5194)
+		i = 0
+		for {
+			if !(i < (*Tvec0_vtab)(unsafe.Pointer(p)).FnumPartitionColumns) {
+				break
+			}
+			libsqlite3.Xsqlite3_str_appendf(tls, s, __ccgo_ts+5218, libc.VaList(bp+16, i))
+			goto _1
+		_1:
+			;
+			i = i + 1
+		}
+		libsqlite3.Xsqlite3_str_appendall(tls, s, __ccgo_ts+5234)
+		i1 = 0
+		for {
+			if !(i1 < (*Tvec0_vtab)(unsafe.Pointer(p)).FnumPartitionColumns) {
+				break
+			}
+			libsqlite3.Xsqlite3_str_appendall(tls, s, __ccgo_ts+5252)
+			goto _2
+		_2:
+			;
+			i1 = i1 + 1
+		}
+		libsqlite3.Xsqlite3_str_appendall(tls, s, __ccgo_ts+5256)
+		zSql = libsqlite3.Xsqlite3_str_finish(tls, s)
+	} else {
+		zSql = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+5258, libc.VaList(bp+16, (*Tvec0_vtab)(unsafe.Pointer(p)).FschemaName, (*Tvec0_vtab)(unsafe.Pointer(p)).FtableName))
+	}
+	if !(zSql != 0) {
+		return int32(m_SQLITE_NOMEM)
+	}
+	rc = libsqlite3.Xsqlite3_prepare_v2(tls, (*Tvec0_vtab)(unsafe.Pointer(p)).Fdb, zSql, -int32(1), bp, libc.UintptrFromInt32(0))
+	libsqlite3.Xsqlite3_free(tls, zSql)
+	if rc != m_SQLITE_OK {
+		libsqlite3.Xsqlite3_finalize(tls, *(*uintptr)(__ccgo_ptr(bp)))
+		return rc
+	}
+	libsqlite3.Xsqlite3_bind_int64(tls, *(*uintptr)(__ccgo_ptr(bp)), int32(1), int64((*Tvec0_vtab)(unsafe.Pointer(p)).Fchunk_size))                      // size
+	libsqlite3.Xsqlite3_bind_zeroblob(tls, *(*uintptr)(__ccgo_ptr(bp)), int32(2), (*Tvec0_vtab)(unsafe.Pointer(p)).Fchunk_size/int32(m___CHAR_BIT__))    // validity bitmap
+	libsqlite3.Xsqlite3_bind_zeroblob(tls, *(*uintptr)(__ccgo_ptr(bp)), int32(3), int32(uint32((*Tvec0_vtab)(unsafe.Pointer(p)).Fchunk_size)*uint32(8))) // rowids
+	i2 = 0
+	for {
+		if !(i2 < (*Tvec0_vtab)(unsafe.Pointer(p)).FnumPartitionColumns) {
+			break
+		}
+		libsqlite3.Xsqlite3_bind_value(tls, *(*uintptr)(__ccgo_ptr(bp)), int32(4)+i2, *(*uintptr)(unsafe.Add(partitionKeyValues, uintptr(i2)*4)))
+		goto _3
+	_3:
+		;
+		i2 = i2 + 1
+	}
+	rc = libsqlite3.Xsqlite3_step(tls, *(*uintptr)(__ccgo_ptr(bp)))
+	failed = libc.BoolInt32(rc != int32(m_SQLITE_DONE))
+	rowid = libsqlite3.Xsqlite3_last_insert_rowid(tls, (*Tvec0_vtab)(unsafe.Pointer(p)).Fdb)
+	libsqlite3.Xsqlite3_finalize(tls, *(*uintptr)(__ccgo_ptr(bp)))
+	if failed != 0 {
+		return int32(m_SQLITE_ERROR)
+	}
+	// Step 2: Create new vector chunks for each vector column, with
+	//          that new chunk_rowid.
+	//
+	// SHADOW_TABLE_ROWID_QUIRK: The _vector_chunksNN and _metadatachunksNN
+	// shadow tables declare "rowid PRIMARY KEY" without the INTEGER type, so
+	// the user-defined "rowid" column is NOT an alias for the internal SQLite
+	// rowid (_rowid_). When only appending rows these two happen to stay in
+	// sync, but after a chunk is deleted (vec0Update_Delete_DeleteChunkIfEmpty)
+	// and a new one is created, the auto-assigned _rowid_ can diverge from the
+	// user "rowid" value. Since sqlite3_blob_open() addresses rows by internal
+	// _rowid_, we must explicitly set BOTH _rowid_ and "rowid" to the same
+	// value so that later blob operations can find the row.
+	//
+	// The correct long-term fix is changing the schema to
+	//   "rowid INTEGER PRIMARY KEY"
+	// which makes it a true alias, but that would break existing databases.
+	i3 = 0
+	for {
+		if !(i3 < Xvec0_num_defined_user_columns(tls, p)) {
+			break
+		}
+		if *(*Tvec0_user_column_kind)(__ccgo_ptr(p + 52 + uintptr(i3)*4)) != int32(_SQLITE_VEC0_USER_COLUMN_KIND_VECTOR) {
+			goto _4
+		}
+		vector_column_idx = int32(*(*Tuint8_t)(__ccgo_ptr(p + 260 + uintptr(i3))))
+		vectorsSize = int64(uint32((*Tvec0_vtab)(unsafe.Pointer(p)).Fchunk_size) * Xvector_column_byte_size(tls, *(*TVectorColumnDefinition)(__ccgo_ptr(p + 440 + uintptr(vector_column_idx)*20))))
+		// See SHADOW_TABLE_ROWID_QUIRK above for why _rowid_ and rowid are both set.
+		zSql = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+5329, libc.VaList(bp+16, (*Tvec0_vtab)(unsafe.Pointer(p)).FschemaName, (*Tvec0_vtab)(unsafe.Pointer(p)).FtableName, vector_column_idx))
+		if !(zSql != 0) {
+			return int32(m_SQLITE_NOMEM)
+		}
+		rc = libsqlite3.Xsqlite3_prepare_v2(tls, (*Tvec0_vtab)(unsafe.Pointer(p)).Fdb, zSql, -int32(1), bp, libc.UintptrFromInt32(0))
+		libsqlite3.Xsqlite3_free(tls, zSql)
+		if rc != m_SQLITE_OK {
+			libsqlite3.Xsqlite3_finalize(tls, *(*uintptr)(__ccgo_ptr(bp)))
+			return rc
+		}
+		libsqlite3.Xsqlite3_bind_int64(tls, *(*uintptr)(__ccgo_ptr(bp)), int32(1), rowid) // _rowid_ (internal SQLite rowid)
+		libsqlite3.Xsqlite3_bind_int64(tls, *(*uintptr)(__ccgo_ptr(bp)), int32(2), rowid) // rowid   (user-defined column)
+		libsqlite3.Xsqlite3_bind_zeroblob64(tls, *(*uintptr)(__ccgo_ptr(bp)), int32(3), uint64(vectorsSize))
+		rc = libsqlite3.Xsqlite3_step(tls, *(*uintptr)(__ccgo_ptr(bp)))
+		libsqlite3.Xsqlite3_finalize(tls, *(*uintptr)(__ccgo_ptr(bp)))
+		if rc != int32(m_SQLITE_DONE) {
+			return rc
+		}
+		goto _4
+	_4:
+		;
+		i3 = i3 + 1
+	}
+	// Step 3: Create new metadata chunks for each metadata column
+	i4 = 0
+	for {
+		if !(i4 < Xvec0_num_defined_user_columns(tls, p)) {
+			break
+		}
+		if *(*Tvec0_user_column_kind)(__ccgo_ptr(p + 52 + uintptr(i4)*4)) != int32(_SQLITE_VEC0_USER_COLUMN_KIND_METADATA) {
+			goto _5
+		}
+		metadata_column_idx = int32(*(*Tuint8_t)(__ccgo_ptr(p + 260 + uintptr(i4))))
+		// See SHADOW_TABLE_ROWID_QUIRK above for why _rowid_ and rowid are both set.
+		zSql = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+5410, libc.VaList(bp+16, (*Tvec0_vtab)(unsafe.Pointer(p)).FschemaName, (*Tvec0_vtab)(unsafe.Pointer(p)).FtableName, metadata_column_idx))
+		if !(zSql != 0) {
+			return int32(m_SQLITE_NOMEM)
+		}
+		rc = libsqlite3.Xsqlite3_prepare_v2(tls, (*Tvec0_vtab)(unsafe.Pointer(p)).Fdb, zSql, -int32(1), bp, libc.UintptrFromInt32(0))
+		libsqlite3.Xsqlite3_free(tls, zSql)
+		if rc != m_SQLITE_OK {
+			libsqlite3.Xsqlite3_finalize(tls, *(*uintptr)(__ccgo_ptr(bp)))
+			return rc
+		}
+		libsqlite3.Xsqlite3_bind_int64(tls, *(*uintptr)(__ccgo_ptr(bp)), int32(1), rowid) // _rowid_ (internal SQLite rowid)
+		libsqlite3.Xsqlite3_bind_int64(tls, *(*uintptr)(__ccgo_ptr(bp)), int32(2), rowid) // rowid   (user-defined column)
+		libsqlite3.Xsqlite3_bind_zeroblob64(tls, *(*uintptr)(__ccgo_ptr(bp)), int32(3), uint64(Xvec0_metadata_chunk_size(tls, (*(*TVec0MetadataColumnDefinition)(__ccgo_ptr(p + 1000 + uintptr(metadata_column_idx)*12))).Fkind, (*Tvec0_vtab)(unsafe.Pointer(p)).Fchunk_size)))
+		rc = libsqlite3.Xsqlite3_step(tls, *(*uintptr)(__ccgo_ptr(bp)))
+		libsqlite3.Xsqlite3_finalize(tls, *(*uintptr)(__ccgo_ptr(bp)))
+		if rc != int32(m_SQLITE_DONE) {
+			return rc
+		}
+		goto _5
+	_5:
+		;
+		i4 = i4 + 1
+	}
+	if chunk_rowid != nil {
+		*(*Ti64)(chunk_rowid) = rowid
+	}
+	return m_SQLITE_OK
+}
+
+// C documentation
+//
+//	/**
+//	 * @brief Parse an vec0 vtab argv[i] column definition and see if
+//	 * it's a vector column defintion, ex `contents_embedding float[768]`.
+//	 *
+//	 * @param source vec0 argv[i] item
+//	 * @param source_length length of source in bytes
+//	 * @param outColumn Output the parse vector column to this struct, if success
+//	 * @return int SQLITE_OK on success, SQLITE_EMPTY is it's not a vector column
+//	 * definition, SQLITE_ERROR on error.
+//	 */
+func _vec0_parse_vector_column__ccgo_gp(tls *libc.TLS, source uintptr, source_length int32, outColumn unsafe.Pointer) (r int32) {
+	bp := tls.Alloc(32)
+	defer tls.Free(32)
+	var dimensions, keyLength, nameLength, rc, valueLength int32
+	var distanceMetric _Vec0DistanceMetrics
+	var elementType _VectorElementType
+	var key, name, value uintptr
+	var scanner TVec0Scanner
+	var token TVec0Token
+	_, _, _, _, _, _, _, _, _, _, _, _ = dimensions, distanceMetric, elementType, key, keyLength, name, nameLength, rc, scanner, token, value, valueLength
+	distanceMetric = int32(_VEC0_DISTANCE_METRIC_L2)
+	_vec0_scanner_init__ccgo_gp(tls, unsafe.Pointer(&scanner), source, source_length)
+	// starts with an identifier
+	rc = _vec0_scanner_next__ccgo_gp(tls, unsafe.Pointer(&scanner), unsafe.Pointer(&token))
+	if rc != int32(m_VEC0_TOKEN_RESULT_SOME) && token.Ftoken_type != int32(_TOKEN_TYPE_IDENTIFIER) {
+		return int32(m_SQLITE_EMPTY)
+	}
+	name = token.Fstart
+	nameLength = int32(token.Fend) - int32(token.Fstart)
+	// vector column type comes next: float, int, or bit
+	rc = _vec0_scanner_next__ccgo_gp(tls, unsafe.Pointer(&scanner), unsafe.Pointer(&token))
+	if rc != int32(m_VEC0_TOKEN_RESULT_SOME) || token.Ftoken_type != int32(_TOKEN_TYPE_IDENTIFIER) {
+		return int32(m_SQLITE_EMPTY)
+	}
+	if libsqlite3.Xsqlite3_strnicmp(tls, token.Fstart, __ccgo_ts+1771, int32(5)) == 0 || libsqlite3.Xsqlite3_strnicmp(tls, token.Fstart, __ccgo_ts+1838, int32(3)) == 0 {
+		elementType = int32(_SQLITE_VEC_ELEMENT_TYPE_FLOAT32)
+	} else {
+		if libsqlite3.Xsqlite3_strnicmp(tls, token.Fstart, __ccgo_ts+8, int32(4)) == 0 || libsqlite3.Xsqlite3_strnicmp(tls, token.Fstart, __ccgo_ts+1842, int32(2)) == 0 {
+			elementType = int32(_SQLITE_VEC_ELEMENT_TYPE_INT8)
+		} else {
+			if libsqlite3.Xsqlite3_strnicmp(tls, token.Fstart, __ccgo_ts+13, int32(3)) == 0 {
+				elementType = int32(_SQLITE_VEC_ELEMENT_TYPE_BIT)
+			} else {
+				return int32(m_SQLITE_EMPTY)
+			}
+		}
+	}
+	// left '[' bracket
+	rc = _vec0_scanner_next__ccgo_gp(tls, unsafe.Pointer(&scanner), unsafe.Pointer(&token))
+	if rc != int32(m_VEC0_TOKEN_RESULT_SOME) && token.Ftoken_type != int32(_TOKEN_TYPE_LBRACKET) {
+		return int32(m_SQLITE_EMPTY)
+	}
+	// digit, for vector dimension length
+	rc = _vec0_scanner_next__ccgo_gp(tls, unsafe.Pointer(&scanner), unsafe.Pointer(&token))
+	if rc != int32(m_VEC0_TOKEN_RESULT_SOME) && token.Ftoken_type != int32(_TOKEN_TYPE_DIGIT) {
+		return int32(m_SQLITE_ERROR)
+	}
+	dimensions = libc.Xatoi(tls, token.Fstart)
+	if dimensions <= 0 {
+		return int32(m_SQLITE_ERROR)
+	}
+	// // right ']' bracket
+	rc = _vec0_scanner_next__ccgo_gp(tls, unsafe.Pointer(&scanner), unsafe.Pointer(&token))
+	if rc != int32(m_VEC0_TOKEN_RESULT_SOME) && token.Ftoken_type != int32(_TOKEN_TYPE_RBRACKET) {
+		return int32(m_SQLITE_ERROR)
+	}
+	// any other tokens left should be column-level options , ex `key=value`
+	// ex `distance_metric=L2 distance_metric=cosine` should error
+	for int32(1) != 0 {
+		// should be EOF or identifier (option key)
+		rc = _vec0_scanner_next__ccgo_gp(tls, unsafe.Pointer(&scanner), unsafe.Pointer(&token))
+		if rc == int32(m_VEC0_TOKEN_RESULT_EOF) {
+			break
+		}
+		if rc != int32(m_VEC0_TOKEN_RESULT_SOME) && token.Ftoken_type != int32(_TOKEN_TYPE_IDENTIFIER) {
+			return int32(m_SQLITE_ERROR)
+		}
+		key = token.Fstart
+		keyLength = int32(token.Fend) - int32(token.Fstart)
+		if libsqlite3.Xsqlite3_strnicmp(tls, key, __ccgo_ts+1845, keyLength) == 0 {
+			if elementType == int32(_SQLITE_VEC_ELEMENT_TYPE_BIT) {
+				return int32(m_SQLITE_ERROR)
+			}
+			// ensure equal sign after distance_metric
+			rc = _vec0_scanner_next__ccgo_gp(tls, unsafe.Pointer(&scanner), unsafe.Pointer(&token))
+			if rc != int32(m_VEC0_TOKEN_RESULT_SOME) && token.Ftoken_type != int32(_TOKEN_TYPE_EQ) {
+				return int32(m_SQLITE_ERROR)
+			}
+			// distance_metric value, an identifier (L2, cosine, etc)
+			rc = _vec0_scanner_next__ccgo_gp(tls, unsafe.Pointer(&scanner), unsafe.Pointer(&token))
+			if rc != int32(m_VEC0_TOKEN_RESULT_SOME) && token.Ftoken_type != int32(_TOKEN_TYPE_IDENTIFIER) {
+				return int32(m_SQLITE_ERROR)
+			}
+			value = token.Fstart
+			valueLength = int32(token.Fend) - int32(token.Fstart)
+			if libsqlite3.Xsqlite3_strnicmp(tls, value, __ccgo_ts+1861, valueLength) == 0 {
+				distanceMetric = int32(_VEC0_DISTANCE_METRIC_L2)
+			} else {
+				if libsqlite3.Xsqlite3_strnicmp(tls, value, __ccgo_ts+1864, valueLength) == 0 {
+					distanceMetric = int32(_VEC0_DISTANCE_METRIC_L1)
+				} else {
+					if libsqlite3.Xsqlite3_strnicmp(tls, value, __ccgo_ts+1867, valueLength) == 0 {
+						distanceMetric = int32(_VEC0_DISTANCE_METRIC_COSINE)
+					} else {
+						return int32(m_SQLITE_ERROR)
+					}
+				}
+			}
+		} else {
+			return int32(m_SQLITE_ERROR)
+		}
+	}
+	*(*uintptr)(outColumn) = libsqlite3.Xsqlite3_mprintf(tls, __ccgo_ts+1874, libc.VaList(bp+8, nameLength, name))
+	if !(*(*uintptr)(outColumn) != 0) {
+		return int32(m_SQLITE_ERROR)
+	}
+	*(*int32)(unsafe.Add(outColumn, 4)) = nameLength
+	*(*_Vec0DistanceMetrics)(unsafe.Add(outColumn, 16)) = distanceMetric
+	*(*_VectorElementType)(unsafe.Add(outColumn, 12)) = elementType
+	*(*Tsize_t)(unsafe.Add(outColumn, 8)) = uint32(dimensions)
+	return m_SQLITE_OK
 }
 
 // C documentation
@@ -4518,33 +4589,26 @@ func _vec0_write_vector_to_vector_blob(tls *libc.TLS, blobVectors uintptr, chunk
 }
 
 func _vec_add(tls *libc.TLS, context uintptr, argc int32, argv uintptr) {
-	bp := tls.Alloc(32)
-	defer tls.Free(32)
-	var i, i1, outSize, outSize1 Tsize_t
-	var out, out1 uintptr
+	var a, b, error1, out, out1 uintptr
+	var aCleanup, bCleanup Tvector_cleanup
+	var dimensions, i, i1, outSize, outSize1 Tsize_t
+	var elementType _VectorElementType
 	var rc int32
-	var _ /* a at bp+0 */ uintptr
-	var _ /* aCleanup at bp+12 */ Tvector_cleanup
-	var _ /* b at bp+4 */ uintptr
-	var _ /* bCleanup at bp+16 */ Tvector_cleanup
-	var _ /* dimensions at bp+8 */ Tsize_t
-	var _ /* elementType at bp+24 */ _VectorElementType
-	var _ /* error at bp+20 */ uintptr
-	_, _, _, _, _, _, _ = i, i1, out, out1, outSize, outSize1, rc
-	**(**uintptr)(__ccgo_up(bp)) = libc.UintptrFromInt32(0)
-	**(**uintptr)(__ccgo_up(bp + 4)) = libc.UintptrFromInt32(0)
-	rc = Xensure_vector_match(tls, **(**uintptr)(__ccgo_up(argv)), **(**uintptr)(__ccgo_up(argv + 1*4)), bp, bp+4, bp+24, bp+8, bp+12, bp+16, bp+20)
+	_, _, _, _, _, _, _, _, _, _, _, _, _, _ = a, aCleanup, b, bCleanup, dimensions, elementType, error1, i, i1, out, out1, outSize, outSize1, rc
+	a = libc.UintptrFromInt32(0)
+	b = libc.UintptrFromInt32(0)
+	rc = _ensure_vector_match__ccgo_gp(tls, *(*uintptr)(__ccgo_ptr(argv)), *(*uintptr)(__ccgo_ptr(argv + 1*4)), unsafe.Pointer(&a), unsafe.Pointer(&b), unsafe.Pointer(&elementType), unsafe.Pointer(&dimensions), unsafe.Pointer(&aCleanup), unsafe.Pointer(&bCleanup), unsafe.Pointer(&error1))
 	if rc != m_SQLITE_OK {
-		libsqlite3.Xsqlite3_result_error(tls, context, **(**uintptr)(__ccgo_up(bp + 20)), -int32(1))
-		libsqlite3.Xsqlite3_free(tls, **(**uintptr)(__ccgo_up(bp + 20)))
+		libsqlite3.Xsqlite3_result_error(tls, context, error1, -int32(1))
+		libsqlite3.Xsqlite3_free(tls, error1)
 		return
 	}
-	switch **(**_VectorElementType)(__ccgo_up(bp + 24)) {
+	switch elementType {
 	case int32(_SQLITE_VEC_ELEMENT_TYPE_BIT):
 		libsqlite3.Xsqlite3_result_error(tls, context, __ccgo_ts+1183, -int32(1))
 		goto finish
 	case int32(_SQLITE_VEC_ELEMENT_TYPE_FLOAT32):
-		outSize = **(**Tsize_t)(__ccgo_up(bp + 8)) * uint32(4)
+		outSize = dimensions * uint32(4)
 		out = libsqlite3.Xsqlite3_malloc(tls, int32(outSize))
 		if !(out != 0) {
 			libsqlite3.Xsqlite3_result_error_nomem(tls, context)
@@ -4553,10 +4617,10 @@ func _vec_add(tls *libc.TLS, context uintptr, argc int32, argv uintptr) {
 		libc.Xmemset(tls, out, 0, outSize)
 		i = uint32(0)
 		for {
-			if !(i < **(**Tsize_t)(__ccgo_up(bp + 8))) {
+			if !(i < dimensions) {
 				break
 			}
-			**(**Tf32)(__ccgo_up(out + uintptr(i)*4)) = **(**Tf32)(__ccgo_up(**(**uintptr)(__ccgo_up(bp)) + uintptr(i)*4)) + **(**Tf32)(__ccgo_up(**(**uintptr)(__ccgo_up(bp + 4)) + uintptr(i)*4))
+			*(*Tf32)(__ccgo_ptr(out + uintptr(i)*4)) = *(*Tf32)(__ccgo_ptr(a + uintptr(i)*4)) + *(*Tf32)(__ccgo_ptr(b + uintptr(i)*4))
 			goto _1
 		_1:
 			;
@@ -4566,7 +4630,7 @@ func _vec_add(tls *libc.TLS, context uintptr, argc int32, argv uintptr) {
 		libsqlite3.Xsqlite3_result_subtype(tls, context, uint32(_SQLITE_VEC_ELEMENT_TYPE_FLOAT32))
 		goto finish
 	case int32(_SQLITE_VEC_ELEMENT_TYPE_INT8):
-		outSize1 = **(**Tsize_t)(__ccgo_up(bp + 8)) * uint32(1)
+		outSize1 = dimensions * uint32(1)
 		out1 = libsqlite3.Xsqlite3_malloc(tls, int32(outSize1))
 		if !(out1 != 0) {
 			libsqlite3.Xsqlite3_result_error_nomem(tls, context)
@@ -4575,10 +4639,10 @@ func _vec_add(tls *libc.TLS, context uintptr, argc int32, argv uintptr) {
 		libc.Xmemset(tls, out1, 0, outSize1)
 		i1 = uint32(0)
 		for {
-			if !(i1 < **(**Tsize_t)(__ccgo_up(bp + 8))) {
+			if !(i1 < dimensions) {
 				break
 			}
-			**(**Ti8)(__ccgo_up(out1 + uintptr(i1))) = int8(int32(**(**Ti8)(__ccgo_up(**(**uintptr)(__ccgo_up(bp)) + uintptr(i1)))) + int32(**(**Ti8)(__ccgo_up(**(**uintptr)(__ccgo_up(bp + 4)) + uintptr(i1)))))
+			*(*Ti8)(__ccgo_ptr(out1 + uintptr(i1))) = int8(int32(*(*Ti8)(__ccgo_ptr(a + uintptr(i1)))) + int32(*(*Ti8)(__ccgo_ptr(b + uintptr(i1)))))
 			goto _2
 		_2:
 			;
@@ -4591,131 +4655,80 @@ func _vec_add(tls *libc.TLS, context uintptr, argc int32, argv uintptr) {
 	goto finish
 finish:
 	;
-	(*(*func(*libc.TLS, uintptr))(unsafe.Pointer(bp + 12)))(tls, **(**uintptr)(__ccgo_up(bp)))
-	(*(*func(*libc.TLS, uintptr))(unsafe.Pointer(bp + 16)))(tls, **(**uintptr)(__ccgo_up(bp + 4)))
+	(*(*func(*libc.TLS, uintptr))(unsafe.Pointer(&struct{ uintptr }{aCleanup})))(tls, a)
+	(*(*func(*libc.TLS, uintptr))(unsafe.Pointer(&struct{ uintptr }{bCleanup})))(tls, b)
 	return
 }
 
 func _vec_bit(tls *libc.TLS, context uintptr, argc int32, argv uintptr) {
-	bp := tls.Alloc(16)
-	defer tls.Free(16)
+	var cleanup Tvector_cleanup
+	var dimensions Tsize_t
+	var errmsg, vector uintptr
 	var rc int32
-	var _ /* cleanup at bp+8 */ Tvector_cleanup
-	var _ /* dimensions at bp+4 */ Tsize_t
-	var _ /* errmsg at bp+12 */ uintptr
-	var _ /* vector at bp+0 */ uintptr
-	_ = rc
-	rc = _bitvec_from_value(tls, **(**uintptr)(__ccgo_up(argv)), bp, bp+4, bp+8, bp+12)
+	_, _, _, _, _ = cleanup, dimensions, errmsg, rc, vector
+	rc = _bitvec_from_value(tls, *(*uintptr)(__ccgo_ptr(argv)), unsafe.Pointer(&vector), unsafe.Pointer(&dimensions), unsafe.Pointer(&cleanup), unsafe.Pointer(&errmsg))
 	if rc != m_SQLITE_OK {
-		libsqlite3.Xsqlite3_result_error(tls, context, **(**uintptr)(__ccgo_up(bp + 12)), -int32(1))
-		libsqlite3.Xsqlite3_free(tls, **(**uintptr)(__ccgo_up(bp + 12)))
+		libsqlite3.Xsqlite3_result_error(tls, context, errmsg, -int32(1))
+		libsqlite3.Xsqlite3_free(tls, errmsg)
 		return
 	}
-	libsqlite3.Xsqlite3_result_blob(tls, context, **(**uintptr)(__ccgo_up(bp)), int32(**(**Tsize_t)(__ccgo_up(bp + 4))/uint32(m___CHAR_BIT__)), uintptr(-libc.Int32FromInt32(1)))
+	libsqlite3.Xsqlite3_result_blob(tls, context, vector, int32(dimensions/uint32(m___CHAR_BIT__)), uintptr(-libc.Int32FromInt32(1)))
 	libsqlite3.Xsqlite3_result_subtype(tls, context, uint32(_SQLITE_VEC_ELEMENT_TYPE_BIT))
-	(*(*func(*libc.TLS, uintptr))(unsafe.Pointer(bp + 8)))(tls, **(**uintptr)(__ccgo_up(bp)))
+	(*(*func(*libc.TLS, uintptr))(unsafe.Pointer(&struct{ uintptr }{cleanup})))(tls, vector)
 }
 
 func _vec_f32(tls *libc.TLS, context uintptr, argc int32, argv uintptr) {
-	bp := tls.Alloc(16)
-	defer tls.Free(16)
+	var cleanup Tfvec_cleanup
+	var dimensions Tsize_t
+	var errmsg, vector uintptr
 	var rc int32
-	var _ /* cleanup at bp+8 */ Tfvec_cleanup
-	var _ /* dimensions at bp+4 */ Tsize_t
-	var _ /* errmsg at bp+12 */ uintptr
-	var _ /* vector at bp+0 */ uintptr
-	_ = rc
-	**(**uintptr)(__ccgo_up(bp)) = libc.UintptrFromInt32(0)
-	rc = _fvec_from_value(tls, **(**uintptr)(__ccgo_up(argv)), bp, bp+4, bp+8, bp+12)
+	_, _, _, _, _ = cleanup, dimensions, errmsg, rc, vector
+	vector = libc.UintptrFromInt32(0)
+	rc = _fvec_from_value(tls, *(*uintptr)(__ccgo_ptr(argv)), unsafe.Pointer(&vector), unsafe.Pointer(&dimensions), unsafe.Pointer(&cleanup), unsafe.Pointer(&errmsg))
 	if rc != m_SQLITE_OK {
-		libsqlite3.Xsqlite3_result_error(tls, context, **(**uintptr)(__ccgo_up(bp + 12)), -int32(1))
-		libsqlite3.Xsqlite3_free(tls, **(**uintptr)(__ccgo_up(bp + 12)))
+		libsqlite3.Xsqlite3_result_error(tls, context, errmsg, -int32(1))
+		libsqlite3.Xsqlite3_free(tls, errmsg)
 		return
 	}
-	libsqlite3.Xsqlite3_result_blob(tls, context, **(**uintptr)(__ccgo_up(bp)), int32(**(**Tsize_t)(__ccgo_up(bp + 4))*uint32(4)), **(**Tfvec_cleanup)(__ccgo_up(bp + 8)))
+	libsqlite3.Xsqlite3_result_blob(tls, context, vector, int32(dimensions*uint32(4)), cleanup)
 	libsqlite3.Xsqlite3_result_subtype(tls, context, uint32(_SQLITE_VEC_ELEMENT_TYPE_FLOAT32))
 }
 
-func _vec_int8(tls *libc.TLS, context uintptr, argc int32, argv uintptr) {
-	bp := tls.Alloc(16)
-	defer tls.Free(16)
-	var rc int32
-	var _ /* cleanup at bp+8 */ Tvector_cleanup
-	var _ /* dimensions at bp+4 */ Tsize_t
-	var _ /* errmsg at bp+12 */ uintptr
-	var _ /* vector at bp+0 */ uintptr
-	_ = rc
-	rc = _int8_vec_from_value(tls, **(**uintptr)(__ccgo_up(argv)), bp, bp+4, bp+8, bp+12)
-	if rc != m_SQLITE_OK {
-		libsqlite3.Xsqlite3_result_error(tls, context, **(**uintptr)(__ccgo_up(bp + 12)), -int32(1))
-		libsqlite3.Xsqlite3_free(tls, **(**uintptr)(__ccgo_up(bp + 12)))
-		return
-	}
-	libsqlite3.Xsqlite3_result_blob(tls, context, **(**uintptr)(__ccgo_up(bp)), int32(**(**Tsize_t)(__ccgo_up(bp + 4))), uintptr(-libc.Int32FromInt32(1)))
-	libsqlite3.Xsqlite3_result_subtype(tls, context, uint32(_SQLITE_VEC_ELEMENT_TYPE_INT8))
-	(*(*func(*libc.TLS, uintptr))(unsafe.Pointer(bp + 8)))(tls, **(**uintptr)(__ccgo_up(bp)))
-}
-
-func _vec_length(tls *libc.TLS, context uintptr, argc int32, argv uintptr) {
-	bp := tls.Alloc(32)
-	defer tls.Free(32)
-	var rc int32
-	var _ /* cleanup at bp+8 */ Tvector_cleanup
-	var _ /* dimensions at bp+4 */ Tsize_t
-	var _ /* elementType at bp+16 */ _VectorElementType
-	var _ /* errmsg at bp+12 */ uintptr
-	var _ /* vector at bp+0 */ uintptr
-	_ = rc
-	rc = Xvector_from_value(tls, **(**uintptr)(__ccgo_up(argv)), bp, bp+4, bp+16, bp+8, bp+12)
-	if rc != m_SQLITE_OK {
-		libsqlite3.Xsqlite3_result_error(tls, context, **(**uintptr)(__ccgo_up(bp + 12)), -int32(1))
-		libsqlite3.Xsqlite3_free(tls, **(**uintptr)(__ccgo_up(bp + 12)))
-		return
-	}
-	libsqlite3.Xsqlite3_result_int64(tls, context, int64(**(**Tsize_t)(__ccgo_up(bp + 4))))
-	(*(*func(*libc.TLS, uintptr))(unsafe.Pointer(bp + 8)))(tls, **(**uintptr)(__ccgo_up(bp)))
-}
-
 func _vec_normalize(tls *libc.TLS, context uintptr, argc int32, argv uintptr) {
-	bp := tls.Alloc(32)
-	defer tls.Free(32)
-	var i, i1 Tsize_t
+	var cleanup Tvector_cleanup
+	var dimensions, i, i1 Tsize_t
+	var elementType _VectorElementType
+	var err, out, v, vector uintptr
 	var norm Tf32
-	var out, v uintptr
 	var outSize, rc int32
-	var _ /* cleanup at bp+8 */ Tvector_cleanup
-	var _ /* dimensions at bp+4 */ Tsize_t
-	var _ /* elementType at bp+16 */ _VectorElementType
-	var _ /* err at bp+12 */ uintptr
-	var _ /* vector at bp+0 */ uintptr
-	_, _, _, _, _, _, _ = i, i1, norm, out, outSize, rc, v
-	rc = Xvector_from_value(tls, **(**uintptr)(__ccgo_up(argv)), bp, bp+4, bp+16, bp+8, bp+12)
+	_, _, _, _, _, _, _, _, _, _, _, _ = cleanup, dimensions, elementType, err, i, i1, norm, out, outSize, rc, v, vector
+	rc = _vector_from_value__ccgo_gp(tls, *(*uintptr)(__ccgo_ptr(argv)), unsafe.Pointer(&vector), unsafe.Pointer(&dimensions), unsafe.Pointer(&elementType), unsafe.Pointer(&cleanup), unsafe.Pointer(&err))
 	if rc != m_SQLITE_OK {
-		libsqlite3.Xsqlite3_result_error(tls, context, **(**uintptr)(__ccgo_up(bp + 12)), -int32(1))
-		libsqlite3.Xsqlite3_free(tls, **(**uintptr)(__ccgo_up(bp + 12)))
+		libsqlite3.Xsqlite3_result_error(tls, context, err, -int32(1))
+		libsqlite3.Xsqlite3_free(tls, err)
 		return
 	}
-	if **(**_VectorElementType)(__ccgo_up(bp + 16)) != int32(_SQLITE_VEC_ELEMENT_TYPE_FLOAT32) {
+	if elementType != int32(_SQLITE_VEC_ELEMENT_TYPE_FLOAT32) {
 		libsqlite3.Xsqlite3_result_error(tls, context, __ccgo_ts+1688, -int32(1))
-		(*(*func(*libc.TLS, uintptr))(unsafe.Pointer(bp + 8)))(tls, **(**uintptr)(__ccgo_up(bp)))
+		(*(*func(*libc.TLS, uintptr))(unsafe.Pointer(&struct{ uintptr }{cleanup})))(tls, vector)
 		return
 	}
-	outSize = int32(**(**Tsize_t)(__ccgo_up(bp + 4)) * uint32(4))
+	outSize = int32(dimensions * uint32(4))
 	out = libsqlite3.Xsqlite3_malloc(tls, outSize)
 	if !(out != 0) {
-		(*(*func(*libc.TLS, uintptr))(unsafe.Pointer(bp + 8)))(tls, **(**uintptr)(__ccgo_up(bp)))
+		(*(*func(*libc.TLS, uintptr))(unsafe.Pointer(&struct{ uintptr }{cleanup})))(tls, vector)
 		libsqlite3.Xsqlite3_result_error_code(tls, context, int32(m_SQLITE_NOMEM))
 		return
 	}
 	libc.Xmemset(tls, out, 0, uint32(outSize))
-	v = **(**uintptr)(__ccgo_up(bp))
+	v = vector
 	norm = libc.Float32FromInt32(0)
 	i = uint32(0)
 	for {
-		if !(i < **(**Tsize_t)(__ccgo_up(bp + 4))) {
+		if !(i < dimensions) {
 			break
 		}
-		norm = norm + Tf32(**(**Tf32)(__ccgo_up(v + uintptr(i)*4))***(**Tf32)(__ccgo_up(v + uintptr(i)*4)))
+		norm = norm + Tf32(*(*Tf32)(__ccgo_ptr(v + uintptr(i)*4))**(*Tf32)(__ccgo_ptr(v + uintptr(i)*4)))
 		goto _1
 	_1:
 		;
@@ -4724,18 +4737,18 @@ func _vec_normalize(tls *libc.TLS, context uintptr, argc int32, argv uintptr) {
 	norm = float32(libc.Xsqrt(tls, float64(norm)))
 	i1 = uint32(0)
 	for {
-		if !(i1 < **(**Tsize_t)(__ccgo_up(bp + 4))) {
+		if !(i1 < dimensions) {
 			break
 		}
-		**(**Tf32)(__ccgo_up(out + uintptr(i1)*4)) = **(**Tf32)(__ccgo_up(v + uintptr(i1)*4)) / norm
+		*(*Tf32)(__ccgo_ptr(out + uintptr(i1)*4)) = *(*Tf32)(__ccgo_ptr(v + uintptr(i1)*4)) / norm
 		goto _2
 	_2:
 		;
 		i1 = i1 + 1
 	}
-	libsqlite3.Xsqlite3_result_blob(tls, context, out, int32(**(**Tsize_t)(__ccgo_up(bp + 4))*uint32(4)), __ccgo_fp(libsqlite3.Xsqlite3_free))
+	libsqlite3.Xsqlite3_result_blob(tls, context, out, int32(dimensions*uint32(4)), __ccgo_fp(libsqlite3.Xsqlite3_free))
 	libsqlite3.Xsqlite3_result_subtype(tls, context, uint32(_SQLITE_VEC_ELEMENT_TYPE_FLOAT32))
-	(*(*func(*libc.TLS, uintptr))(unsafe.Pointer(bp + 8)))(tls, **(**uintptr)(__ccgo_up(bp)))
+	(*(*func(*libc.TLS, uintptr))(unsafe.Pointer(&struct{ uintptr }{cleanup})))(tls, vector)
 }
 
 func _vec_npy_eachColumnBuffer(tls *libc.TLS, pCur uintptr, context uintptr, i int32) (r int32) {
@@ -4789,8 +4802,8 @@ func _vec_npy_file(tls *libc.TLS, context uintptr, argc int32, argv uintptr) {
 	var f, path uintptr
 	var pathLength Tsize_t
 	_, _, _ = f, path, pathLength
-	path = libsqlite3.Xsqlite3_value_text(tls, **(**uintptr)(__ccgo_up(argv)))
-	pathLength = uint32(libsqlite3.Xsqlite3_value_bytes(tls, **(**uintptr)(__ccgo_up(argv))))
+	path = libsqlite3.Xsqlite3_value_text(tls, *(*uintptr)(__ccgo_ptr(argv)))
+	pathLength = uint32(libsqlite3.Xsqlite3_value_bytes(tls, *(*uintptr)(__ccgo_ptr(argv))))
 	f = libsqlite3.Xsqlite3_malloc(tls, int32(8))
 	if !(f != 0) {
 		libsqlite3.Xsqlite3_result_error_nomem(tls, context)
@@ -4803,34 +4816,29 @@ func _vec_npy_file(tls *libc.TLS, context uintptr, argc int32, argv uintptr) {
 }
 
 func _vec_quantize_binary(tls *libc.TLS, context uintptr, argc int32, argv uintptr) {
-	bp := tls.Alloc(32)
-	defer tls.Free(32)
-	var i, i1 Tsize_t
-	var out, v2 uintptr
+	var dimensions, i, i1 Tsize_t
+	var elementType _VectorElementType
+	var out, pzError, vector, v2 uintptr
 	var rc, res, res1, sz int32
-	var _ /* dimensions at bp+4 */ Tsize_t
-	var _ /* elementType at bp+16 */ _VectorElementType
-	var _ /* pzError at bp+12 */ uintptr
-	var _ /* vector at bp+0 */ uintptr
-	var _ /* vectorCleanup at bp+8 */ Tvector_cleanup
-	_, _, _, _, _, _, _, _ = i, i1, out, rc, res, res1, sz, v2
-	rc = Xvector_from_value(tls, **(**uintptr)(__ccgo_up(argv)), bp, bp+4, bp+16, bp+8, bp+12)
+	var vectorCleanup Tvector_cleanup
+	_, _, _, _, _, _, _, _, _, _, _, _, _ = dimensions, elementType, i, i1, out, pzError, rc, res, res1, sz, vector, vectorCleanup, v2
+	rc = _vector_from_value__ccgo_gp(tls, *(*uintptr)(__ccgo_ptr(argv)), unsafe.Pointer(&vector), unsafe.Pointer(&dimensions), unsafe.Pointer(&elementType), unsafe.Pointer(&vectorCleanup), unsafe.Pointer(&pzError))
 	if rc != m_SQLITE_OK {
-		libsqlite3.Xsqlite3_result_error(tls, context, **(**uintptr)(__ccgo_up(bp + 12)), -int32(1))
-		libsqlite3.Xsqlite3_free(tls, **(**uintptr)(__ccgo_up(bp + 12)))
+		libsqlite3.Xsqlite3_result_error(tls, context, pzError, -int32(1))
+		libsqlite3.Xsqlite3_free(tls, pzError)
 		return
 	}
-	if **(**Tsize_t)(__ccgo_up(bp + 4)) <= uint32(0) {
+	if dimensions <= uint32(0) {
 		libsqlite3.Xsqlite3_result_error(tls, context, __ccgo_ts+974, -int32(1))
 		goto cleanup
 		return
 	}
-	if **(**Tsize_t)(__ccgo_up(bp + 4))%uint32(m___CHAR_BIT__) != uint32(0) {
+	if dimensions%uint32(m___CHAR_BIT__) != uint32(0) {
 		libsqlite3.Xsqlite3_result_error(tls, context, __ccgo_ts+1013, -int32(1))
 		goto cleanup
 		return
 	}
-	sz = int32(**(**Tsize_t)(__ccgo_up(bp + 4)) / uint32(m___CHAR_BIT__))
+	sz = int32(dimensions / uint32(m___CHAR_BIT__))
 	out = libsqlite3.Xsqlite3_malloc(tls, sz)
 	if !(out != 0) {
 		libsqlite3.Xsqlite3_result_error_code(tls, context, int32(m_SQLITE_NOMEM))
@@ -4838,14 +4846,14 @@ func _vec_quantize_binary(tls *libc.TLS, context uintptr, argc int32, argv uintp
 		return
 	}
 	libc.Xmemset(tls, out, 0, uint32(sz))
-	switch **(**_VectorElementType)(__ccgo_up(bp + 16)) {
+	switch elementType {
 	case int32(_SQLITE_VEC_ELEMENT_TYPE_FLOAT32):
 		i = uint32(0)
 		for {
-			if !(i < **(**Tsize_t)(__ccgo_up(bp + 4))) {
+			if !(i < dimensions) {
 				break
 			}
-			res = libc.BoolInt32(float64(**(**Tf32)(__ccgo_up(**(**uintptr)(__ccgo_up(bp)) + uintptr(i)*4))) > float64(0))
+			res = libc.BoolInt32(float64(*(*Tf32)(__ccgo_ptr(vector + uintptr(i)*4))) > float64(0))
 			v2 = out + uintptr(i/uint32(8))
 			*(*Tu8)(unsafe.Pointer(v2)) = Tu8(int32(*(*Tu8)(unsafe.Pointer(v2))) | res<<(i%libc.Uint32FromInt32(8)))
 			goto _1
@@ -4856,10 +4864,10 @@ func _vec_quantize_binary(tls *libc.TLS, context uintptr, argc int32, argv uintp
 	case int32(_SQLITE_VEC_ELEMENT_TYPE_INT8):
 		i1 = uint32(0)
 		for {
-			if !(i1 < **(**Tsize_t)(__ccgo_up(bp + 4))) {
+			if !(i1 < dimensions) {
 				break
 			}
-			res1 = libc.BoolInt32(int32(**(**Ti8)(__ccgo_up(**(**uintptr)(__ccgo_up(bp)) + uintptr(i1)))) > 0)
+			res1 = libc.BoolInt32(int32(*(*Ti8)(__ccgo_ptr(vector + uintptr(i1)))) > 0)
 			v2 = out + uintptr(i1/uint32(8))
 			*(*Tu8)(unsafe.Pointer(v2)) = Tu8(int32(*(*Tu8)(unsafe.Pointer(v2))) | res1<<(i1%libc.Uint32FromInt32(8)))
 			goto _3
@@ -4877,88 +4885,78 @@ func _vec_quantize_binary(tls *libc.TLS, context uintptr, argc int32, argv uintp
 	goto cleanup
 cleanup:
 	;
-	(*(*func(*libc.TLS, uintptr))(unsafe.Pointer(bp + 8)))(tls, **(**uintptr)(__ccgo_up(bp)))
+	(*(*func(*libc.TLS, uintptr))(unsafe.Pointer(&struct{ uintptr }{vectorCleanup})))(tls, vector)
 }
 
 func _vec_quantize_int8(tls *libc.TLS, context uintptr, argc int32, argv uintptr) {
-	bp := tls.Alloc(16)
-	defer tls.Free(16)
-	var i Tsize_t
-	var out uintptr
+	var dimensions, i Tsize_t
+	var err, out, srcVector uintptr
 	var rc, sz int32
+	var srcCleanup Tfvec_cleanup
 	var step Tf32
 	var val float64
-	var _ /* dimensions at bp+4 */ Tsize_t
-	var _ /* err at bp+12 */ uintptr
-	var _ /* srcCleanup at bp+8 */ Tfvec_cleanup
-	var _ /* srcVector at bp+0 */ uintptr
-	_, _, _, _, _, _ = i, out, rc, step, sz, val
+	_, _, _, _, _, _, _, _, _, _ = dimensions, err, i, out, rc, srcCleanup, srcVector, step, sz, val
 	out = libc.UintptrFromInt32(0)
-	rc = _fvec_from_value(tls, **(**uintptr)(__ccgo_up(argv)), bp, bp+4, bp+8, bp+12)
+	rc = _fvec_from_value(tls, *(*uintptr)(__ccgo_ptr(argv)), unsafe.Pointer(&srcVector), unsafe.Pointer(&dimensions), unsafe.Pointer(&srcCleanup), unsafe.Pointer(&err))
 	if rc != m_SQLITE_OK {
-		libsqlite3.Xsqlite3_result_error(tls, context, **(**uintptr)(__ccgo_up(bp + 12)), -int32(1))
-		libsqlite3.Xsqlite3_free(tls, **(**uintptr)(__ccgo_up(bp + 12)))
+		libsqlite3.Xsqlite3_result_error(tls, context, err, -int32(1))
+		libsqlite3.Xsqlite3_free(tls, err)
 		return
 	}
-	sz = int32(**(**Tsize_t)(__ccgo_up(bp + 4)) * uint32(1))
+	sz = int32(dimensions * uint32(1))
 	out = libsqlite3.Xsqlite3_malloc(tls, sz)
 	if !(out != 0) {
 		libsqlite3.Xsqlite3_result_error_nomem(tls, context)
 		goto cleanup
 	}
 	libc.Xmemset(tls, out, 0, uint32(sz))
-	if libsqlite3.Xsqlite3_value_type(tls, **(**uintptr)(__ccgo_up(argv + 1*4))) != int32(m_SQLITE_TEXT) || uint32(libsqlite3.Xsqlite3_value_bytes(tls, **(**uintptr)(__ccgo_up(argv + 1*4)))) != libc.Xstrlen(tls, __ccgo_ts+1126) || libsqlite3.Xsqlite3_stricmp(tls, libsqlite3.Xsqlite3_value_text(tls, **(**uintptr)(__ccgo_up(argv + 1*4))), __ccgo_ts+1126) != 0 {
+	if libsqlite3.Xsqlite3_value_type(tls, *(*uintptr)(__ccgo_ptr(argv + 1*4))) != int32(m_SQLITE_TEXT) || uint32(libsqlite3.Xsqlite3_value_bytes(tls, *(*uintptr)(__ccgo_ptr(argv + 1*4)))) != libc.Xstrlen(tls, __ccgo_ts+1126) || libsqlite3.Xsqlite3_stricmp(tls, libsqlite3.Xsqlite3_value_text(tls, *(*uintptr)(__ccgo_ptr(argv + 1*4))), __ccgo_ts+1126) != 0 {
 		libsqlite3.Xsqlite3_result_error(tls, context, __ccgo_ts+1131, -int32(1))
 		libsqlite3.Xsqlite3_free(tls, out)
 		goto cleanup
 	}
-	step = float32((float64(1) - -libc.Float64FromFloat64(1)) / libc.Float64FromInt32(255))
+	step = float32((libc.Float64FromFloat64(1) - -libc.Float64FromFloat64(1)) / libc.Float64FromInt32(255))
 	i = uint32(0)
 	for {
-		if !(i < **(**Tsize_t)(__ccgo_up(bp + 4))) {
+		if !(i < dimensions) {
 			break
 		}
-		val = (float64(**(**Tf32)(__ccgo_up(**(**uintptr)(__ccgo_up(bp)) + uintptr(i)*4))) - -libc.Float64FromFloat64(1))/float64(step) - libc.Float64FromInt32(128)
+		val = (float64(*(*Tf32)(__ccgo_ptr(srcVector + uintptr(i)*4))) - -libc.Float64FromFloat64(1))/float64(step) - libc.Float64FromInt32(128)
 		if !(val <= libc.Float64FromFloat64(127)) {
 			val = float64(127)
 		} /* also clamps NaN */
 		if !(val >= -libc.Float64FromFloat64(128)) {
 			val = -libc.Float64FromFloat64(128)
 		}
-		**(**Ti8)(__ccgo_up(out + uintptr(i))) = int8(val)
+		*(*Ti8)(__ccgo_ptr(out + uintptr(i))) = int8(val)
 		goto _1
 	_1:
 		;
 		i = i + 1
 	}
-	libsqlite3.Xsqlite3_result_blob(tls, context, out, int32(**(**Tsize_t)(__ccgo_up(bp + 4))*uint32(1)), __ccgo_fp(libsqlite3.Xsqlite3_free))
+	libsqlite3.Xsqlite3_result_blob(tls, context, out, int32(dimensions*uint32(1)), __ccgo_fp(libsqlite3.Xsqlite3_free))
 	libsqlite3.Xsqlite3_result_subtype(tls, context, uint32(_SQLITE_VEC_ELEMENT_TYPE_INT8))
 	goto cleanup
 cleanup:
 	;
-	(*(*func(*libc.TLS, uintptr))(unsafe.Pointer(bp + 8)))(tls, **(**uintptr)(__ccgo_up(bp)))
+	(*(*func(*libc.TLS, uintptr))(unsafe.Pointer(&struct{ uintptr }{srcCleanup})))(tls, srcVector)
 }
 
 func _vec_slice(tls *libc.TLS, context uintptr, argc int32, argv uintptr) {
-	bp := tls.Alloc(32)
-	defer tls.Free(32)
+	var cleanup Tvector_cleanup
+	var dimensions, i, i1, i2, n Tsize_t
+	var elementType _VectorElementType
 	var end, outSize, outSize1, outSize2, rc, start int32
-	var i, i1, i2, n Tsize_t
-	var out, out1, out2 uintptr
-	var _ /* cleanup at bp+8 */ Tvector_cleanup
-	var _ /* dimensions at bp+4 */ Tsize_t
-	var _ /* elementType at bp+16 */ _VectorElementType
-	var _ /* err at bp+12 */ uintptr
-	var _ /* vector at bp+0 */ uintptr
-	_, _, _, _, _, _, _, _, _, _, _, _, _ = end, i, i1, i2, n, out, out1, out2, outSize, outSize1, outSize2, rc, start
-	rc = Xvector_from_value(tls, **(**uintptr)(__ccgo_up(argv)), bp, bp+4, bp+16, bp+8, bp+12)
+	var err, out, out1, out2, vector uintptr
+	_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _ = cleanup, dimensions, elementType, end, err, i, i1, i2, n, out, out1, out2, outSize, outSize1, outSize2, rc, start, vector
+	rc = _vector_from_value__ccgo_gp(tls, *(*uintptr)(__ccgo_ptr(argv)), unsafe.Pointer(&vector), unsafe.Pointer(&dimensions), unsafe.Pointer(&elementType), unsafe.Pointer(&cleanup), unsafe.Pointer(&err))
 	if rc != m_SQLITE_OK {
-		libsqlite3.Xsqlite3_result_error(tls, context, **(**uintptr)(__ccgo_up(bp + 12)), -int32(1))
-		libsqlite3.Xsqlite3_free(tls, **(**uintptr)(__ccgo_up(bp + 12)))
+		libsqlite3.Xsqlite3_result_error(tls, context, err, -int32(1))
+		libsqlite3.Xsqlite3_free(tls, err)
 		return
 	}
-	start = libsqlite3.Xsqlite3_value_int(tls, **(**uintptr)(__ccgo_up(argv + 1*4)))
-	end = libsqlite3.Xsqlite3_value_int(tls, **(**uintptr)(__ccgo_up(argv + 2*4)))
+	start = libsqlite3.Xsqlite3_value_int(tls, *(*uintptr)(__ccgo_ptr(argv + 1*4)))
+	end = libsqlite3.Xsqlite3_value_int(tls, *(*uintptr)(__ccgo_ptr(argv + 2*4)))
 	if start < 0 {
 		libsqlite3.Xsqlite3_result_error(tls, context, __ccgo_ts+1260, -int32(1))
 		goto done
@@ -4967,11 +4965,11 @@ func _vec_slice(tls *libc.TLS, context uintptr, argc int32, argv uintptr) {
 		libsqlite3.Xsqlite3_result_error(tls, context, __ccgo_ts+1306, -int32(1))
 		goto done
 	}
-	if uint32(start) > **(**Tsize_t)(__ccgo_up(bp + 4)) {
+	if uint32(start) > dimensions {
 		libsqlite3.Xsqlite3_result_error(tls, context, __ccgo_ts+1350, -int32(1))
 		goto done
 	}
-	if uint32(end) > **(**Tsize_t)(__ccgo_up(bp + 4)) {
+	if uint32(end) > dimensions {
 		libsqlite3.Xsqlite3_result_error(tls, context, __ccgo_ts+1411, -int32(1))
 		goto done
 	}
@@ -4984,7 +4982,7 @@ func _vec_slice(tls *libc.TLS, context uintptr, argc int32, argv uintptr) {
 		goto done
 	}
 	n = uint32(end - start)
-	switch **(**_VectorElementType)(__ccgo_up(bp + 16)) {
+	switch elementType {
 	case int32(_SQLITE_VEC_ELEMENT_TYPE_FLOAT32):
 		outSize = int32(n * uint32(4))
 		out = libsqlite3.Xsqlite3_malloc(tls, outSize)
@@ -4998,7 +4996,7 @@ func _vec_slice(tls *libc.TLS, context uintptr, argc int32, argv uintptr) {
 			if !(i < n) {
 				break
 			}
-			**(**Tf32)(__ccgo_up(out + uintptr(i)*4)) = **(**Tf32)(__ccgo_up(**(**uintptr)(__ccgo_up(bp)) + uintptr(uint32(start)+i)*4))
+			*(*Tf32)(__ccgo_ptr(out + uintptr(i)*4)) = *(*Tf32)(__ccgo_ptr(vector + uintptr(uint32(start)+i)*4))
 			goto _1
 		_1:
 			;
@@ -5020,7 +5018,7 @@ func _vec_slice(tls *libc.TLS, context uintptr, argc int32, argv uintptr) {
 			if !(i1 < n) {
 				break
 			}
-			**(**Ti8)(__ccgo_up(out1 + uintptr(i1))) = **(**Ti8)(__ccgo_up(**(**uintptr)(__ccgo_up(bp)) + uintptr(uint32(start)+i1)))
+			*(*Ti8)(__ccgo_ptr(out1 + uintptr(i1))) = *(*Ti8)(__ccgo_ptr(vector + uintptr(uint32(start)+i1)))
 			goto _2
 		_2:
 			;
@@ -5050,7 +5048,7 @@ func _vec_slice(tls *libc.TLS, context uintptr, argc int32, argv uintptr) {
 			if !(i2 < n/uint32(m___CHAR_BIT__)) {
 				break
 			}
-			**(**Tu8)(__ccgo_up(out2 + uintptr(i2))) = **(**Tu8)(__ccgo_up(**(**uintptr)(__ccgo_up(bp)) + uintptr(uint32(start/libc.Int32FromInt32(m___CHAR_BIT__))+i2)))
+			*(*Tu8)(__ccgo_ptr(out2 + uintptr(i2))) = *(*Tu8)(__ccgo_ptr(vector + uintptr(uint32(start/libc.Int32FromInt32(m___CHAR_BIT__))+i2)))
 			goto _3
 		_3:
 			;
@@ -5063,7 +5061,7 @@ func _vec_slice(tls *libc.TLS, context uintptr, argc int32, argv uintptr) {
 	goto done
 done:
 	;
-	(*(*func(*libc.TLS, uintptr))(unsafe.Pointer(bp + 8)))(tls, **(**uintptr)(__ccgo_up(bp)))
+	(*(*func(*libc.TLS, uintptr))(unsafe.Pointer(&struct{ uintptr }{cleanup})))(tls, vector)
 }
 
 func _vec_static_blob_entriesColumn(tls *libc.TLS, cur uintptr, context uintptr, i int32) (r int32) {
@@ -5084,7 +5082,7 @@ func _vec_static_blob_entriesColumn(tls *libc.TLS, cur uintptr, context uintptr,
 	case int32(_VEC_SBE__QUERYPLAN_KNN):
 		switch i {
 		case m_VEC_STATIC_BLOB_ENTRIES_VECTOR:
-			rowid = **(**Ti32)(__ccgo_up((*Tsbe_query_knn_data)(unsafe.Pointer((*Tvec_static_blob_entries_cursor)(unsafe.Pointer(pCur)).Fknn_data)).Frowids + uintptr((*Tsbe_query_knn_data)(unsafe.Pointer((*Tvec_static_blob_entries_cursor)(unsafe.Pointer(pCur)).Fknn_data)).Fcurrent_idx)*4))
+			rowid = *(*Ti32)(__ccgo_ptr((*Tsbe_query_knn_data)(unsafe.Pointer((*Tvec_static_blob_entries_cursor)(unsafe.Pointer(pCur)).Fknn_data)).Frowids + uintptr((*Tsbe_query_knn_data)(unsafe.Pointer((*Tvec_static_blob_entries_cursor)(unsafe.Pointer(pCur)).Fknn_data)).Fcurrent_idx)*4))
 			libsqlite3.Xsqlite3_result_blob(tls, context, (*Tstatic_blob)(unsafe.Pointer((*Tvec_static_blob_entries_vtab)(unsafe.Pointer(p)).Fblob)).Fp+uintptr(uint32(rowid)*(*Tstatic_blob)(unsafe.Pointer((*Tvec_static_blob_entries_vtab)(unsafe.Pointer(p)).Fblob)).Fdimensions*libc.Uint32FromInt64(4)), int32((*Tstatic_blob)(unsafe.Pointer((*Tvec_static_blob_entries_vtab)(unsafe.Pointer(p)).Fblob)).Fdimensions*uint32(4)), uintptr(-libc.Int32FromInt32(1)))
 			libsqlite3.Xsqlite3_result_subtype(tls, context, uint32((*Tstatic_blob)(unsafe.Pointer((*Tvec_static_blob_entries_vtab)(unsafe.Pointer(p)).Fblob)).Felement_type))
 			break
@@ -5109,20 +5107,15 @@ func _vec_static_blob_entriesEof(tls *libc.TLS, cur uintptr) (r int32) {
 }
 
 func _vec_static_blob_entriesFilter(tls *libc.TLS, pVtabCursor uintptr, idxNum int32, idxStr uintptr, argc int32, argv uintptr) (r int32) {
-	bp := tls.Alloc(32)
-	defer tls.Free(32)
-	var bsize, i, i1 Tsize_t
-	var candidates, distances, knn_data, p, pCur, taken, topk_rowids, v uintptr
+	var bsize, dimensions, i, i1 Tsize_t
+	var candidates, distances, err, knn_data, p, pCur, queryVector, taken, topk_rowids, v uintptr
+	var cleanup Tvector_cleanup
+	var elementType _VectorElementType
 	var k Ti64
+	var k_used Ti32
 	var rc int32
 	var v1 int64
-	var _ /* cleanup at bp+12 */ Tvector_cleanup
-	var _ /* dimensions at bp+4 */ Tsize_t
-	var _ /* elementType at bp+8 */ _VectorElementType
-	var _ /* err at bp+16 */ uintptr
-	var _ /* k_used at bp+20 */ Ti32
-	var _ /* queryVector at bp+0 */ uintptr
-	_, _, _, _, _, _, _, _, _, _, _, _, _, _ = bsize, candidates, distances, i, i1, k, knn_data, p, pCur, rc, taken, topk_rowids, v, v1
+	_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _ = bsize, candidates, cleanup, dimensions, distances, elementType, err, i, i1, k, k_used, knn_data, p, pCur, queryVector, rc, taken, topk_rowids, v, v1
 	_ = idxStr
 	pCur = pVtabCursor
 	p = (*Tvec_static_blob_entries_cursor)(unsafe.Pointer(pCur)).Fbase.FpVtab
@@ -5133,18 +5126,18 @@ func _vec_static_blob_entriesFilter(tls *libc.TLS, pVtabCursor uintptr, idxNum i
 			return int32(m_SQLITE_NOMEM)
 		}
 		libc.Xmemset(tls, knn_data, 0, uint32(32))
-		rc = Xvector_from_value(tls, **(**uintptr)(__ccgo_up(argv)), bp, bp+4, bp+8, bp+12, bp+16)
+		rc = _vector_from_value__ccgo_gp(tls, *(*uintptr)(__ccgo_ptr(argv)), unsafe.Pointer(&queryVector), unsafe.Pointer(&dimensions), unsafe.Pointer(&elementType), unsafe.Pointer(&cleanup), unsafe.Pointer(&err))
 		if rc != m_SQLITE_OK {
 			return int32(m_SQLITE_ERROR)
 		}
-		if **(**_VectorElementType)(__ccgo_up(bp + 8)) != (*Tstatic_blob)(unsafe.Pointer((*Tvec_static_blob_entries_vtab)(unsafe.Pointer(p)).Fblob)).Felement_type {
+		if elementType != (*Tstatic_blob)(unsafe.Pointer((*Tvec_static_blob_entries_vtab)(unsafe.Pointer(p)).Fblob)).Felement_type {
 			return int32(m_SQLITE_ERROR)
 		}
-		if **(**Tsize_t)(__ccgo_up(bp + 4)) != (*Tstatic_blob)(unsafe.Pointer((*Tvec_static_blob_entries_vtab)(unsafe.Pointer(p)).Fblob)).Fdimensions {
+		if dimensions != (*Tstatic_blob)(unsafe.Pointer((*Tvec_static_blob_entries_vtab)(unsafe.Pointer(p)).Fblob)).Fdimensions {
 			return int32(m_SQLITE_ERROR)
 		}
-		if libsqlite3.Xsqlite3_value_int64(tls, **(**uintptr)(__ccgo_up(argv + 1*4))) <= int64((*Tstatic_blob)(unsafe.Pointer((*Tvec_static_blob_entries_vtab)(unsafe.Pointer(p)).Fblob)).Fnvectors) {
-			v1 = libsqlite3.Xsqlite3_value_int64(tls, **(**uintptr)(__ccgo_up(argv + 1*4)))
+		if libsqlite3.Xsqlite3_value_int64(tls, *(*uintptr)(__ccgo_ptr(argv + 1*4))) <= int64((*Tstatic_blob)(unsafe.Pointer((*Tvec_static_blob_entries_vtab)(unsafe.Pointer(p)).Fblob)).Fnvectors) {
+			v1 = libsqlite3.Xsqlite3_value_int64(tls, *(*uintptr)(__ccgo_ptr(argv + 1*4)))
 		} else {
 			v1 = int64((*Tstatic_blob)(unsafe.Pointer((*Tvec_static_blob_entries_vtab)(unsafe.Pointer(p)).Fblob)).Fnvectors)
 		}
@@ -5176,7 +5169,7 @@ func _vec_static_blob_entriesFilter(tls *libc.TLS, pVtabCursor uintptr, idxNum i
 			}
 			// https://github.com/asg017/sqlite-vec/issues/52
 			v = (*Tstatic_blob)(unsafe.Pointer((*Tvec_static_blob_entries_vtab)(unsafe.Pointer(p)).Fblob)).Fp + uintptr(i*(*Tstatic_blob)(unsafe.Pointer((*Tvec_static_blob_entries_vtab)(unsafe.Pointer(p)).Fblob)).Fdimensions)*4
-			**(**Tf32)(__ccgo_up(distances + uintptr(i)*4)) = _distance_l2_sqr_float(tls, v, **(**uintptr)(__ccgo_up(bp)), (*Tvec_static_blob_entries_vtab)(unsafe.Pointer(p)).Fblob+8)
+			*(*Tf32)(__ccgo_ptr(distances + uintptr(i)*4)) = _distance_l2_sqr_float(tls, v, queryVector, unsafe.Pointer((*Tvec_static_blob_entries_vtab)(unsafe.Pointer(p)).Fblob+8))
 			goto _2
 		_2:
 			;
@@ -5196,8 +5189,8 @@ func _vec_static_blob_entriesFilter(tls *libc.TLS, pVtabCursor uintptr, idxNum i
 			;
 			i1 = i1 - 1
 		}
-		**(**Ti32)(__ccgo_up(bp + 20)) = 0
-		Xmin_idx(tls, distances, int32(bsize), candidates, topk_rowids, int32(k), taken, bp+20)
+		k_used = 0
+		_min_idx__ccgo_gp(tls, distances, int32(bsize), candidates, topk_rowids, int32(k), taken, unsafe.Pointer(&k_used))
 		(*Tsbe_query_knn_data)(unsafe.Pointer(knn_data)).Fcurrent_idx = 0
 		(*Tsbe_query_knn_data)(unsafe.Pointer(knn_data)).Fdistances = distances
 		(*Tsbe_query_knn_data)(unsafe.Pointer(knn_data)).Fk = k
@@ -5219,10 +5212,10 @@ func _vec_static_blob_from_raw(tls *libc.TLS, context uintptr, argc int32, argv 
 		return
 	}
 	libc.Xmemset(tls, p, 0, uint32(16))
-	(*Tstatic_blob_definition)(unsafe.Pointer(p)).Fp = uintptr(libsqlite3.Xsqlite3_value_int64(tls, **(**uintptr)(__ccgo_up(argv))))
+	(*Tstatic_blob_definition)(unsafe.Pointer(p)).Fp = uintptr(libsqlite3.Xsqlite3_value_int64(tls, *(*uintptr)(__ccgo_ptr(argv))))
 	(*Tstatic_blob_definition)(unsafe.Pointer(p)).Felement_type = int32(_SQLITE_VEC_ELEMENT_TYPE_FLOAT32)
-	(*Tstatic_blob_definition)(unsafe.Pointer(p)).Fdimensions = uint32(libsqlite3.Xsqlite3_value_int64(tls, **(**uintptr)(__ccgo_up(argv + 2*4))))
-	(*Tstatic_blob_definition)(unsafe.Pointer(p)).Fnvectors = uint32(libsqlite3.Xsqlite3_value_int64(tls, **(**uintptr)(__ccgo_up(argv + 3*4))))
+	(*Tstatic_blob_definition)(unsafe.Pointer(p)).Fdimensions = uint32(libsqlite3.Xsqlite3_value_int64(tls, *(*uintptr)(__ccgo_ptr(argv + 2*4))))
+	(*Tstatic_blob_definition)(unsafe.Pointer(p)).Fnvectors = uint32(libsqlite3.Xsqlite3_value_int64(tls, *(*uintptr)(__ccgo_ptr(argv + 3*4))))
 	libsqlite3.Xsqlite3_result_pointer(tls, context, p, _POINTER_NAME_STATIC_BLOB_DEF, __ccgo_fp(libsqlite3.Xsqlite3_free))
 }
 
@@ -5233,46 +5226,39 @@ func _vec_static_blobsColumn(tls *libc.TLS, cur uintptr, context uintptr, i int3
 	p = (*Tsqlite3_vtab_cursor)(unsafe.Pointer(cur)).FpVtab
 	switch i {
 	case m_VEC_STATIC_BLOBS_NAME:
-		libsqlite3.Xsqlite3_result_text(tls, context, (**(**Tstatic_blob)(__ccgo_up((*Tvec_static_blobs_vtab)(unsafe.Pointer(p)).Fdata + uintptr((*Tvec_static_blobs_cursor)(unsafe.Pointer(pCur)).FiRowid)*20))).Fname, -int32(1), uintptr(-libc.Int32FromInt32(1)))
+		libsqlite3.Xsqlite3_result_text(tls, context, (*(*Tstatic_blob)(__ccgo_ptr((*Tvec_static_blobs_vtab)(unsafe.Pointer(p)).Fdata + uintptr((*Tvec_static_blobs_cursor)(unsafe.Pointer(pCur)).FiRowid)*20))).Fname, -int32(1), uintptr(-libc.Int32FromInt32(1)))
 	case int32(m_VEC_STATIC_BLOBS_DATA):
 		libsqlite3.Xsqlite3_result_null(tls, context)
 	case int32(m_VEC_STATIC_BLOBS_DIMENSIONS):
-		libsqlite3.Xsqlite3_result_int64(tls, context, int64((**(**Tstatic_blob)(__ccgo_up((*Tvec_static_blobs_vtab)(unsafe.Pointer(p)).Fdata + uintptr((*Tvec_static_blobs_cursor)(unsafe.Pointer(pCur)).FiRowid)*20))).Fdimensions))
+		libsqlite3.Xsqlite3_result_int64(tls, context, int64((*(*Tstatic_blob)(__ccgo_ptr((*Tvec_static_blobs_vtab)(unsafe.Pointer(p)).Fdata + uintptr((*Tvec_static_blobs_cursor)(unsafe.Pointer(pCur)).FiRowid)*20))).Fdimensions))
 	case int32(m_VEC_STATIC_BLOBS_COUNT):
-		libsqlite3.Xsqlite3_result_int64(tls, context, int64((**(**Tstatic_blob)(__ccgo_up((*Tvec_static_blobs_vtab)(unsafe.Pointer(p)).Fdata + uintptr((*Tvec_static_blobs_cursor)(unsafe.Pointer(pCur)).FiRowid)*20))).Fnvectors))
+		libsqlite3.Xsqlite3_result_int64(tls, context, int64((*(*Tstatic_blob)(__ccgo_ptr((*Tvec_static_blobs_vtab)(unsafe.Pointer(p)).Fdata + uintptr((*Tvec_static_blobs_cursor)(unsafe.Pointer(pCur)).FiRowid)*20))).Fnvectors))
 		break
 	}
 	return m_SQLITE_OK
 }
 
 func _vec_sub(tls *libc.TLS, context uintptr, argc int32, argv uintptr) {
-	bp := tls.Alloc(32)
-	defer tls.Free(32)
-	var i, i1, outSize, outSize1 Tsize_t
-	var out, out1 uintptr
+	var a, b, error1, out, out1 uintptr
+	var aCleanup, bCleanup Tvector_cleanup
+	var dimensions, i, i1, outSize, outSize1 Tsize_t
+	var elementType _VectorElementType
 	var rc int32
-	var _ /* a at bp+0 */ uintptr
-	var _ /* aCleanup at bp+12 */ Tvector_cleanup
-	var _ /* b at bp+4 */ uintptr
-	var _ /* bCleanup at bp+16 */ Tvector_cleanup
-	var _ /* dimensions at bp+8 */ Tsize_t
-	var _ /* elementType at bp+24 */ _VectorElementType
-	var _ /* error at bp+20 */ uintptr
-	_, _, _, _, _, _, _ = i, i1, out, out1, outSize, outSize1, rc
-	**(**uintptr)(__ccgo_up(bp)) = libc.UintptrFromInt32(0)
-	**(**uintptr)(__ccgo_up(bp + 4)) = libc.UintptrFromInt32(0)
-	rc = Xensure_vector_match(tls, **(**uintptr)(__ccgo_up(argv)), **(**uintptr)(__ccgo_up(argv + 1*4)), bp, bp+4, bp+24, bp+8, bp+12, bp+16, bp+20)
+	_, _, _, _, _, _, _, _, _, _, _, _, _, _ = a, aCleanup, b, bCleanup, dimensions, elementType, error1, i, i1, out, out1, outSize, outSize1, rc
+	a = libc.UintptrFromInt32(0)
+	b = libc.UintptrFromInt32(0)
+	rc = _ensure_vector_match__ccgo_gp(tls, *(*uintptr)(__ccgo_ptr(argv)), *(*uintptr)(__ccgo_ptr(argv + 1*4)), unsafe.Pointer(&a), unsafe.Pointer(&b), unsafe.Pointer(&elementType), unsafe.Pointer(&dimensions), unsafe.Pointer(&aCleanup), unsafe.Pointer(&bCleanup), unsafe.Pointer(&error1))
 	if rc != m_SQLITE_OK {
-		libsqlite3.Xsqlite3_result_error(tls, context, **(**uintptr)(__ccgo_up(bp + 20)), -int32(1))
-		libsqlite3.Xsqlite3_free(tls, **(**uintptr)(__ccgo_up(bp + 20)))
+		libsqlite3.Xsqlite3_result_error(tls, context, error1, -int32(1))
+		libsqlite3.Xsqlite3_free(tls, error1)
 		return
 	}
-	switch **(**_VectorElementType)(__ccgo_up(bp + 24)) {
+	switch elementType {
 	case int32(_SQLITE_VEC_ELEMENT_TYPE_BIT):
 		libsqlite3.Xsqlite3_result_error(tls, context, __ccgo_ts+1219, -int32(1))
 		goto finish
 	case int32(_SQLITE_VEC_ELEMENT_TYPE_FLOAT32):
-		outSize = **(**Tsize_t)(__ccgo_up(bp + 8)) * uint32(4)
+		outSize = dimensions * uint32(4)
 		out = libsqlite3.Xsqlite3_malloc(tls, int32(outSize))
 		if !(out != 0) {
 			libsqlite3.Xsqlite3_result_error_nomem(tls, context)
@@ -5281,10 +5267,10 @@ func _vec_sub(tls *libc.TLS, context uintptr, argc int32, argv uintptr) {
 		libc.Xmemset(tls, out, 0, outSize)
 		i = uint32(0)
 		for {
-			if !(i < **(**Tsize_t)(__ccgo_up(bp + 8))) {
+			if !(i < dimensions) {
 				break
 			}
-			**(**Tf32)(__ccgo_up(out + uintptr(i)*4)) = **(**Tf32)(__ccgo_up(**(**uintptr)(__ccgo_up(bp)) + uintptr(i)*4)) - **(**Tf32)(__ccgo_up(**(**uintptr)(__ccgo_up(bp + 4)) + uintptr(i)*4))
+			*(*Tf32)(__ccgo_ptr(out + uintptr(i)*4)) = *(*Tf32)(__ccgo_ptr(a + uintptr(i)*4)) - *(*Tf32)(__ccgo_ptr(b + uintptr(i)*4))
 			goto _1
 		_1:
 			;
@@ -5294,7 +5280,7 @@ func _vec_sub(tls *libc.TLS, context uintptr, argc int32, argv uintptr) {
 		libsqlite3.Xsqlite3_result_subtype(tls, context, uint32(_SQLITE_VEC_ELEMENT_TYPE_FLOAT32))
 		goto finish
 	case int32(_SQLITE_VEC_ELEMENT_TYPE_INT8):
-		outSize1 = **(**Tsize_t)(__ccgo_up(bp + 8)) * uint32(1)
+		outSize1 = dimensions * uint32(1)
 		out1 = libsqlite3.Xsqlite3_malloc(tls, int32(outSize1))
 		if !(out1 != 0) {
 			libsqlite3.Xsqlite3_result_error_nomem(tls, context)
@@ -5303,10 +5289,10 @@ func _vec_sub(tls *libc.TLS, context uintptr, argc int32, argv uintptr) {
 		libc.Xmemset(tls, out1, 0, outSize1)
 		i1 = uint32(0)
 		for {
-			if !(i1 < **(**Tsize_t)(__ccgo_up(bp + 8))) {
+			if !(i1 < dimensions) {
 				break
 			}
-			**(**Ti8)(__ccgo_up(out1 + uintptr(i1))) = int8(int32(**(**Ti8)(__ccgo_up(**(**uintptr)(__ccgo_up(bp)) + uintptr(i1)))) - int32(**(**Ti8)(__ccgo_up(**(**uintptr)(__ccgo_up(bp + 4)) + uintptr(i1)))))
+			*(*Ti8)(__ccgo_ptr(out1 + uintptr(i1))) = int8(int32(*(*Ti8)(__ccgo_ptr(a + uintptr(i1)))) - int32(*(*Ti8)(__ccgo_ptr(b + uintptr(i1)))))
 			goto _2
 		_2:
 			;
@@ -5319,55 +5305,52 @@ func _vec_sub(tls *libc.TLS, context uintptr, argc int32, argv uintptr) {
 	goto finish
 finish:
 	;
-	(*(*func(*libc.TLS, uintptr))(unsafe.Pointer(bp + 12)))(tls, **(**uintptr)(__ccgo_up(bp)))
-	(*(*func(*libc.TLS, uintptr))(unsafe.Pointer(bp + 16)))(tls, **(**uintptr)(__ccgo_up(bp + 4)))
+	(*(*func(*libc.TLS, uintptr))(unsafe.Pointer(&struct{ uintptr }{aCleanup})))(tls, a)
+	(*(*func(*libc.TLS, uintptr))(unsafe.Pointer(&struct{ uintptr }{bCleanup})))(tls, b)
 	return
 }
 
 func _vec_to_json(tls *libc.TLS, context uintptr, argc int32, argv uintptr) {
-	bp := tls.Alloc(48)
-	defer tls.Free(48)
+	bp := tls.Alloc(16)
+	defer tls.Free(16)
 	var b Tu8
-	var i Tsize_t
+	var cleanup Tvector_cleanup
+	var dimensions, i Tsize_t
+	var elementType _VectorElementType
+	var err, s, str, vector uintptr
 	var len1, rc int32
-	var s, str uintptr
 	var value Tf32
-	var _ /* cleanup at bp+8 */ Tvector_cleanup
-	var _ /* dimensions at bp+4 */ Tsize_t
-	var _ /* elementType at bp+16 */ _VectorElementType
-	var _ /* err at bp+12 */ uintptr
-	var _ /* vector at bp+0 */ uintptr
-	_, _, _, _, _, _, _ = b, i, len1, rc, s, str, value
-	rc = Xvector_from_value(tls, **(**uintptr)(__ccgo_up(argv)), bp, bp+4, bp+16, bp+8, bp+12)
+	_, _, _, _, _, _, _, _, _, _, _, _ = b, cleanup, dimensions, elementType, err, i, len1, rc, s, str, value, vector
+	rc = _vector_from_value__ccgo_gp(tls, *(*uintptr)(__ccgo_ptr(argv)), unsafe.Pointer(&vector), unsafe.Pointer(&dimensions), unsafe.Pointer(&elementType), unsafe.Pointer(&cleanup), unsafe.Pointer(&err))
 	if rc != m_SQLITE_OK {
-		libsqlite3.Xsqlite3_result_error(tls, context, **(**uintptr)(__ccgo_up(bp + 12)), -int32(1))
-		libsqlite3.Xsqlite3_free(tls, **(**uintptr)(__ccgo_up(bp + 12)))
+		libsqlite3.Xsqlite3_result_error(tls, context, err, -int32(1))
+		libsqlite3.Xsqlite3_free(tls, err)
 		return
 	}
 	str = libsqlite3.Xsqlite3_str_new(tls, libsqlite3.Xsqlite3_context_db_handle(tls, context))
 	libsqlite3.Xsqlite3_str_appendall(tls, str, __ccgo_ts+1671)
 	i = uint32(0)
 	for {
-		if !(i < **(**Tsize_t)(__ccgo_up(bp + 4))) {
+		if !(i < dimensions) {
 			break
 		}
 		if i != uint32(0) {
 			libsqlite3.Xsqlite3_str_appendall(tls, str, __ccgo_ts+1673)
 		}
-		if **(**_VectorElementType)(__ccgo_up(bp + 16)) == int32(_SQLITE_VEC_ELEMENT_TYPE_FLOAT32) {
-			value = **(**Tf32)(__ccgo_up(**(**uintptr)(__ccgo_up(bp)) + uintptr(i)*4))
+		if elementType == int32(_SQLITE_VEC_ELEMENT_TYPE_FLOAT32) {
+			value = *(*Tf32)(__ccgo_ptr(vector + uintptr(i)*4))
 			if libc.X__isnanf(tls, value) != 0 {
 				libsqlite3.Xsqlite3_str_appendall(tls, str, __ccgo_ts+1675)
 			} else {
-				libsqlite3.Xsqlite3_str_appendf(tls, str, __ccgo_ts+1680, libc.VaList(bp+32, float64(value)))
+				libsqlite3.Xsqlite3_str_appendf(tls, str, __ccgo_ts+1680, libc.VaList(bp+8, float64(value)))
 			}
 		} else {
-			if **(**_VectorElementType)(__ccgo_up(bp + 16)) == int32(_SQLITE_VEC_ELEMENT_TYPE_INT8) {
-				libsqlite3.Xsqlite3_str_appendf(tls, str, __ccgo_ts+1683, libc.VaList(bp+32, int32(**(**Ti8)(__ccgo_up(**(**uintptr)(__ccgo_up(bp)) + uintptr(i))))))
+			if elementType == int32(_SQLITE_VEC_ELEMENT_TYPE_INT8) {
+				libsqlite3.Xsqlite3_str_appendf(tls, str, __ccgo_ts+1683, libc.VaList(bp+8, int32(*(*Ti8)(__ccgo_ptr(vector + uintptr(i))))))
 			} else {
-				if **(**_VectorElementType)(__ccgo_up(bp + 16)) == int32(_SQLITE_VEC_ELEMENT_TYPE_BIT) {
-					b = uint8(int32(**(**Tu8)(__ccgo_up(**(**uintptr)(__ccgo_up(bp)) + uintptr(i/uint32(8))))) >> (i % uint32(m___CHAR_BIT__)) & int32(1))
-					libsqlite3.Xsqlite3_str_appendf(tls, str, __ccgo_ts+1683, libc.VaList(bp+32, int32(b)))
+				if elementType == int32(_SQLITE_VEC_ELEMENT_TYPE_BIT) {
+					b = uint8(int32(*(*Tu8)(__ccgo_ptr(vector + uintptr(i/uint32(8))))) >> (i % uint32(m___CHAR_BIT__)) & int32(1))
+					libsqlite3.Xsqlite3_str_appendf(tls, str, __ccgo_ts+1683, libc.VaList(bp+8, int32(b)))
 				}
 			}
 		}
@@ -5385,7 +5368,7 @@ func _vec_to_json(tls *libc.TLS, context uintptr, argc int32, argv uintptr) {
 	} else {
 		libsqlite3.Xsqlite3_result_error_nomem(tls, context)
 	}
-	(*(*func(*libc.TLS, uintptr))(unsafe.Pointer(bp + 8)))(tls, **(**uintptr)(__ccgo_up(bp)))
+	(*(*func(*libc.TLS, uintptr))(unsafe.Pointer(&struct{ uintptr }{cleanup})))(tls, vector)
 }
 
 const m_FP_NAN = 0x0100

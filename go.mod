@@ -6,7 +6,7 @@ require (
 	github.com/google/pprof v0.0.0-20261016150608-1facf8f91b50
 	golang.org/x/sys v0.49.0
 	modernc.org/fileutil v1.4.0
-	modernc.org/libc v1.79.0
+	modernc.org/libc v1.80.1
 	modernc.org/mathutil v1.7.1
 )
 

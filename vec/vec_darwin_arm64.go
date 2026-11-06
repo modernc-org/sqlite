@@ -142,8 +142,6 @@ const m___AARCH64_SIMD__ = 1
 
 const m___ARM64_ARCH_8__ = 1
 
-const m___ARM_ACLE = 202420
-
 const m___ARM_ARCH_8_2__ = 1
 
 const m___ARM_ARCH_8_3__ = 1
@@ -188,8 +186,6 @@ const m___ARM_FEATURE_SHA3 = 1
 
 const m___ARM_FEATURE_SHA512 = 1
 
-const m___ARM_NEON_SVE_BRIDGE = 1
-
 const m___BRIDGEOS_10_5 = 100500
 
 const m___BRIDGEOS_10_6 = 100600
@@ -207,8 +203,6 @@ const m___DRIVERKIT_27_0 = 270000
 const m___ENVIRONMENT_MAC_OS_X_VERSION_MIN_REQUIRED__ = 270000
 
 const m___ENVIRONMENT_OS_VERSION_MIN_REQUIRED__ = 270000
-
-const m___FUNCTION_MULTI_VERSIONING_SUPPORT_LEVEL = 202430
 
 const m___IPHONE_26_6 = 260600
 

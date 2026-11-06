@@ -59,6 +59,7 @@
 //	freebsd	amd64   3.54.1
 //	freebsd	arm     3.54.1
 //	freebsd	arm64   3.54.1
+//	illumos	amd64   3.54.1
 //	linux	386     3.54.1
 //	linux	amd64   3.54.1
 //	linux	arm     3.54.1

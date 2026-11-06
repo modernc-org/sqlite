@@ -22,8 +22,6 @@ const m__LOONGARCH_SZPTR = 64
 
 const m__LOONGARCH_TUNE = "generic"
 
-const m___BITINT_MAXWIDTH__ = 65535
-
 const m___GCC_ATOMIC_CHAR8_T_LOCK_FREE = 2
 
 const m___GNUC__ = 16

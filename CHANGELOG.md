@@ -2,7 +2,9 @@
 
 Entries for v1.38.1 through v1.44.1 and for v1.49.1 were added on 2026-09-05, reconstructed from the git history and the merge requests they cite; they were missing at release time.
 
- - 2026-11-02 v1.61.2:
+ - 2026-11-02 v1.62.0:
+     - Add `illumos/amd64`, tested on an OmniOS builder. Resolves [GitLab issue #210](https://gitlab.com/cznic/sqlite/-/issues/210), thanks Jasper Siepkes (@siepkes), who also started the `modernc.org/libc` port!
+     - Re-vendor `lib/` from [modernc.org/libsqlite3 v1.16.0](https://gitlab.com/cznic/libsqlite3/-/tags/v1.16.0) and `vec/` from [modernc.org/libsqlite_vec v0.8.0](https://gitlab.com/cznic/libsqlite_vec/-/tags/v0.8.0); SQLite stays 3.54.1 and sqlite-vec v0.1.9. The pinned `modernc.org/libc` becomes [v1.80.1](https://gitlab.com/cznic/libc/-/tags/v1.80.1); as always, downstream `go.mod` files must pin the same `modernc.org/libc` version this repository's `go.mod` does, see [GitLab issue #177](https://gitlab.com/cznic/sqlite/-/issues/177).
      - `Limit` now works on a connection handed out by a `driver.Connector` that wraps the ones `NewConnector` opens, provided the wrapper has an `Unwrap() driver.Conn` method; it used to fail with `unexpected driverConn type`. `NewConnector` now also says which optional interfaces such a wrapper must forward. Resolves [GitHub issue #11](https://github.com/modernc-org/sqlite/issues/11), thanks Andres Morey (@amorey)!
 
  - 2026-10-31 v1.61.1:

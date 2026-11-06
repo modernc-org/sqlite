@@ -8,6 +8,8 @@ type T___wchar_t = uint32
 
 const m_CHAR_MAX = "UCHAR_MAX"
 
+const m___ARM_ACLE = 200
+
 const m___WCHAR_MAX = "__UINT_MAX"
 
 const m___WCHAR_MAX__ = 4294967295

@@ -4,8 +4,6 @@
 
 package vec
 
-const m___FLT16_IS_IEC_60559__ = 1
-
 const m___riscv = 1
 
 const m___riscv_a = 2001000

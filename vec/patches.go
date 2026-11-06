@@ -1,4 +1,4 @@
-//go:build linux || darwin || freebsd || netbsd || openbsd || windows
+//go:build linux || darwin || freebsd || illumos || netbsd || openbsd || windows
 
 // Package vec bundles sqlite-vec, the vector search extension for SQLite, in
 // the same CGo-free form as the rest of this module. The bundled version is

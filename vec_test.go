@@ -1,4 +1,4 @@
-//go:build (linux || darwin || freebsd || netbsd || openbsd || windows) && !pcachepool
+//go:build (linux || darwin || freebsd || illumos || netbsd || openbsd || windows) && !pcachepool
 
 // Excluded under the pcachepool tag: see pcachepool_test.go.
 

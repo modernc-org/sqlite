@@ -122,6 +122,7 @@
 #include "sqlite3.h"
 
 #include <assert.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -636,7 +637,9 @@ static int vfsCurrentTime(sqlite3_vfs *pVfs, double *pTime){
 **   sqlite3_vfs_register(sqlite3_fsFS(), 0);
 */
 sqlite3_vfs *sqlite3_fsFS(char *zName, void *pAppData){
-  sqlite3_vfs *p = sqlite3_malloc(sizeof(sqlite3_vfs));
+  /* Plain malloc, not SQLite's allocator: the Go side (patches.go) frees
+  ** it with libc.Xfree, and every target's transpile allocates it so. */
+  sqlite3_vfs *p = malloc(sizeof(sqlite3_vfs));
   if (!p) {
     return NULL;
   }

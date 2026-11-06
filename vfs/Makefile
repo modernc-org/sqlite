@@ -54,7 +54,7 @@ edit:
 FN=vfs_$(shell go env GOOS)_$(shell go env GOARCH).go
 
 editor:
-	ccgo -o $(FN) c/vfs.c -Isqlite-amalgamation-3450200 \
+	ccgo -o $(FN) c/vfs.c -Isqlite-amalgamation-3540100 \
 		-D SQLITE_OS_UNIX \
 		-extended-errors \
 		-hide=vfsAccess \
@@ -66,7 +66,8 @@ editor:
 		-ignore-link-errors \
 		-import modernc.org/sqlite/lib \
 		--package-name vfs \
-		--prefix-external X
+		--prefix-external X \
+		--prefix-field ""
 	sed -i 's/\<sqlite3_snprintf\>/sqlite3.Xsqlite3_snprintf/' $(FN)
 	sed -i 's/\<sqlite3_malloc\>/sqlite3.Xsqlite3_malloc/' $(FN)
 	go build -v
