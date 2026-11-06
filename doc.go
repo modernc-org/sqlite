@@ -29,6 +29,16 @@
 // environment the process starts with, or call [OFDLocking] from Go. See the
 // [OFDLocking] documentation for the full contract.
 //
+// # Syncing with fdatasync
+//
+// SQLite commits with fsync(2), which on a journaling file system also
+// flushes the file's timestamps through the journal. The library can sync
+// with fdatasync(2) instead, which skips that and keeps a commit just as
+// durable. The switch is process-wide, off by default, and honored on Linux,
+// FreeBSD, illumos and NetBSD: call [Fdatasync] from Go at any time;
+// [FdatasyncEnabled] reports the setting. See the [Fdatasync] documentation
+// for the full contract.
+//
 // # Fragile modernc.org/libc dependency
 //
 // When you import this package you should use in your go.mod file the exact
