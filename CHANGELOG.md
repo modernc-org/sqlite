@@ -2,7 +2,7 @@
 
 Entries for v1.38.1 through v1.44.1 and for v1.49.1 were added on 2026-09-05, reconstructed from the git history and the merge requests they cite; they were missing at release time.
 
- - 2026-11-02 v1.62.0:
+ - 2026-11-07 v1.62.0:
      - Add `illumos/amd64`, tested on an OmniOS builder. Resolves [GitLab issue #210](https://gitlab.com/cznic/sqlite/-/issues/210), thanks Jasper Siepkes (@siepkes), who also started the `modernc.org/libc` port!
      - Re-vendor `lib/` from [modernc.org/libsqlite3 v1.16.0](https://gitlab.com/cznic/libsqlite3/-/tags/v1.16.0) and `vec/` from [modernc.org/libsqlite_vec v0.8.0](https://gitlab.com/cznic/libsqlite_vec/-/tags/v0.8.0); SQLite stays 3.54.1 and sqlite-vec v0.1.9. The pinned `modernc.org/libc` becomes [v1.80.1](https://gitlab.com/cznic/libc/-/tags/v1.80.1); as always, downstream `go.mod` files must pin the same `modernc.org/libc` version this repository's `go.mod` does, see [GitLab issue #177](https://gitlab.com/cznic/sqlite/-/issues/177).
      - Add opt-in syncing with `fdatasync(2)`, **off by default**: `Fdatasync(true)` makes commits sync with `fdatasync` instead of `fsync`, process-wide, which skips the timestamp update `fsync` forces and keeps a commit just as durable. `FdatasyncEnabled` reports the setting; on macOS and Windows `Fdatasync` returns `ErrFdatasyncUnavailable`. Resolves [GitHub issue #10](https://github.com/modernc-org/sqlite/issues/10), thanks aibeshkov!
