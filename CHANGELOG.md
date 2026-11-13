@@ -2,6 +2,9 @@
 
 Entries for v1.38.1 through v1.44.1 and for v1.49.1 were added on 2026-09-05, reconstructed from the git history and the merge requests they cite; they were missing at release time.
 
+ - 2026-11-13 v1.62.1:
+     - **Connections are now opened with `SQLITE_OPEN_NOMUTEX`** instead of `SQLITE_OPEN_FULLMUTEX`, which takes a mutex lock and unlock off every column read and makes scanning rows noticeably faster. That mutex never kept two goroutines on one connection apart, so nothing else changes for code using the driver's API; code that takes a connection's SQLite handle from unexported fields and calls SQLite with it from another goroutine must now serialize those calls itself. Resolves [GitHub issue #13](https://github.com/modernc-org/sqlite/issues/13), thanks guille-work!
+
  - 2026-11-07 v1.62.0:
      - Add `illumos/amd64`, tested on an OmniOS builder. Resolves [GitLab issue #210](https://gitlab.com/cznic/sqlite/-/issues/210), thanks Jasper Siepkes (@siepkes), who also started the `modernc.org/libc` port!
      - Re-vendor `lib/` from [modernc.org/libsqlite3 v1.16.0](https://gitlab.com/cznic/libsqlite3/-/tags/v1.16.0) and `vec/` from [modernc.org/libsqlite_vec v0.8.0](https://gitlab.com/cznic/libsqlite_vec/-/tags/v0.8.0); SQLite stays 3.54.1 and sqlite-vec v0.1.9. The pinned `modernc.org/libc` becomes [v1.80.1](https://gitlab.com/cznic/libc/-/tags/v1.80.1); as always, downstream `go.mod` files must pin the same `modernc.org/libc` version this repository's `go.mod` does, see [GitLab issue #177](https://gitlab.com/cznic/sqlite/-/issues/177).

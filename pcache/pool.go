@@ -56,7 +56,7 @@ import (
 // Pool is the factory side of the [sqlite.PageCache] contract. It is
 // safe for concurrent [Pool.Create] calls (one per opening connection);
 // each returned [sqlite.Cache] runs single-goroutine per the parent
-// package's SQLITE_OPEN_FULLMUTEX + database/sql contract.
+// package's database/sql contract.
 //
 // Pool aggregates summary counters across every cache it has created
 // so a long-running process can observe hit/miss/eviction behaviour
@@ -138,11 +138,10 @@ func (p *Pool) Create(pageSize, extraSize int, purgeable bool) (sqlite.Cache, er
 // cache is one Pool-issued per-database cache.
 //
 // Without SQLite's shared-cache mode every method on a given cache
-// runs single-goroutine under the parent package's invariant (every
-// connection is opened SQLITE_OPEN_FULLMUTEX, no shared cache is
-// enabled at the engine level, and database/sql never uses one
-// driver.Conn from two goroutines), so no per-instance synchronisation
-// is needed for correctness.
+// runs single-goroutine under the parent package's invariant (no
+// shared cache is enabled at the engine level, and database/sql never
+// uses one driver.Conn from two goroutines), so no per-instance
+// synchronisation is needed for correctness.
 //
 // Under cache=shared, the engine reuses one pCache* across every
 // Btree opened against the same shared-cache scope. SQLite serialises

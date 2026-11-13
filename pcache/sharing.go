@@ -11,9 +11,9 @@ package pcache
 // design-record companion to that lock.
 //
 // Background. The !127 pcache implementation was deliberately scoped
-// to one pCache per connection: SQLITE_OPEN_FULLMUTEX + no shared
-// cache + database/sql's one-conn-one-goroutine invariant meant every
-// callback on a given cache ran single-goroutine. cznic flagged on
+// to one pCache per connection: no shared cache + database/sql's
+// one-conn-one-goroutine invariant meant every callback on a given
+// cache ran single-goroutine. cznic flagged on
 // the !127 merge that this assumption would need to be revisited
 // when shared-cache support landed.
 //
