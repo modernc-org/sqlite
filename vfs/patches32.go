@@ -11,7 +11,6 @@ import (
 	"unsafe"
 
 	"modernc.org/libc"
-	sqlite3 "modernc.org/sqlite/lib"
 )
 
 func init() {
@@ -24,9 +23,4 @@ func init() {
 	*(*func(*libc.TLS, uintptr, int32, uintptr) int32)(unsafe.Pointer(uintptr(unsafe.Pointer(&vfsio)) + 40)) = vfsFileControl
 	*(*func(*libc.TLS, uintptr) int32)(unsafe.Pointer(uintptr(unsafe.Pointer(&vfsio)) + 44)) = vfsSectorSize
 	*(*func(*libc.TLS, uintptr) int32)(unsafe.Pointer(uintptr(unsafe.Pointer(&vfsio)) + 48)) = vfsDeviceCharacteristics
-}
-
-func vfsFullPathname(tls *libc.TLS, pVfs uintptr, zPath uintptr, nPathOut int32, zPathOut uintptr) int32 {
-	libc.Xstrncpy(tls, zPathOut, zPath, uint32(nPathOut))
-	return sqlite3.SQLITE_OK
 }

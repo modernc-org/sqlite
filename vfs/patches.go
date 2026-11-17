@@ -223,6 +223,34 @@ func vfsAccess(tls *libc.TLS, pVfs uintptr, zPath uintptr, flags int32, pResOut 
 	return sqlite3.SQLITE_OK
 }
 
+// vfsFullPathname is the xFullPathname of a VFS made by New: names are
+// resolved by the wrapped fs.FS, so the name is its own full pathname. A
+// name that does not fit the buffer is refused; it used to be copied
+// without its terminator.
+func vfsFullPathname(tls *libc.TLS, pVfs uintptr, zPath uintptr, nPathOut int32, zPathOut uintptr) int32 {
+	return putPathname(libc.GoString(zPath), nPathOut, zPathOut)
+}
+
+// putPathname is the tail of an xFullPathname: it copies s, terminated, into
+// the nPathOut bytes at zPathOut, or refuses a name that does not fit there
+// or cannot be a C string.
+func putPathname(s string, nPathOut int32, zPathOut uintptr) int32 {
+	if int64(len(s)) >= int64(nPathOut) {
+		return sqlite3.SQLITE_CANTOPEN
+	}
+
+	for i := 0; i < len(s); i++ {
+		if s[i] == 0 {
+			return sqlite3.SQLITE_CANTOPEN
+		}
+	}
+
+	b := (*libc.RawMem)(unsafe.Pointer(zPathOut))[: len(s)+1 : len(s)+1]
+	copy(b, s)
+	b[len(s)] = 0
+	return sqlite3.SQLITE_OK
+}
+
 func vfsFileSize(tls *libc.TLS, pFile uintptr, pSize uintptr) int32 {
 	p := pFile
 	f := getObject((*VFSFile)(unsafe.Pointer(p)).fsFile).(*fileEntry).f

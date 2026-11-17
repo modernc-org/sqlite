@@ -12,6 +12,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"testing/iotest"
 	"unsafe"
@@ -554,5 +555,65 @@ func TestVFSDeleteRefused(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(served, emptyname+"-journal")); err != nil {
 		t.Errorf("the journal in the served file system: %v", err)
+	}
+}
+
+// TestPutPathname checks the tail of both xFullPathname methods: a name that
+// fits is copied with its terminator and nothing after it is touched, a name
+// that does not fit is refused and nothing is written. The read-only VFS
+// used to copy such a name without a terminator.
+func TestPutPathname(t *testing.T) {
+	tls := libc.NewTLS()
+	defer tls.Close()
+	const n = 16
+	p := libc.Xmalloc(tls, n+8)
+	defer libc.Xfree(tls, p)
+	buf := unsafe.Slice((*byte)(unsafe.Pointer(p)), n+8)
+	for _, c := range []struct {
+		s    string
+		want int32
+	}{
+		{"", sqlite3.SQLITE_OK},
+		{"test.db", sqlite3.SQLITE_OK},
+		{strings.Repeat("a", n-1), sqlite3.SQLITE_OK},
+		{strings.Repeat("a", n), sqlite3.SQLITE_CANTOPEN},
+		{strings.Repeat("a", 5000), sqlite3.SQLITE_CANTOPEN},
+		{"a\x00b", sqlite3.SQLITE_CANTOPEN},
+	} {
+		for i := range buf {
+			buf[i] = 0xff
+		}
+		if rc := putPathname(c.s, n, p); rc != c.want {
+			t.Fatalf("putPathname(%d bytes): rc %d, want %d", len(c.s), rc, c.want)
+		}
+
+		written := 0
+		if c.want == sqlite3.SQLITE_OK {
+			written = len(c.s) + 1
+			if string(buf[:len(c.s)]) != c.s || buf[len(c.s)] != 0 {
+				t.Fatalf("putPathname(%q) wrote %q", c.s, buf[:written])
+			}
+		}
+		for i, x := range buf[written:] {
+			if x != 0xff {
+				t.Fatalf("putPathname(%d bytes) touched byte %d", len(c.s), written+i)
+			}
+		}
+	}
+
+	// Through the read-only VFS, which this guards as well.
+	zPath, err := libc.CString(strings.Repeat("a", 5000))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer libc.Xfree(tls, zPath)
+	for i := range buf {
+		buf[i] = 0xff
+	}
+	if rc := vfsFullPathname(tls, 0, zPath, n, p); rc != sqlite3.SQLITE_CANTOPEN {
+		t.Fatalf("vfsFullPathname of a name longer than the buffer: rc %d", rc)
+	}
+	if !bytes.Equal(buf, bytes.Repeat([]byte{0xff}, n+8)) {
+		t.Fatal("vfsFullPathname of a name longer than the buffer wrote to it")
 	}
 }
