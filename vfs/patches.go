@@ -2,7 +2,9 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package vfs exposes a Go [fs.FS] to SQLite as a read-only VFS.
+// Package vfs gives SQLite a VFS written in Go: a read-only one over a Go
+// [fs.FS], made by [New], or one a database can be written through, made by
+// [Register] from a [VFS].
 //
 // [New] registers the file system with SQLite and returns the name it was
 // registered under. Passing that name as the vfs DSN query parameter opens a
@@ -24,10 +26,16 @@
 // write path and refuses to create a journal, so a database opened through it
 // can only be read from.
 //
+// [Register] takes a [VFS], whose files SQLite reads, writes, truncates, syncs
+// and deletes: the database, its journal and the rest. It is the way to keep a
+// database somewhere a file system does not reach. See [Register] for what
+// the package does on top of the VFS, and for what it does not do yet.
+//
 // Registration is process-global, as SQLite's own VFS registry is. Each [New]
-// registers a separate VFS under a fresh name, and [FS.Close] unregisters it
-// again. Close every database opened through an [FS] before closing it: while
-// any is open, [FS.Close] refuses with an error wrapping [ErrInUse].
+// and each [Register] registers a separate VFS under a fresh name, and
+// [FS.Close] unregisters it again. Close every database opened through an [FS]
+// before closing it: while any is open, [FS.Close] refuses with an error
+// wrapping [ErrInUse].
 package vfs
 
 import (
@@ -273,11 +281,12 @@ func vfsClose(tls *libc.TLS, pFile uintptr) int32 {
 	return sqlite3.SQLITE_OK
 }
 
-// FS represents a SQLite read only file system backed by Go's fs.FS.
+// FS is a VFS registered with SQLite: a read-only one backed by a Go fs.FS,
+// made by [New], or one made by [Register] from a [VFS].
 type FS struct {
 	cname    uintptr
 	cvfs     uintptr
-	entry    *fsEntry
+	open     *atomic.Int32 // files currently open through the VFS
 	fsHandle uintptr
 	name     string
 	tls      *libc.TLS
@@ -325,7 +334,7 @@ func New(fs fs.FS) (name string, _ *FS, _ error) {
 		return "", nil, fmt.Errorf("registering VFS %s: %d", name, rc)
 	}
 
-	return name, &FS{name: name, cname: cname, cvfs: vfs, entry: e, fsHandle: h, tls: tls}, nil
+	return name, &FS{name: name, cname: cname, cvfs: vfs, open: &e.open, fsHandle: h, tls: tls}, nil
 }
 
 // Close unregisters f and releases its resources.
@@ -346,7 +355,7 @@ func (f *FS) Close() error {
 		return nil
 	}
 
-	if n := f.entry.open.Load(); n != 0 {
+	if n := f.open.Load(); n != 0 {
 		return fmt.Errorf("%w: closing VFS %s with %d file(s) still open", ErrInUse, f.name, n)
 	}
 
