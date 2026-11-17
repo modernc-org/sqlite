@@ -183,9 +183,8 @@ func (d *SQLitePreUpdateData) value(ppValue uintptr, i int, new bool) (any, erro
 		size := sqlite3.Xsqlite3_value_bytes(d.tls, ptrValue)
 		blobPtr := sqlite3.Xsqlite3_value_blob(d.tls, ptrValue)
 
-		var v []byte
+		v := make([]byte, size)
 		if size != 0 {
-			v = make([]byte, size)
 			copy(v, (*libc.RawMem)(unsafe.Pointer(blobPtr))[:size:size])
 		}
 		src = v

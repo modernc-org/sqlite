@@ -282,7 +282,9 @@ func (c *conn) columnBlob(pstmt uintptr, iCol int) (v []byte, err error) {
 	}
 
 	if p == 0 || len == 0 {
-		return nil, nil
+		// A zero-length BLOB has no pointer. Return an empty slice, since
+		// database/sql reads nil as NULL.
+		return make([]byte, 0), nil
 	}
 
 	v = make([]byte, len)
