@@ -90,7 +90,7 @@ handle, the trampolines recover the binding under a read lock and map each
 `vfs/` exposes a Go `fs.FS` to SQLite through C ABI entry points in
 `vfs/patches.go` (`vfsOpen`, `vfsRead`, `vfsAccess`, `vfsFileSize`,
 `vfsClose`), with `New` as the constructor. Open file systems and files are
-`uintptr` handles into one map. Since merge request !NNN it also exposes a
+`uintptr` handles into one map. Since merge request !148 it also exposes a
 `VFS` written by the application, which a database can be written through,
 with `Register` as the constructor and its entry points in `vfs/rw.go`; the
 rows from the pool of connections down are about that one.
@@ -108,7 +108,7 @@ rows from the pool of connections down are about that one.
 | A5 | the flags `VFS.Open` reports for the file it opened | the out-flags of `rwOpen` | SQLite acts on more of them than the access mode: told `SQLITE_OPEN_MEMORY`, it stops writing a journal. | **Holds**: only read-only or read-write is taken from the VFS (`TestRegisterOutFlags`). |
 | A5 | a `File` that keeps the buffer of `ReadAt` or `WriteAt`, or a `VFS` method that panics or runs SQL on the same database | `rwRead` and `rwWrite`, whose slices alias SQLite's memory; every entry point | The buffer is reused once the call returns; a panic unwinds through SQLite with its mutexes held. | **Documented** on `File` and `VFS`. A panic is not recovered, as in the other callbacks of this module; `rwClose` releases the handle, the lock and the count before it goes on. |
 | A2, A4 | a journal put next to a database behind a VFS made by `Register`, naming a super-journal | the names given to `VFS.Open`, `VFS.Access` and `VFS.Delete` | SQLite reads the name of a super-journal out of the journal, checks whether other journals refer to it, and deletes it: a name the author of that journal chose. | **Documented** on `VFS`: the names stay inside the application's VFS, which has to confine them if it maps them to anything wider. |
-| A1 | a database name of 4097 bytes or more, through either kind of VFS | `vfsFullPathname` | The name was copied into SQLite's buffer without its terminator, and SQLite then measured it past the bytes that had been written. | **Fixed** in merge request !NNN: `putPathname` refuses a name that does not fit, for both kinds (`TestPutPathname`). A1 is out of scope as an attacker; this was found while writing `Register`. |
+| A1 | a database name of 4097 bytes or more, through either kind of VFS | `vfsFullPathname` | The name was copied into SQLite's buffer without its terminator, and SQLite then measured it past the bytes that had been written. | **Fixed** in merge request !148: `putPathname` refuses a name that does not fit, for both kinds (`TestPutPathname`). A1 is out of scope as an attacker; this was found while writing `Register`. |
 
 ## Out of scope
 
