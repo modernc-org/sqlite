@@ -4,6 +4,7 @@ Entries for v1.38.1 through v1.44.1 and for v1.49.1 were added on 2026-09-05, re
 
  - 2026-11-13 v1.62.1:
      - **Connections are now opened with `SQLITE_OPEN_NOMUTEX`** instead of `SQLITE_OPEN_FULLMUTEX`, which takes a mutex lock and unlock off every column read and makes scanning rows noticeably faster. That mutex never kept two goroutines on one connection apart, so nothing else changes for code using the driver's API; code that takes a connection's SQLite handle from unexported fields and calls SQLite with it from another goroutine must now serialize those calls itself. Resolves [GitHub issue #13](https://github.com/modernc-org/sqlite/issues/13), thanks guille-work!
+     - **A zero-length BLOB now reads as an empty `[]byte` instead of nil**, in rows and in the pre-update hook, so it no longer scans like NULL; read and written back, it used to fail a `BLOB NOT NULL` constraint or turn into NULL. Code that compares a scanned empty BLOB with nil sees the difference, and `json.Marshal` gives `""` for it instead of `null`; NULL reads as before. Resolves [GitHub issue #14](https://github.com/modernc-org/sqlite/issues/14). See [GitHub pull request #15](https://github.com/modernc-org/sqlite/pull/15), thanks Michael Haddon (@mhaddon)!
 
  - 2026-11-07 v1.62.0:
      - Add `illumos/amd64`, tested on an OmniOS builder. Resolves [GitLab issue #210](https://gitlab.com/cznic/sqlite/-/issues/210), thanks Jasper Siepkes (@siepkes), who also started the `modernc.org/libc` port!
