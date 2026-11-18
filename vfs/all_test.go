@@ -12,8 +12,11 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"testing"
 	"testing/iotest"
+	"time"
 	"unsafe"
 
 	"modernc.org/libc"
@@ -555,4 +558,138 @@ func TestVFSDeleteRefused(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(served, emptyname+"-journal")); err != nil {
 		t.Errorf("the journal in the served file system: %v", err)
 	}
+}
+
+// TestPutPathname checks the tail of both xFullPathname methods: a name that
+// fits is copied with its terminator and nothing after it is touched, a name
+// that does not fit is refused and nothing is written. The read-only VFS
+// used to copy such a name without a terminator.
+func TestPutPathname(t *testing.T) {
+	tls := libc.NewTLS()
+	defer tls.Close()
+	const n = 16
+	p := libc.Xmalloc(tls, n+8)
+	defer libc.Xfree(tls, p)
+	buf := unsafe.Slice((*byte)(unsafe.Pointer(p)), n+8)
+	for _, c := range []struct {
+		s    string
+		want int32
+	}{
+		{"", sqlite3.SQLITE_OK},
+		{"test.db", sqlite3.SQLITE_OK},
+		{strings.Repeat("a", n-1), sqlite3.SQLITE_OK},
+		{strings.Repeat("a", n), sqlite3.SQLITE_CANTOPEN},
+		{strings.Repeat("a", 5000), sqlite3.SQLITE_CANTOPEN},
+		{"a\x00b", sqlite3.SQLITE_CANTOPEN},
+	} {
+		for i := range buf {
+			buf[i] = 0xff
+		}
+		if rc := putPathname(c.s, n, p); rc != c.want {
+			t.Fatalf("putPathname(%d bytes): rc %d, want %d", len(c.s), rc, c.want)
+		}
+
+		written := 0
+		if c.want == sqlite3.SQLITE_OK {
+			written = len(c.s) + 1
+			if string(buf[:len(c.s)]) != c.s || buf[len(c.s)] != 0 {
+				t.Fatalf("putPathname(%q) wrote %q", c.s, buf[:written])
+			}
+		}
+		for i, x := range buf[written:] {
+			if x != 0xff {
+				t.Fatalf("putPathname(%d bytes) touched byte %d", len(c.s), written+i)
+			}
+		}
+	}
+
+	// Through the read-only VFS, which this guards as well.
+	zPath, err := libc.CString(strings.Repeat("a", 5000))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer libc.Xfree(tls, zPath)
+	for i := range buf {
+		buf[i] = 0xff
+	}
+	if rc := vfsFullPathname(tls, 0, zPath, n, p); rc != sqlite3.SQLITE_CANTOPEN {
+		t.Fatalf("vfsFullPathname of a name longer than the buffer: rc %d", rc)
+	}
+	if !bytes.Equal(buf, bytes.Repeat([]byte{0xff}, n+8)) {
+		t.Fatal("vfsFullPathname of a name longer than the buffer wrote to it")
+	}
+}
+
+// sqliteNow returns what SQLite takes for the current time on db, in
+// milliseconds since 1970.
+func sqliteNow(t *testing.T, db *sql.DB) int64 {
+	t.Helper()
+	var (
+		sec  int64
+		frac string // SS.SSS
+	)
+	if err := db.QueryRow("SELECT CAST(strftime('%s','now') AS INTEGER), strftime('%f','now')").Scan(&sec, &frac); err != nil {
+		t.Fatal(err)
+	}
+
+	i := strings.IndexByte(frac, '.')
+	if i < 0 {
+		t.Fatalf("strftime('%%f','now'): %q", frac)
+	}
+
+	ms, err := strconv.Atoi(frac[i+1:])
+	if err != nil {
+		t.Fatalf("strftime('%%f','now'): %q", frac)
+	}
+
+	return sec*1000 + int64(ms)
+}
+
+// checkNow fails unless SQLite's clock on db is the wall clock and moves in
+// steps smaller than a second. A clock of whole seconds takes two values at
+// most in the 140 ms the samples span. It cannot be told by its fraction: it
+// reaches SQLite as a floating point Julian day, and one second in nine comes
+// back a millisecond short, as .999.
+func checkNow(t *testing.T, db *sql.DB) {
+	t.Helper()
+	seen := map[int64]bool{}
+	for i := 0; i < 20; i++ {
+		before := time.Now()
+		now := sqliteNow(t, db)
+		after := time.Now()
+		seen[now] = true
+		// If the wall clock did not move as the monotonic one did, it was set
+		// while the sample was taken, and there is nothing to hold now against.
+		if d := after.UnixMilli() - before.UnixMilli() - after.Sub(before).Milliseconds(); d >= -1 && d <= 1 {
+			if now < before.UnixMilli() || now > after.UnixMilli() {
+				t.Fatalf("SQLite's 'now' is %d ms, the clock around the query said %d to %d", now, before.UnixMilli(), after.UnixMilli())
+			}
+		}
+		time.Sleep(7 * time.Millisecond)
+	}
+	if len(seen) < 3 {
+		t.Fatalf("20 samples of 'now', 7 ms apart, took %d value(s): the clock moves in whole seconds", len(seen))
+	}
+}
+
+// TestVFSCurrentTime checks that 'now' has milliseconds on a connection
+// through a VFS made by New. It moved in steps of one second: the sqlite3_vfs
+// was version 1, whose xCurrentTime is time(0).
+func TestVFSCurrentTime(t *testing.T) {
+	const dbname = "now.db"
+	served := t.TempDir()
+	seedDB(t, served, dbname, "CREATE TABLE t (v TEXT NOT NULL)")
+	vfsid, vfsFS, err := New(os.DirFS(served))
+	if err != nil {
+		t.Fatalf("register vfs: %s", err)
+	}
+	defer vfsFS.Close()
+
+	db, err := sql.Open("sqlite", "file:"+dbname+"?vfs="+vfsid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	checkNow(t, db)
 }

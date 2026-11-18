@@ -2,7 +2,9 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package vfs exposes a Go [fs.FS] to SQLite as a read-only VFS.
+// Package vfs gives SQLite a VFS written in Go: a read-only one over a Go
+// [fs.FS], made by [New], or one a database can be written through, made by
+// [Register] from a [VFS].
 //
 // [New] registers the file system with SQLite and returns the name it was
 // registered under. Passing that name as the vfs DSN query parameter opens a
@@ -24,10 +26,16 @@
 // write path and refuses to create a journal, so a database opened through it
 // can only be read from.
 //
+// [Register] takes a [VFS], whose files SQLite reads, writes, truncates, syncs
+// and deletes: the database, its journal and the rest. It is the way to keep a
+// database somewhere a file system does not reach. See [Register] for what
+// the package does on top of the VFS, and for what it does not do yet.
+//
 // Registration is process-global, as SQLite's own VFS registry is. Each [New]
-// registers a separate VFS under a fresh name, and [FS.Close] unregisters it
-// again. Close every database opened through an [FS] before closing it: while
-// any is open, [FS.Close] refuses with an error wrapping [ErrInUse].
+// and each [Register] registers a separate VFS under a fresh name, and
+// [FS.Close] unregisters it again. Close every database opened through an [FS]
+// before closing it: while any is open, [FS.Close] refuses with an error
+// wrapping [ErrInUse].
 package vfs
 
 import (
@@ -37,6 +45,7 @@ import (
 	"io/fs"
 	"sync"
 	"sync/atomic"
+	"time"
 	"unsafe"
 
 	"modernc.org/libc"
@@ -223,6 +232,34 @@ func vfsAccess(tls *libc.TLS, pVfs uintptr, zPath uintptr, flags int32, pResOut 
 	return sqlite3.SQLITE_OK
 }
 
+// vfsFullPathname is the xFullPathname of a VFS made by New: names are
+// resolved by the wrapped fs.FS, so the name is its own full pathname. A
+// name that does not fit the buffer is refused; it used to be copied
+// without its terminator.
+func vfsFullPathname(tls *libc.TLS, pVfs uintptr, zPath uintptr, nPathOut int32, zPathOut uintptr) int32 {
+	return putPathname(libc.GoString(zPath), nPathOut, zPathOut)
+}
+
+// putPathname is the tail of an xFullPathname: it copies s, terminated, into
+// the nPathOut bytes at zPathOut, or refuses a name that does not fit there
+// or cannot be a C string.
+func putPathname(s string, nPathOut int32, zPathOut uintptr) int32 {
+	if int64(len(s)) >= int64(nPathOut) {
+		return sqlite3.SQLITE_CANTOPEN
+	}
+
+	for i := 0; i < len(s); i++ {
+		if s[i] == 0 {
+			return sqlite3.SQLITE_CANTOPEN
+		}
+	}
+
+	b := (*libc.RawMem)(unsafe.Pointer(zPathOut))[: len(s)+1 : len(s)+1]
+	copy(b, s)
+	b[len(s)] = 0
+	return sqlite3.SQLITE_OK
+}
+
 func vfsFileSize(tls *libc.TLS, pFile uintptr, pSize uintptr) int32 {
 	p := pFile
 	f := getObject((*VFSFile)(unsafe.Pointer(p)).fsFile).(*fileEntry).f
@@ -245,11 +282,12 @@ func vfsClose(tls *libc.TLS, pFile uintptr) int32 {
 	return sqlite3.SQLITE_OK
 }
 
-// FS represents a SQLite read only file system backed by Go's fs.FS.
+// FS is a VFS registered with SQLite: a read-only one backed by a Go fs.FS,
+// made by [New], or one made by [Register] from a [VFS].
 type FS struct {
 	cname    uintptr
 	cvfs     uintptr
-	entry    *fsEntry
+	open     *atomic.Int32 // files currently open through the VFS
 	fsHandle uintptr
 	name     string
 	tls      *libc.TLS
@@ -288,6 +326,7 @@ func New(fs fs.FS) (name string, _ *FS, _ error) {
 
 	// The C side wires the vfsDelete transpiled from vfs.c, see vfsDeleteReadOnly
 	*(*func(*libc.TLS, uintptr, uintptr, int32) int32)(unsafe.Pointer(&(*sqlite3_vfs)(unsafe.Pointer(vfs)).xDelete)) = vfsDeleteReadOnly
+	setCurrentTimeInt64((*sqlite3_vfs)(unsafe.Pointer(vfs)))
 
 	if rc := sqlite3.Xsqlite3_vfs_register(tls, vfs, libc.Bool32(false)); rc != sqlite3.SQLITE_OK {
 		removeObject(h)
@@ -297,7 +336,7 @@ func New(fs fs.FS) (name string, _ *FS, _ error) {
 		return "", nil, fmt.Errorf("registering VFS %s: %d", name, rc)
 	}
 
-	return name, &FS{name: name, cname: cname, cvfs: vfs, entry: e, fsHandle: h, tls: tls}, nil
+	return name, &FS{name: name, cname: cname, cvfs: vfs, open: &e.open, fsHandle: h, tls: tls}, nil
 }
 
 // Close unregisters f and releases its resources.
@@ -318,7 +357,7 @@ func (f *FS) Close() error {
 		return nil
 	}
 
-	if n := f.entry.open.Load(); n != 0 {
+	if n := f.open.Load(); n != 0 {
 		return fmt.Errorf("%w: closing VFS %s with %d file(s) still open", ErrInUse, f.name, n)
 	}
 
@@ -333,4 +372,23 @@ func (f *FS) Close() error {
 	}
 
 	return nil
+}
+
+// setCurrentTimeInt64 makes p a version 2 sqlite3_vfs with xCurrentTimeInt64.
+// The one vfs.c builds is version 1, so SQLite took the time from its
+// xCurrentTime, which is time(0) as a Julian day: 'now' moved in steps of one
+// second, in strftime('%f', 'now'), julianday('now') and
+// unixepoch('now', 'subsec') alike. SQLite prefers xCurrentTimeInt64 where
+// there is one.
+func setCurrentTimeInt64(p *sqlite3_vfs) {
+	p.iVersion = 2
+	*(*func(*libc.TLS, uintptr, uintptr) int32)(unsafe.Pointer(&p.xCurrentTimeInt64)) = vfsCurrentTimeInt64
+}
+
+// vfsCurrentTimeInt64 is unixCurrentTimeInt64: milliseconds since noon of
+// 24 November 4714 BC, the start of the Julian day count.
+func vfsCurrentTimeInt64(tls *libc.TLS, pVfs uintptr, piNow uintptr) int32 {
+	const unixEpoch = 24405875 * 8640000 // 1 January 1970 in those milliseconds
+	*(*int64)(unsafe.Pointer(piNow)) = unixEpoch + time.Now().UnixMilli()
+	return sqlite3.SQLITE_OK
 }
