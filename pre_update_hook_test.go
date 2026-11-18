@@ -349,3 +349,64 @@ func TestPreUpdateHookRowUnreadable(t *testing.T) {
 		}
 	}
 }
+
+// TestPreUpdateHookTextNUL checks that the pre-update hook gets a TEXT value
+// whole when it holds a NUL. It used to end at the first one.
+func TestPreUpdateHookTextNUL(t *testing.T) {
+	db, err := sql.Open("sqlite", "file::memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	ctx := context.Background()
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	var got []string
+	if err := conn.Raw(func(driverConn any) error {
+		driverConn.(sqlite.HookRegisterer).RegisterPreUpdateHook(func(data sqlite.SQLitePreUpdateData) {
+			record := func(what string, read func(...any) error) {
+				dest := make([]any, data.Count())
+				if err := read(dest...); err != nil {
+					got = append(got, what+": "+err.Error())
+					return
+				}
+
+				got = append(got, fmt.Sprintf("%s: %T %q", what, dest[0], dest[0]))
+			}
+			if data.Op != sqlite3.SQLITE_INSERT {
+				record("old", data.Old)
+			}
+			if data.Op != sqlite3.SQLITE_DELETE {
+				record("new", data.New)
+			}
+		})
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, stmt := range []string{
+		"CREATE TABLE t(a TEXT)",
+		"INSERT INTO t VALUES(CAST(x'6100620063' AS TEXT)), (''), (CAST(x'00' AS TEXT))",
+		"UPDATE t SET a = CAST(x'7A007A' AS TEXT) WHERE rowid = 1",
+		"DELETE FROM t",
+	} {
+		if _, err := conn.ExecContext(ctx, stmt); err != nil {
+			t.Fatalf("%s: %v", stmt, err)
+		}
+	}
+
+	want := []string{
+		`new: string "a\x00b\x00c"`, `new: string ""`, `new: string "\x00"`,
+		`old: string "a\x00b\x00c"`, `new: string "z\x00z"`,
+		`old: string "z\x00z"`, `old: string ""`, `old: string "\x00"`,
+	}
+	if !slices.Equal(got, want) {
+		t.Fatalf("the hook got\n%q\nwant\n%q", got, want)
+	}
+}
