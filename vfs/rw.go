@@ -116,9 +116,9 @@ type VFS interface {
 // SQLite owns the buffers it passes to ReadAt and WriteAt: a File must not
 // keep them, and must not change the one given to WriteAt.
 //
-// SQLite is told what it assumes of a disk: a write cut short by a loss of
-// power may damage the 4096 bytes around it and nothing further, and what
-// Sync returned from is safe.
+// SQLite is told a sector of 4096 bytes and no property of the storage: a
+// write cut short by a loss of power may damage the 4096-byte sectors it
+// touches and nothing further, and what Sync returned from is safe.
 type File interface {
 	// ReadAt is [io.ReaderAt]. A read that ends past the end of the file
 	// returns what there is and io.EOF.
@@ -460,9 +460,14 @@ func rwFileControl(tls *libc.TLS, pFile uintptr, op int32, pArg uintptr) int32 {
 	return sqlite3.SQLITE_NOTFOUND
 }
 
-// rwSectorSize answers what SQLite's own VFS answers. SQLite takes it for the
-// unit a write cut short by a loss of power may damage, and journals a page
-// together with the rest of its sector. Zero would be read as 512.
+// SQLite takes the sector size for the unit a write cut short by a loss of
+// power may damage, and journals a page together with the rest of its
+// sector. Zero would be read as 512. SQLite's own VFS answers 4096 as well,
+// but by default it also claims SQLITE_IOCAP_POWERSAFE_OVERWRITE, and with
+// that the pager works with 512: this VFS claims nothing, so it is the more
+// cautious of the two. It costs journal I/O: a journal header of 4096 bytes
+// instead of 512, and with pages smaller than 4096 bytes the neighbours of a
+// changed page.
 func rwSectorSize(tls *libc.TLS, pFile uintptr) int32 {
 	return sqlite3.SQLITE_DEFAULT_SECTOR_SIZE
 }
