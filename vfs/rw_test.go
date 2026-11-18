@@ -17,7 +17,6 @@ import (
 	"path/filepath"
 	"slices"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -940,104 +939,140 @@ func TestRegisterTempFiles(t *testing.T) {
 	integrity(t, db)
 }
 
-// TestTempFile checks the file the package keeps SQLite's temporary files in:
-// reads past the end, a write that leaves a gap, growth, and truncation in
-// both directions.
+// TestTempFile checks the file SQLite's temporary files are kept in: against
+// a plain byte slice that takes the same writes, reads and truncations around
+// the borders of its pieces, and then what it costs in memory, which is what
+// VACUUM of a large database depends on.
 func TestTempFile(t *testing.T) {
-	var f tempFile
-	read := func(off int64, n int) (string, error) {
-		p := make([]byte, n)
-		m, err := f.ReadAt(p, off)
-		return string(p[:m]), err
-	}
-	if got, err := read(0, 4); got != "" || err != io.EOF {
-		t.Fatalf("reading an empty file: %q, %v", got, err)
-	}
+	var (
+		f     tempFile
+		model []byte
+	)
+	rng := rand.New(rand.NewSource(1))
+	offset := func() int64 {
+		// Near a border of a piece more often than not.
+		off := int64(rng.Intn(4)) * tempChunk
+		if rng.Intn(3) != 0 {
+			return max(0, off+int64(rng.Intn(64))-32)
+		}
 
-	if n, err := f.WriteAt([]byte("abc"), 5); n != 3 || err != nil {
-		t.Fatalf("WriteAt: %d, %v", n, err)
+		return off + int64(rng.Intn(tempChunk))
 	}
-
-	if got, err := read(0, 8); got != "\x00\x00\x00\x00\x00abc" || err != nil {
-		t.Fatalf("after a write that leaves a gap: %q, %v", got, err)
+	length := func() int {
+		switch rng.Intn(4) {
+		case 0:
+			return rng.Intn(4)
+		case 1:
+			return tempChunk + rng.Intn(64) - 32
+		default:
+			return rng.Intn(2 * tempChunk)
+		}
 	}
+	for i := 0; i < 3000; i++ {
+		switch op := rng.Intn(10); {
+		case op < 4:
+			off, p := offset(), make([]byte, length())
+			for j := range p {
+				p[j] = byte(1 + rng.Intn(255))
+			}
+			if n, err := f.WriteAt(p, off); n != len(p) || err != nil {
+				t.Fatalf("step %d: WriteAt(%d bytes, %d): %d, %v", i, len(p), off, n, err)
+			}
 
-	if got, err := read(6, 8); got != "bc" || err != io.EOF {
-		t.Fatalf("reading across the end: %q, %v", got, err)
-	}
+			// A write of nothing does not make the file longer.
+			if end := off + int64(len(p)); len(p) != 0 && end > int64(len(model)) {
+				model = resize(model, end)
+			}
+			copy(model[min(off, int64(len(model))):], p)
+		case op < 6:
+			size := offset()
+			if err := f.Truncate(size); err != nil {
+				t.Fatalf("step %d: Truncate(%d): %v", i, size, err)
+			}
 
-	if err := f.Truncate(6); err != nil {
-		t.Fatal(err)
-	}
-
-	// The bytes cut off must not come back when the file grows again.
-	if n, err := f.WriteAt([]byte("z"), 9); n != 1 || err != nil {
-		t.Fatalf("WriteAt: %d, %v", n, err)
-	}
-
-	if got, err := read(0, 10); got != "\x00\x00\x00\x00\x00a\x00\x00\x00z" || err != nil {
-		t.Fatalf("after cutting and growing: %q, %v", got, err)
-	}
-
-	// Nor when it grows within the memory it already has.
-	if err := f.Truncate(6); err != nil {
-		t.Fatal(err)
-	}
-
-	if n, err := f.WriteAt([]byte("y"), 12); n != 1 || err != nil {
-		t.Fatalf("WriteAt: %d, %v", n, err)
-	}
-
-	if got, err := read(0, 13); got != "\x00\x00\x00\x00\x00a\x00\x00\x00\x00\x00\x00y" || err != nil {
-		t.Fatalf("after cutting and growing again: %q, %v", got, err)
-	}
-
-	if err := f.Truncate(15); err != nil {
-		t.Fatal(err)
-	}
-
-	if size, err := f.Size(); size != 15 || err != nil {
-		t.Fatalf("Size: %d, %v", size, err)
-	}
-
-	if got, _ := read(12, 3); got != "y\x00\x00" {
-		t.Fatalf("after growing by Truncate: %q", got)
-	}
-
-	big := bytes.Repeat([]byte{7}, 1<<20)
-	if n, err := f.WriteAt(big, 3); n != len(big) || err != nil {
-		t.Fatalf("WriteAt: %d, %v", n, err)
-	}
-
-	if size, _ := f.Size(); size != 3+1<<20 {
-		t.Fatalf("Size after a megabyte: %d", size)
-	}
-
-	if _, err := f.WriteAt(nil, -1); err == nil {
-		t.Fatal("a write at a negative offset succeeded")
-	}
-
-	// Sizes no slice can have are an error, not a panic.
-	if _, err := f.WriteAt([]byte("ab"), math.MaxInt64-1); !errors.Is(err, ErrFull) {
-		t.Fatalf("a write that ends past the largest offset: %v, want ErrFull", err)
-	}
-
-	if strconv.IntSize == 32 {
-		if _, err := f.WriteAt([]byte("ab"), math.MaxInt32); !errors.Is(err, ErrFull) {
-			t.Fatalf("a write that ends past the largest slice: %v, want ErrFull", err)
+			model = resize(model, size)
+		default:
+			off, p := offset(), bytes.Repeat([]byte{0xff}, length())
+			n, err := f.ReadAt(p, off)
+			want := []byte{}
+			if off < int64(len(model)) {
+				want = model[off:min(int64(len(model)), off+int64(len(p)))]
+			}
+			wantErr := error(nil)
+			if len(want) < len(p) || off >= int64(len(model)) {
+				wantErr = io.EOF
+			}
+			if n != len(want) || err != wantErr || !bytes.Equal(p[:n], want) {
+				t.Fatalf("step %d: ReadAt(%d bytes, %d) of a file of %d: %d bytes, %v; want %d, %v, or the bytes differ", i, len(p), off, len(model), n, err, len(want), wantErr)
+			}
+		}
+		if size, err := f.Size(); size != int64(len(model)) || err != nil {
+			t.Fatalf("step %d: Size: %d, %v, want %d", i, size, err, len(model))
 		}
 	}
 
-	if size, _ := f.Size(); size != 3+1<<20 {
-		t.Fatalf("Size after the refused writes: %d", size)
+	if _, err := f.WriteAt([]byte("a"), -1); err == nil {
+		t.Fatal("a write at a negative offset succeeded")
+	}
+
+	if _, err := f.ReadAt(make([]byte, 1), -1); err == nil {
+		t.Fatal("a read at a negative offset succeeded")
+	}
+
+	if err := f.Truncate(-1); err == nil {
+		t.Fatal("a truncation to a negative size succeeded")
 	}
 
 	if err := f.Sync(SyncFull); err != nil {
 		t.Fatal(err)
 	}
 
-	if err := f.Close(); err != nil {
-		t.Fatal(err)
+	if err := f.Close(); err != nil || len(f.chunks) != 0 {
+		t.Fatalf("Close: %v, %d piece(s) left", err, len(f.chunks))
+	}
+
+	// A file written from start to end, a page at a time, as VACUUM writes
+	// its copy, takes its size rounded up to a piece and nothing more.
+	f = tempFile{}
+	const pages, pageSize = 2000, 4096
+	page := bytes.Repeat([]byte{7}, pageSize)
+	for i := int64(0); i < pages; i++ {
+		if _, err := f.WriteAt(page, i*pageSize); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got, want := len(f.chunks), (pages*pageSize+tempChunk-1)/tempChunk; got != want {
+		t.Fatalf("a file of %d bytes is kept in %d pieces of %d bytes, want %d", pages*pageSize, got, tempChunk, want)
+	}
+
+	// Cut to nothing, it holds nothing.
+	if err := f.Truncate(0); err != nil || len(f.chunks) != 0 {
+		t.Fatalf("Truncate(0): %v, %d piece(s) left", err, len(f.chunks))
+	}
+
+	// A hole costs nothing, wherever it ends, and reads as zeros.
+	const far = (math.MaxInt64/tempChunk - 1) * tempChunk // the start of a piece
+	if err := f.Truncate(far); err != nil || len(f.chunks) != 0 {
+		t.Fatalf("Truncate(%d): %v, %d piece(s)", int64(far), err, len(f.chunks))
+	}
+
+	p := []byte{1, 2, 3}
+	if n, err := f.ReadAt(p, far-2); n != 2 || err != io.EOF || p[0] != 0 || p[1] != 0 {
+		t.Fatalf("reading the end of a hole: %d, %v, % x", n, err, p[:2])
+	}
+
+	if n, err := f.WriteAt([]byte("ab"), far); n != 2 || err != nil || len(f.chunks) != 1 {
+		t.Fatalf("a write after a hole: %d, %v, %d piece(s), want one", n, err, len(f.chunks))
+	}
+
+	// An end past the largest offset is an error, not a panic, and changes
+	// nothing.
+	if _, err := f.WriteAt([]byte("ab"), math.MaxInt64-1); !errors.Is(err, ErrFull) {
+		t.Fatalf("a write that ends past the largest offset: %v, want ErrFull", err)
+	}
+
+	if size, _ := f.Size(); size != far+2 || len(f.chunks) != 1 {
+		t.Fatalf("after the refused write: size %d, %d piece(s)", size, len(f.chunks))
 	}
 }
 

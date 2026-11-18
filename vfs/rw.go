@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"math"
 	"sync"
 	"sync/atomic"
 	"unsafe"
@@ -70,7 +69,7 @@ var ErrFull = errors.New("vfs: storage is full")
 // write-ahead log through Open, each under the name FullPathname returned for
 // the database with a suffix added: "-journal", "-wal", or "-mj" and nine more
 // characters. Temporary files are not opened through the VFS: the package
-// keeps them in memory.
+// keeps them in memory, see [Register].
 //
 // The names come from SQLite and not all of them from the DSN: the name of
 // a super-journal is read from the journal found next to a database, so
@@ -497,11 +496,17 @@ func rwFullPathname(tls *libc.TLS, pVfs uintptr, zPath uintptr, nPathOut int32, 
 	return putPathname(s, nPathOut, zPathOut)
 }
 
+// tempChunk is the size of the pieces a tempFile is kept in.
+const tempChunk = 64 << 10
+
 // tempFile is a temporary file of SQLite: a statement journal, the spill of a
-// sort, a temporary table. It lives in memory and goes with its last
-// reference.
+// sort, a temporary table, the copy VACUUM makes. It lives in memory and goes
+// with its last reference. It is kept in pieces of tempChunk bytes, made
+// when they are first written: the file takes about its size and never has
+// to be copied to grow, and a hole in it costs nothing.
 type tempFile struct {
-	b []byte
+	chunks map[int64][]byte // by offset / tempChunk; a missing one reads as zeros
+	size   int64
 }
 
 func (t *tempFile) ReadAt(p []byte, off int64) (int, error) {
@@ -509,11 +514,22 @@ func (t *tempFile) ReadAt(p []byte, off int64) (int, error) {
 		return 0, fs.ErrInvalid
 	}
 
-	if off >= int64(len(t.b)) {
+	if off >= t.size {
 		return 0, io.EOF
 	}
 
-	n := copy(p, t.b[off:])
+	n := int(min(int64(len(p)), t.size-off))
+	for done := 0; done < n; {
+		at := off + int64(done)
+		in := int(at % tempChunk)
+		part := p[done : done+min(n-done, tempChunk-in)]
+		if c := t.chunks[at/tempChunk]; c != nil {
+			copy(part, c[in:])
+		} else {
+			clear(part)
+		}
+		done += len(part)
+	}
 	if n < len(p) {
 		return n, io.EOF
 	}
@@ -527,45 +543,55 @@ func (t *tempFile) WriteAt(p []byte, off int64) (int, error) {
 	}
 
 	end := off + int64(len(p))
-	if end < off || end > math.MaxInt {
+	if end < off {
 		return 0, ErrFull
 	}
 
-	if end > int64(len(t.b)) {
-		if end > int64(cap(t.b)) {
-			nb := make([]byte, end, max(end, min(2*int64(cap(t.b)), math.MaxInt)))
-			copy(nb, t.b)
-			t.b = nb
-		} else {
-			old := len(t.b)
-			t.b = t.b[:end]
-			if off > int64(old) {
-				clear(t.b[old:off])
+	for done := 0; done < len(p); {
+		at := off + int64(done)
+		in := int(at % tempChunk)
+		c := t.chunks[at/tempChunk]
+		if c == nil {
+			if t.chunks == nil {
+				t.chunks = map[int64][]byte{}
+			}
+			c = make([]byte, tempChunk)
+			t.chunks[at/tempChunk] = c
+		}
+		done += copy(c[in:], p[done:])
+	}
+	if len(p) != 0 && end > t.size {
+		t.size = end
+	}
+	return len(p), nil
+}
+
+func (t *tempFile) Close() error { t.chunks, t.size = nil, 0; return nil }
+
+func (t *tempFile) Truncate(size int64) error {
+	if size < 0 {
+		return fs.ErrInvalid
+	}
+
+	if size < t.size {
+		// What is cut off must read as zeros if the file grows again.
+		last := size / tempChunk
+		for i, c := range t.chunks {
+			switch {
+			case i > last || size%tempChunk == 0 && i == last:
+				delete(t.chunks, i)
+			case i == last:
+				clear(c[size%tempChunk:])
 			}
 		}
 	}
-	return copy(t.b[off:], p), nil
-}
-
-func (t *tempFile) Close() error { t.b = nil; return nil }
-
-func (t *tempFile) Truncate(size int64) error {
-	switch {
-	case size < 0:
-		return fs.ErrInvalid
-	case size <= int64(len(t.b)):
-		t.b = t.b[:size]
-	default:
-		_, err := t.WriteAt(nil, size)
-		return err
-	}
-
+	t.size = size
 	return nil
 }
 
 func (t *tempFile) Sync(SyncFlag) error { return nil }
 
-func (t *tempFile) Size() (int64, error) { return int64(len(t.b)), nil }
+func (t *tempFile) Size() (int64, error) { return t.size, nil }
 
 // Register registers v with SQLite as a VFS a database can be read and
 // written through, and returns the name it was registered under, to be given
@@ -595,6 +621,13 @@ func (t *tempFile) Size() (int64, error) { return int64(len(t.b)), nil }
 // it was, and a database that already is in WAL mode cannot be opened at all.
 // A WAL database therefore needs the pragma in the DSN and a pool of one
 // connection.
+//
+// SQLite's temporary files are kept in memory and take that much of it for
+// as long as they are open. VACUUM builds a copy of the whole database in
+// one; a sort or a CREATE INDEX too large for SQLite's cache, a large
+// temporary table and a large statement journal are others. Nothing bounds
+// them: where SQLite's own VFS would fill a disk, SQL run through this one
+// can make the process run out of memory.
 //
 // Registration is process-global, and [FS.Close] has the same contract as for
 // a file system made by [New].
