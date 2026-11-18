@@ -91,6 +91,7 @@ type VFS interface {
 	// does. The returned flags say how the file was opened in fact: return
 	// OpenReadOnly for a file that cannot be written although OpenReadWrite
 	// was asked for, and flags otherwise. No other bit of the result is used.
+	// A File returned together with an error is closed.
 	Open(name string, flags OpenFlag) (File, OpenFlag, error)
 
 	// Delete removes the named file. With syncDir, the removal itself must be
@@ -221,6 +222,9 @@ func rwOpen(tls *libc.TLS, pVfs uintptr, zName uintptr, pFile uintptr, flags int
 		name := libc.GoString(zName)
 		f, out, err := e.v.Open(name, OpenFlag(flags))
 		if err != nil || f == nil {
+			if f != nil {
+				f.Close() // it came with an error: SQLite will not close it
+			}
 			return sqlite3.SQLITE_CANTOPEN
 		}
 

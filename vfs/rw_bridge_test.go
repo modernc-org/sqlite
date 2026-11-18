@@ -494,6 +494,17 @@ func TestRegisterResultCodes(t *testing.T) {
 			t.Fatalf("a failed xOpen left pMethods %#x", m)
 		}
 	}
+	// A File that comes with an error is closed: SQLite will not do it.
+	closed := 0
+	v.open = func(string, OpenFlag) (File, OpenFlag, error) {
+		return &fakeFile{close: func() error { closed++; return boom }}, 0, boom
+	}
+	p, rc := b.open("test.db", mainDB)
+	check("xOpen, a File and an error", rc, sqlite3.SQLITE_CANTOPEN)
+	if m := (*VFSFile)(unsafe.Pointer(p)).base.pMethods; m != 0 || closed != 1 {
+		t.Fatalf("an xOpen that got a File and an error left pMethods %#x and closed the File %d time(s), want once", m, closed)
+	}
+
 	objectMu.Lock()
 	after := len(objects)
 	objectMu.Unlock()
