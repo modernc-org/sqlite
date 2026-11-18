@@ -635,6 +635,7 @@ func Register(v VFS) (name string, _ *FS, _ error) {
 	*(*func(*libc.TLS, uintptr, uintptr, int32) int32)(unsafe.Pointer(&p.xDelete)) = rwDelete
 	*(*func(*libc.TLS, uintptr, uintptr, int32, uintptr) int32)(unsafe.Pointer(&p.xAccess)) = rwAccess
 	*(*func(*libc.TLS, uintptr, uintptr, int32, uintptr) int32)(unsafe.Pointer(&p.xFullPathname)) = rwFullPathname
+	setCurrentTimeInt64(p)
 
 	if rc := sqlite3.Xsqlite3_vfs_register(tls, vfs, libc.Bool32(false)); rc != sqlite3.SQLITE_OK {
 		removeObject(h)

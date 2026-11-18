@@ -45,6 +45,7 @@ import (
 	"io/fs"
 	"sync"
 	"sync/atomic"
+	"time"
 	"unsafe"
 
 	"modernc.org/libc"
@@ -325,6 +326,7 @@ func New(fs fs.FS) (name string, _ *FS, _ error) {
 
 	// The C side wires the vfsDelete transpiled from vfs.c, see vfsDeleteReadOnly
 	*(*func(*libc.TLS, uintptr, uintptr, int32) int32)(unsafe.Pointer(&(*sqlite3_vfs)(unsafe.Pointer(vfs)).xDelete)) = vfsDeleteReadOnly
+	setCurrentTimeInt64((*sqlite3_vfs)(unsafe.Pointer(vfs)))
 
 	if rc := sqlite3.Xsqlite3_vfs_register(tls, vfs, libc.Bool32(false)); rc != sqlite3.SQLITE_OK {
 		removeObject(h)
@@ -370,4 +372,23 @@ func (f *FS) Close() error {
 	}
 
 	return nil
+}
+
+// setCurrentTimeInt64 makes p a version 2 sqlite3_vfs with xCurrentTimeInt64.
+// The one vfs.c builds is version 1, so SQLite took the time from its
+// xCurrentTime, which is time(0) as a Julian day: 'now' moved in steps of one
+// second, in strftime('%f', 'now'), julianday('now') and
+// unixepoch('now', 'subsec') alike. SQLite prefers xCurrentTimeInt64 where
+// there is one.
+func setCurrentTimeInt64(p *sqlite3_vfs) {
+	p.iVersion = 2
+	*(*func(*libc.TLS, uintptr, uintptr) int32)(unsafe.Pointer(&p.xCurrentTimeInt64)) = vfsCurrentTimeInt64
+}
+
+// vfsCurrentTimeInt64 is unixCurrentTimeInt64: milliseconds since noon of
+// 24 November 4714 BC, the start of the Julian day count.
+func vfsCurrentTimeInt64(tls *libc.TLS, pVfs uintptr, piNow uintptr) int32 {
+	const unixEpoch = 24405875 * 8640000 // 1 January 1970 in those milliseconds
+	*(*int64)(unsafe.Pointer(piNow)) = unixEpoch + time.Now().UnixMilli()
+	return sqlite3.SQLITE_OK
 }

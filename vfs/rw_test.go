@@ -1040,3 +1040,9 @@ func TestTempFile(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TestRegisterCurrentTime checks that 'now' has milliseconds on a connection
+// through a VFS made by Register: a database that can be written stores it.
+func TestRegisterCurrentTime(t *testing.T) {
+	checkNow(t, openRW(t, newMemStore(), "test.db", 1))
+}
