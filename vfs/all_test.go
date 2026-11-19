@@ -560,6 +560,93 @@ func TestVFSDeleteRefused(t *testing.T) {
 	}
 }
 
+// TestVFSJournalNextToDB checks a database served with a -journal file next
+// to it. SQLite opens the journal read-only to see whether it is hot: one that
+// journal_mode=PERSIST or TRUNCATE leaves behind is not, and the database
+// reads; a hot one fails the read with SQLITE_READONLY_ROLLBACK. Both must
+// match the default VFS opening the same files with mode=ro. vfsOpen used to
+// refuse every journal with SQLITE_NOMEM, so each of these reads failed as out
+// of memory. The journal must come out of it unchanged.
+func TestVFSJournalNextToDB(t *testing.T) {
+	const dbname = "journal_canary.db"
+	for _, test := range []struct {
+		name string
+		mode string // the journal_mode that leaves the journal behind, "" for one written by hand
+		hot  bool
+	}{
+		{"persist", "persist", false},
+		{"truncate", "truncate", false},
+		{"hot", "", true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			served := t.TempDir()
+			dsn := "file:" + filepath.Join(served, dbname)
+			if test.mode != "" {
+				dsn += "?_pragma=journal_mode(" + test.mode + ")"
+			}
+			db, err := sql.Open("sqlite", dsn)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, s := range []string{
+				"CREATE TABLE t (v TEXT NOT NULL)",
+				"INSERT INTO t (v) VALUES ('hello')",
+			} {
+				if _, err := db.Exec(s); err != nil {
+					t.Fatalf("exec %q: %s", s, E(err))
+				}
+			}
+			if err := db.Close(); err != nil {
+				t.Fatal(err)
+			}
+			journal := filepath.Join(served, dbname+"-journal")
+			if test.hot {
+				if err := os.WriteFile(journal, []byte("a hot journal"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			before, err := os.ReadFile(journal)
+			if err != nil {
+				t.Fatalf("the journal: %v", err)
+			}
+
+			vfsid, vfsFS, err := New(os.DirFS(served))
+			if err != nil {
+				t.Fatalf("register vfs: %s", err)
+			}
+			defer vfsFS.Close()
+			for _, dsn := range []string{
+				"file:" + dbname + "?vfs=" + vfsid,
+				"file:" + filepath.Join(served, dbname) + "?mode=ro",
+			} {
+				db, err := sql.Open("sqlite", dsn)
+				if err != nil {
+					t.Fatal(err)
+				}
+				var v string
+				err = db.QueryRow("SELECT v FROM t").Scan(&v)
+				db.Close()
+				switch {
+				case test.hot:
+					var se *sqlite.Error
+					if !errors.As(err, &se) || se.Code() != sqlite3.SQLITE_READONLY_ROLLBACK {
+						t.Errorf("%s: %v, want SQLITE_READONLY_ROLLBACK", dsn, err)
+					}
+				case err != nil || v != "hello":
+					t.Errorf("%s: %q, %v", dsn, v, err)
+				}
+			}
+			after, err := os.ReadFile(journal)
+			if err != nil {
+				t.Fatalf("the journal afterwards: %v", err)
+			}
+			if !bytes.Equal(after, before) {
+				t.Errorf("the journal changed")
+			}
+		})
+	}
+}
+
 // TestPutPathname checks the tail of both xFullPathname methods: a name that
 // fits is copied with its terminator and nothing after it is touched, a name
 // that does not fit is refused and nothing is written. The read-only VFS

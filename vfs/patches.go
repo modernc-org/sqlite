@@ -24,7 +24,9 @@
 // Any [fs.FS] will do, an embed.FS included, which is what makes this useful
 // for shipping a database inside the binary. The VFS is read only: it has no
 // write path and refuses to create a journal, so a database opened through it
-// can only be read from.
+// can only be read from. A hot journal next to the database, one SQLite would
+// have to roll back first, makes reading it fail with SQLITE_READONLY_ROLLBACK,
+// as a database opened with mode=ro does.
 //
 // [Register] takes a [VFS], whose files SQLite reads, writes, truncates, syncs
 // and deletes: the database, its journal and the rest. It is the way to keep a
@@ -163,10 +165,12 @@ func vfsOpen(tls *libc.TLS, pVfs uintptr, zName uintptr, pFile uintptr, flags in
 		return sqlite3.SQLITE_IOERR
 	}
 
-	if flags&sqlite3.SQLITE_OPEN_MAIN_JOURNAL != 0 {
-		return sqlite3.SQLITE_NOMEM
-	}
-
+	// A journal opens read-only like any other file. SQLite opens one it finds
+	// next to the database to see whether it is hot: one journal_mode=PERSIST
+	// or TRUNCATE leaves behind is not, and the database reads; a hot one fails
+	// the read with SQLITE_READONLY_ROLLBACK, as with mode=ro. Every journal
+	// used to be refused with SQLITE_NOMEM, which failed each read of such a
+	// database as out of memory.
 	p := pFile
 	*(*VFSFile)(unsafe.Pointer(p)) = VFSFile{}
 	e := getObject((*sqlite3_vfs)(unsafe.Pointer(pVfs)).pAppData).(*fsEntry)
@@ -180,9 +184,9 @@ func vfsOpen(tls *libc.TLS, pVfs uintptr, zName uintptr, pFile uintptr, flags in
 	(*VFSFile)(unsafe.Pointer(p)).fsFile = h
 	if pOutFlags != 0 {
 		// SQLite reads the out-flags for SQLITE_OPEN_READONLY, and this VFS
-		// cannot write: vfsio has no xWrite, xTruncate or xSync. Reported as
-		// writable, a write with the journal off went to the missing xWrite
-		// and panicked.
+		// cannot write: the xWrite, xTruncate and xSync of vfsio only fail.
+		// Reported as writable, a write with the journal off went to an
+		// xWrite vfsio did not have then, and panicked.
 		*(*int32)(unsafe.Pointer(pOutFlags)) = sqlite3.SQLITE_OPEN_READONLY
 	}
 	(*VFSFile)(unsafe.Pointer(p)).base.pMethods = uintptr(unsafe.Pointer(&vfsio))
