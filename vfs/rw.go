@@ -150,14 +150,202 @@ const (
 	lockExclusive = int32(sqlite3.SQLITE_LOCK_EXCLUSIVE)
 )
 
+// LockLevel is a level of SQLite's file locking, described in
+// https://www.sqlite.org/lockingv3.html. The values are SQLite's.
+type LockLevel int32
+
+// The lock levels. A database is read under LockShared and written under
+// LockExclusive; LockReserved announces a writer while others still read, and
+// LockPending keeps new readers out while the writer waits for the ones that
+// are in.
+const (
+	LockNone      = LockLevel(lockNone)
+	LockShared    = LockLevel(lockShared)
+	LockReserved  = LockLevel(lockReserved)
+	LockPending   = LockLevel(lockPending)
+	LockExclusive = LockLevel(lockExclusive)
+)
+
+// ErrBusy is what [Locker.Lock] returns, alone or wrapped, when another
+// Locker holds a lock that is in the way. SQLite then reports SQLITE_BUSY,
+// and its busy handler decides whether to ask again.
+var ErrBusy = errors.New("vfs: database is locked")
+
+// LockOpener is implemented by a [VFS] whose databases can be opened from
+// outside the registration: by another process, or through a second
+// registration of the same storage. Without it the package keeps apart only
+// the connections that go through one registration, see [Register].
+type LockOpener interface {
+	// OpenLock returns the lock of the database called name, a name
+	// [VFS.FullPathname] returned. It is called after the Open of the first
+	// file the registration has on the database, whatever the mode of that
+	// Open, and the Locker serves every connection that opens the database
+	// from then on; it is closed after the last file on the database. A nil
+	// Locker with a nil error means that nothing outside the registration
+	// can open this database. A Locker returned together with an error is
+	// closed.
+	//
+	// OpenLock and the Close of a Locker are never called at the same time,
+	// for any two databases of the registration: a database is not given a
+	// second Locker before its first one is closed.
+	OpenLock(name string) (Locker, error)
+}
+
+// Locker is the lock one registration holds on one database against every
+// other Locker of that database, in this process or in another.
+//
+// The package runs SQLite's locking between the connections of the
+// registration itself and calls the Locker only when the lock of all of them
+// together has to change: Lock(LockShared) for the first reader,
+// Unlock(LockNone) after the last, and the steps of a writer in between. The
+// calls for one database never overlap.
+//
+// What a Locker must keep to, where held means held by another Locker:
+//
+//   - LockShared is refused while LockPending or LockExclusive is held. The
+//     decision is atomic: a reader that was let in is in before a writer can
+//     take LockExclusive.
+//   - LockReserved is refused while LockReserved or more is held.
+//   - LockPending is asked for only by the holder of LockReserved. It may be
+//     refused for a moment, as it is by the way SQLite's own VFS lets a
+//     reader in.
+//   - LockExclusive is refused while any lock is held.
+//   - A refusal changes nothing: the lock is what it was before the call.
+//   - Unlock(LockShared) keeps the database locked for reading all the time:
+//     it must not release the lock and take it again.
+//   - A Locker whose process died holds nothing.
+//   - Two Lockers of one database are two lockers, also in one process.
+//
+// The last rule is what POSIX record locks do not give. They belong to the
+// process: two descriptors of one process never refuse each other, and
+// closing any descriptor of the file drops every lock the process has on it.
+// A Locker built on them needs one descriptor and one state per database for
+// the whole process, shared by its registrations and by its Files, and not
+// closed while a lock is held. Open file description locks on Linux and
+// LockFileEx on Windows are held by the handle and need none of that. To
+// share a database with programs that use SQLite's own VFS on unix, take the
+// locks SQLite takes: the byte at offset 0x40000000 for LockPending, the next
+// byte for LockReserved, and the 510 bytes after it for LockShared (a read
+// lock) and LockExclusive (a write lock), entering LockShared under a read
+// lock on the pending byte.
+//
+// The methods are called on the goroutine that runs the statement. They must
+// not wait for a lock and must not run SQL on a connection that goes through
+// the same VFS, and a panic in one is not recovered.
+type Locker interface {
+	// Lock raises the lock to level: to LockShared from LockNone, to
+	// LockReserved from LockShared, to LockPending from LockReserved, and to
+	// LockExclusive from LockPending or, to roll back the journal a dead
+	// writer left, straight from LockShared. It returns ErrBusy when another
+	// Locker is in the way. After any other error the package does not know
+	// what the Locker holds, see Unlock.
+	Lock(level LockLevel) error
+
+	// Unlock lowers the lock to LockShared or to LockNone.
+	//
+	// After an error from Unlock, or one other than ErrBusy from Lock, the
+	// package does not know what the Locker holds. While connections of the
+	// registration still hold the database, it fails every request for a
+	// higher lock and every read, write and sync of the database with an
+	// I/O error, and no read or write of the database is under way while
+	// Lock or Unlock runs. Once the connections have let go, it calls
+	// Unlock(LockNone), again if need be before the next Lock, and goes on
+	// when that succeeds.
+	Unlock(level LockLevel) error
+
+	// CheckReserved reports whether another Locker has taken LockReserved
+	// and not given it up: whether a writer is at work whose journal must be
+	// left alone. A Locker that went straight from LockShared to
+	// LockExclusive need not be reported. CheckReserved may be called while
+	// this Locker holds nothing, and it changes nothing of what the Locker
+	// holds, also when it fails.
+	CheckReserved() (bool, error)
+
+	// Close releases the Locker and what it still holds. SQLite does not
+	// look at the error.
+	io.Closer
+}
+
 // lockState is the lock on one database of a registered VFS, shared by every
-// file open on its name. It does within one process what the POSIX locks of
-// SQLite's own VFS do between processes.
+// file open on its name. It does within one registration what the POSIX locks
+// of SQLite's own VFS do between processes, and like that VFS it takes the
+// lock of them all together from outside, if the VFS has one to give.
 type lockState struct {
-	refs   int     // files open on the name
-	shared int     // of those, the ones holding SHARED or more
+	refs int    // files open on the name, under rwEntry.mu
+	lk   Locker // the lock against other registrations and processes, or nil
+
+	mu     sync.Mutex
+	shared int     // of the files, the ones holding SHARED or more
 	owner  *rwFile // the one holding RESERVED, PENDING or EXCLUSIVE, if any
 	level  int32   // what owner holds
+
+	// unsure is set when a call of lk failed and what lk holds is not known.
+	// broken is set with it for as long as files still hold the lock: the
+	// database is not touched then.
+	//
+	// io keeps reads and writes of the database apart from the calls that
+	// can lose its lock. A read or write holds it shared; Lock and Unlock
+	// of lk are called, and broken is changed, with io held exclusively and
+	// under mu. So no byte is read under a lock that is being lost, and
+	// broken is read under either of the two.
+	unsure bool
+	broken bool
+	io     sync.RWMutex
+}
+
+// call makes a call of lk that can change what it holds: with reads and
+// writes of the database kept out, and with the state that follows from the
+// result set before they come back. The caller holds ls.mu.
+func (ls *lockState) call(f func() error, releasesAll bool) error {
+	ls.io.Lock()
+	defer ls.io.Unlock()
+	err := f()
+	switch {
+	case err == nil && releasesAll:
+		ls.unsure, ls.broken = false, false
+	case err != nil && !errors.Is(err, errRefused):
+		ls.unsure, ls.broken = true, ls.shared > 0
+	}
+	return err
+}
+
+// errRefused marks, inside the package, an ErrBusy that Lock returned: the
+// one error of a Locker after which what it holds is known.
+var errRefused = errors.New("refused")
+
+// raise takes the lock outside the registration up to level, which the
+// in-process state already allows. It returns SQLITE_OK, also when there is
+// no Locker, SQLITE_BUSY when another Locker is in the way and nothing has
+// changed, or SQLITE_IOERR_LOCK. The caller holds ls.mu.
+func (ls *lockState) raise(level int32) int32 {
+	if ls.lk == nil {
+		return sqlite3.SQLITE_OK
+	}
+
+	if ls.unsure {
+		// No file holds the lock, or broken would have stopped the caller:
+		// have the Locker let go of whatever a failed call left it with.
+		if err := ls.call(func() error { return ls.lk.Unlock(LockNone) }, true); err != nil {
+			return sqlite3.SQLITE_IOERR_LOCK
+		}
+	}
+
+	err := ls.call(func() error {
+		err := ls.lk.Lock(LockLevel(level))
+		if errors.Is(err, ErrBusy) {
+			return errRefused
+		}
+
+		return err
+	}, false)
+	switch {
+	case err == nil:
+		return sqlite3.SQLITE_OK
+	case err == errRefused:
+		return sqlite3.SQLITE_BUSY
+	default:
+		return sqlite3.SQLITE_IOERR_LOCK
+	}
 }
 
 // rwEntry is what the pAppData of a VFS made by Register refers to.
@@ -165,6 +353,10 @@ type rwEntry struct {
 	v    VFS
 	open atomic.Int32 // files currently open through v, temporary ones included
 
+	// mu guards locks, the refs of each lockState and the life of its
+	// Locker: OpenLock and the Close of a Locker are called under it, so
+	// that a database is never given a second Locker before its first one
+	// is closed. It is not held while a lock is taken or released.
 	mu    sync.Mutex
 	locks map[string]*lockState // by the name of the database
 }
@@ -177,7 +369,7 @@ type rwFile struct {
 
 	ls   *lockState // nil unless the file is a database
 	name string     // key of ls in e.locks
-	lock int32      // level this file holds, under e.mu
+	lock int32      // level this file holds, under ls.mu
 }
 
 var vfsioRW = sqlite3_io_methods{
@@ -238,6 +430,19 @@ func rwOpen(tls *libc.TLS, pVfs uintptr, zName uintptr, pFile uintptr, flags int
 			ls := e.locks[name]
 			if ls == nil {
 				ls = &lockState{}
+				if lo, ok := e.v.(LockOpener); ok {
+					lk, err := lo.OpenLock(name)
+					if err != nil {
+						if lk != nil {
+							lk.Close()
+						}
+						e.mu.Unlock()
+						f.Close()
+						return sqlite3.SQLITE_CANTOPEN
+					}
+
+					ls.lk = lk
+				}
 				e.locks[name] = ls
 			}
 			ls.refs++
@@ -264,16 +469,30 @@ func rwClose(tls *libc.TLS, pFile uintptr) int32 {
 	h := (*VFSFile)(unsafe.Pointer(pFile)).fsFile
 	rf := getObject(h).(*rwFile)
 	defer func() {
-		if rf.ls != nil {
-			rf.e.mu.Lock()
-			rf.unlock(lockNone)
-			if rf.ls.refs--; rf.ls.refs == 0 {
-				delete(rf.e.locks, rf.name)
-			}
-			rf.e.mu.Unlock()
+		// The handle and the count go whatever a Locker does, and no mutex
+		// stays locked behind a panic of one.
+		defer func() {
+			removeObject(h)
+			rf.e.open.Add(-1)
+		}()
+		ls := rf.ls
+		if ls == nil {
+			return
 		}
-		removeObject(h)
-		rf.e.open.Add(-1)
+
+		func() {
+			ls.mu.Lock()
+			defer ls.mu.Unlock()
+			rf.unlock(lockNone)
+		}()
+		rf.e.mu.Lock()
+		defer rf.e.mu.Unlock()
+		if ls.refs--; ls.refs == 0 {
+			delete(rf.e.locks, rf.name)
+			if ls.lk != nil {
+				ls.lk.Close()
+			}
+		}
 	}()
 
 	if err := rf.f.Close(); err != nil {
@@ -283,9 +502,39 @@ func rwClose(tls *libc.TLS, pFile uintptr) int32 {
 	return sqlite3.SQLITE_OK
 }
 
+// begin is called before a read or write of rf and reports whether it may go
+// on: not when rf is a database whose lock against other registrations and
+// processes is not known any more. After true, end must be called.
+func (rf *rwFile) begin() bool {
+	ls := rf.ls
+	if ls == nil || ls.lk == nil {
+		return true
+	}
+
+	ls.io.RLock()
+	if ls.broken {
+		ls.io.RUnlock()
+		return false
+	}
+
+	return true
+}
+
+func (rf *rwFile) end() {
+	if ls := rf.ls; ls != nil && ls.lk != nil {
+		ls.io.RUnlock()
+	}
+}
+
 func rwRead(tls *libc.TLS, pFile uintptr, zBuf uintptr, iAmt int32, iOfst sqlite_int64) int32 {
+	rf := rwFileOf(pFile)
+	if !rf.begin() {
+		return sqlite3.SQLITE_IOERR_READ
+	}
+
+	defer rf.end()
 	b := (*libc.RawMem)(unsafe.Pointer(zBuf))[:iAmt:iAmt]
-	n, err := rwFileOf(pFile).f.ReadAt(b, iOfst)
+	n, err := rf.f.ReadAt(b, iOfst)
 	if n == len(b) && (err == nil || errors.Is(err, io.EOF)) {
 		return sqlite3.SQLITE_OK
 	}
@@ -300,8 +549,14 @@ func rwRead(tls *libc.TLS, pFile uintptr, zBuf uintptr, iAmt int32, iOfst sqlite
 }
 
 func rwWrite(tls *libc.TLS, pFile uintptr, zBuf uintptr, iAmt int32, iOfst sqlite_int64) int32 {
+	rf := rwFileOf(pFile)
+	if !rf.begin() {
+		return sqlite3.SQLITE_IOERR_WRITE
+	}
+
+	defer rf.end()
 	b := (*libc.RawMem)(unsafe.Pointer(zBuf))[:iAmt:iAmt]
-	n, err := rwFileOf(pFile).f.WriteAt(b, iOfst)
+	n, err := rf.f.WriteAt(b, iOfst)
 	switch {
 	case errors.Is(err, ErrFull):
 		return sqlite3.SQLITE_FULL
@@ -313,7 +568,13 @@ func rwWrite(tls *libc.TLS, pFile uintptr, zBuf uintptr, iAmt int32, iOfst sqlit
 }
 
 func rwTruncate(tls *libc.TLS, pFile uintptr, size sqlite_int64) int32 {
-	if err := rwFileOf(pFile).f.Truncate(size); err != nil {
+	rf := rwFileOf(pFile)
+	if !rf.begin() {
+		return sqlite3.SQLITE_IOERR_TRUNCATE
+	}
+
+	defer rf.end()
+	if err := rf.f.Truncate(size); err != nil {
 		return sqlite3.SQLITE_IOERR_TRUNCATE
 	}
 
@@ -321,7 +582,13 @@ func rwTruncate(tls *libc.TLS, pFile uintptr, size sqlite_int64) int32 {
 }
 
 func rwSync(tls *libc.TLS, pFile uintptr, flags int32) int32 {
-	if err := rwFileOf(pFile).f.Sync(SyncFlag(flags)); err != nil {
+	rf := rwFileOf(pFile)
+	if !rf.begin() {
+		return sqlite3.SQLITE_IOERR_FSYNC
+	}
+
+	defer rf.end()
+	if err := rf.f.Sync(SyncFlag(flags)); err != nil {
 		return sqlite3.SQLITE_IOERR_FSYNC
 	}
 
@@ -329,7 +596,13 @@ func rwSync(tls *libc.TLS, pFile uintptr, flags int32) int32 {
 }
 
 func rwFileSize(tls *libc.TLS, pFile uintptr, pSize uintptr) int32 {
-	n, err := rwFileOf(pFile).f.Size()
+	rf := rwFileOf(pFile)
+	if !rf.begin() {
+		return sqlite3.SQLITE_IOERR_FSTAT
+	}
+
+	defer rf.end()
+	n, err := rf.f.Size()
 	if err != nil || n < 0 {
 		return sqlite3.SQLITE_IOERR_FSTAT
 	}
@@ -340,20 +613,26 @@ func rwFileSize(tls *libc.TLS, pFile uintptr, pSize uintptr) int32 {
 
 // rwLock is SQLite's lock protocol between the files open on one database
 // through one registered VFS, as unixLock runs it between the files of one
-// process. SQLite asks for locks on database files only, and never for
-// PENDING itself.
+// process. Like unixLock it asks outside, here the Locker of the database,
+// only when the lock of all the files together has to rise, and in the same
+// order: a level is recorded for a file once the Locker has given it. SQLite
+// asks for locks on database files only, and never for PENDING itself.
 func rwLock(tls *libc.TLS, pFile uintptr, eLock int32) int32 {
 	rf := rwFileOf(pFile)
-	if rf.ls == nil {
+	ls := rf.ls
+	if ls == nil {
 		return sqlite3.SQLITE_OK
 	}
 
-	rf.e.mu.Lock()
-	defer rf.e.mu.Unlock()
+	ls.mu.Lock()
+	defer ls.mu.Unlock()
 
-	ls := rf.ls
 	if rf.lock >= eLock {
 		return sqlite3.SQLITE_OK
+	}
+
+	if ls.broken {
+		return sqlite3.SQLITE_IOERR_LOCK
 	}
 
 	switch eLock {
@@ -362,6 +641,12 @@ func rwLock(tls *libc.TLS, pFile uintptr, eLock int32) int32 {
 		// out once it holds PENDING, or it would never get the file to itself.
 		if ls.owner != nil && ls.level >= lockPending {
 			return sqlite3.SQLITE_BUSY
+		}
+
+		if ls.shared == 0 {
+			if rc := ls.raise(lockShared); rc != sqlite3.SQLITE_OK {
+				return rc
+			}
 		}
 
 		ls.shared++
@@ -375,6 +660,10 @@ func rwLock(tls *libc.TLS, pFile uintptr, eLock int32) int32 {
 			return sqlite3.SQLITE_BUSY
 		}
 
+		if rc := ls.raise(lockReserved); rc != sqlite3.SQLITE_OK {
+			return rc
+		}
+
 		ls.owner, ls.level, rf.lock = rf, lockReserved, lockReserved
 	case lockExclusive:
 		// From RESERVED, or from PENDING on a retry, to commit; or straight
@@ -383,17 +672,28 @@ func rwLock(tls *libc.TLS, pFile uintptr, eLock int32) int32 {
 			return sqlite3.SQLITE_IOERR_LOCK
 		}
 
+		if ls.owner == rf && rf.lock == lockReserved {
+			// A writer takes PENDING first, which keeps new readers out,
+			// here and outside, and holds it when the next step is refused:
+			// SQLite asks again.
+			if rc := ls.raise(lockPending); rc != sqlite3.SQLITE_OK {
+				return rc
+			}
+
+			ls.level, rf.lock = lockPending, lockPending
+		}
+
 		if ls.shared > 1 {
 			// Others are still in: readers, or a writer, which is a reader
-			// too. A writer holds PENDING from here on, which keeps new
-			// readers out, and SQLite asks again. A reader that came to
-			// roll a journal back stays a plain reader: counted as a
-			// writer, it would make the others take the journal for one of
-			// a transaction in progress and read the database as it is.
-			if ls.owner == rf {
-				ls.level, rf.lock = lockPending, lockPending
-			}
+			// too. A reader that came to roll a journal back stays a plain
+			// reader: counted as a writer, it would make the others take the
+			// journal for one of a transaction in progress and read the
+			// database as it is.
 			return sqlite3.SQLITE_BUSY
+		}
+
+		if rc := ls.raise(lockExclusive); rc != sqlite3.SQLITE_OK {
+			return rc
 		}
 
 		ls.owner, ls.level, rf.lock = rf, lockExclusive, lockExclusive
@@ -414,27 +714,56 @@ func rwUnlock(tls *libc.TLS, pFile uintptr, eLock int32) int32 {
 		return sqlite3.SQLITE_IOERR_UNLOCK
 	}
 
-	rf.e.mu.Lock()
-	rf.unlock(eLock)
-	rf.e.mu.Unlock()
-	return sqlite3.SQLITE_OK
+	rf.ls.mu.Lock()
+	defer rf.ls.mu.Unlock()
+	return rf.unlock(eLock)
 }
 
-// unlock lowers the lock rf holds to level, which is lockShared or lockNone.
-// The caller holds rf.e.mu.
-func (rf *rwFile) unlock(level int32) {
+// unlock lowers the lock rf holds to level, which is lockShared or lockNone,
+// and with it the lock outside when rf was the writer or the last reader. The
+// file is lowered whatever the Locker answers, as SQLite's pager takes it to
+// be. The caller holds rf.ls.mu.
+func (rf *rwFile) unlock(level int32) int32 {
+	ls := rf.ls
 	if rf.lock <= level {
-		return
+		if level == lockNone && ls.unsure && ls.shared == 0 {
+			// A Lock that failed for the first reader may have taken the
+			// lock all the same. This is the unlock SQLite sends after it:
+			// the next reader may be long in coming.
+			if err := ls.call(func() error { return ls.lk.Unlock(LockNone) }, true); err != nil {
+				return sqlite3.SQLITE_IOERR_UNLOCK
+			}
+		}
+		return sqlite3.SQLITE_OK
 	}
 
-	ls := rf.ls
-	if ls.owner == rf {
+	writer := ls.owner == rf
+	if writer {
 		ls.owner, ls.level = nil, lockNone
 	}
 	if level == lockNone {
 		ls.shared--
 	}
 	rf.lock = level
+	if ls.lk == nil {
+		return sqlite3.SQLITE_OK
+	}
+
+	out := LockShared
+	switch {
+	case ls.shared == 0:
+		out = LockNone
+	case !writer:
+		return sqlite3.SQLITE_OK // a reader left and others stay
+	case ls.unsure:
+		return sqlite3.SQLITE_IOERR_UNLOCK // not known before, no better now
+	}
+
+	if err := ls.call(func() error { return ls.lk.Unlock(out) }, out == LockNone); err != nil {
+		return sqlite3.SQLITE_IOERR_UNLOCK
+	}
+
+	return sqlite3.SQLITE_OK
 }
 
 // rwCheckReservedLock tells SQLite whether some connection is writing the
@@ -442,16 +771,25 @@ func (rf *rwFile) unlock(level int32) {
 // one to be rolled back, or the journal of a transaction in progress.
 func rwCheckReservedLock(tls *libc.TLS, pFile uintptr, pResOut uintptr) int32 {
 	rf := rwFileOf(pFile)
-	var r int32
-	if rf.ls != nil {
-		rf.e.mu.Lock()
-		if rf.ls.owner != nil {
+	var r, rc int32
+	if ls := rf.ls; ls != nil {
+		ls.mu.Lock()
+		switch {
+		case ls.owner != nil:
 			r = 1
+		case ls.lk != nil:
+			held, err := ls.lk.CheckReserved()
+			switch {
+			case err != nil:
+				rc = sqlite3.SQLITE_IOERR_CHECKRESERVEDLOCK
+			case held:
+				r = 1
+			}
 		}
-		rf.e.mu.Unlock()
+		ls.mu.Unlock()
 	}
 	*(*int32)(unsafe.Pointer(pResOut)) = r
-	return sqlite3.SQLITE_OK
+	return rc
 }
 
 // No file control verb is implemented. SQLite takes SQLITE_NOTFOUND for an
@@ -618,9 +956,11 @@ func (t *tempFile) Size() (int64, error) { return t.size, nil }
 // The connections of this process that open one database through the returned
 // VFS are kept from one another by the package, which runs SQLite's file
 // locking between them: a [File] has no lock methods, and a database/sql pool
-// of any size works on a VFS that is safe for concurrent use. Nothing keeps a
-// second process, or a second registration of the same storage, away from
-// the database. Two names for one database are told apart only by
+// of any size works on a VFS that is safe for concurrent use. A second
+// process, or a second registration of the same storage, is kept away from
+// the database only by a VFS that implements [LockOpener]: without it, two
+// of them that write lose each other's transactions and can damage the
+// database. Two names for one database are told apart only by
 // [VFS.FullPathname].
 //
 // The VFS has no shared memory, so the write-ahead log works only for a
