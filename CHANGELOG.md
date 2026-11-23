@@ -2,6 +2,9 @@
 
 Entries for v1.38.1 through v1.44.1 and for v1.49.1 were added on 2026-09-05, reconstructed from the git history and the merge requests they cite; they were missing at release time.
 
+ - 2026-11-23 v1.64.0:
+     - Add `vfs.LockOpener` and `vfs.Locker`: a VFS made for `vfs.Register` can lock its databases against other processes and against other registrations of the same storage. **Opt-in**: a VFS that does not implement `LockOpener` works as before, and its databases are still safe inside one registration only. The documentation of `Locker` says what such a lock must guarantee. See [GitLab merge request #151](https://gitlab.com/cznic/sqlite/-/merge_requests/151), thanks Ian Chechin!
+
  - 2026-11-22 v1.63.0:
      - **Connections are now opened with `SQLITE_OPEN_NOMUTEX`** instead of `SQLITE_OPEN_FULLMUTEX`, which takes a mutex lock and unlock off every column read and makes scanning rows noticeably faster. That mutex never kept two goroutines on one connection apart, so nothing else changes for code using the driver's API; code that takes a connection's SQLite handle from unexported fields and calls SQLite with it from another goroutine must now serialize those calls itself. Resolves [GitHub issue #13](https://github.com/modernc-org/sqlite/issues/13), thanks guille-work!
      - **A zero-length BLOB now reads as an empty `[]byte` instead of nil**, in rows and in the pre-update hook, so it no longer scans like NULL; read and written back, it used to fail a `BLOB NOT NULL` constraint or turn into NULL. Code that compares a scanned empty BLOB with nil sees the difference, and `json.Marshal` gives `""` for it instead of `null`; NULL reads as before. Resolves [GitHub issue #14](https://github.com/modernc-org/sqlite/issues/14). See [GitHub pull request #15](https://github.com/modernc-org/sqlite/pull/15), thanks Michael Haddon (@mhaddon)!
