@@ -391,6 +391,32 @@ func init() {
 	*(*func(*libc.TLS, uintptr) int32)(unsafe.Pointer(&vfsioRW.xDeviceCharacteristics)) = rwDeviceCharacteristics
 }
 
+// lockStateOf returns the lock state of the named database with one more
+// file counted on it. For the first file it asks a VFS that is a LockOpener
+// for the Locker, and it returns nil if that fails.
+func (e *rwEntry) lockStateOf(name string) *lockState {
+	e.mu.Lock()
+	defer e.mu.Unlock() // also behind a panic of OpenLock
+	ls := e.locks[name]
+	if ls == nil {
+		ls = &lockState{}
+		if lo, ok := e.v.(LockOpener); ok {
+			lk, err := lo.OpenLock(name)
+			if err != nil {
+				if lk != nil {
+					lk.Close()
+				}
+				return nil
+			}
+
+			ls.lk = lk
+		}
+		e.locks[name] = ls
+	}
+	ls.refs++
+	return ls
+}
+
 func rwEntryOf(pVfs uintptr) *rwEntry {
 	return getObject((*sqlite3_vfs)(unsafe.Pointer(pVfs)).pAppData).(*rwEntry)
 }
@@ -426,28 +452,10 @@ func rwOpen(tls *libc.TLS, pVfs uintptr, zName uintptr, pFile uintptr, flags int
 		}
 		if flags&sqlite3.SQLITE_OPEN_MAIN_DB != 0 {
 			rf.name = name
-			e.mu.Lock()
-			ls := e.locks[name]
-			if ls == nil {
-				ls = &lockState{}
-				if lo, ok := e.v.(LockOpener); ok {
-					lk, err := lo.OpenLock(name)
-					if err != nil {
-						if lk != nil {
-							lk.Close()
-						}
-						e.mu.Unlock()
-						f.Close()
-						return sqlite3.SQLITE_CANTOPEN
-					}
-
-					ls.lk = lk
-				}
-				e.locks[name] = ls
+			if rf.ls = e.lockStateOf(name); rf.ls == nil {
+				f.Close()
+				return sqlite3.SQLITE_CANTOPEN
 			}
-			ls.refs++
-			rf.ls = ls
-			e.mu.Unlock()
 		}
 	}
 
@@ -770,26 +778,34 @@ func (rf *rwFile) unlock(level int32) int32 {
 // database. It decides whether a journal found next to the database is a hot
 // one to be rolled back, or the journal of a transaction in progress.
 func rwCheckReservedLock(tls *libc.TLS, pFile uintptr, pResOut uintptr) int32 {
-	rf := rwFileOf(pFile)
-	var r, rc int32
-	if ls := rf.ls; ls != nil {
-		ls.mu.Lock()
-		switch {
-		case ls.owner != nil:
-			r = 1
-		case ls.lk != nil:
-			held, err := ls.lk.CheckReserved()
-			switch {
-			case err != nil:
-				rc = sqlite3.SQLITE_IOERR_CHECKRESERVEDLOCK
-			case held:
-				r = 1
-			}
-		}
-		ls.mu.Unlock()
-	}
+	r, rc := rwFileOf(pFile).reserved()
 	*(*int32)(unsafe.Pointer(pResOut)) = r
 	return rc
+}
+
+// reserved reports whether a writer holds the database of rf: a file of the
+// registration, or, by the word of the Locker, somebody outside it.
+func (rf *rwFile) reserved() (r, rc int32) {
+	ls := rf.ls
+	if ls == nil {
+		return 0, sqlite3.SQLITE_OK
+	}
+
+	ls.mu.Lock()
+	defer ls.mu.Unlock() // also behind a panic of CheckReserved
+	switch {
+	case ls.owner != nil:
+		r = 1
+	case ls.lk != nil:
+		held, err := ls.lk.CheckReserved()
+		switch {
+		case err != nil:
+			rc = sqlite3.SQLITE_IOERR_CHECKRESERVEDLOCK
+		case held:
+			r = 1
+		}
+	}
+	return r, rc
 }
 
 // No file control verb is implemented. SQLite takes SQLITE_NOTFOUND for an

@@ -749,6 +749,121 @@ func (closerLocker) Unlock(LockLevel) error       { panic("Unlock") }
 func (closerLocker) CheckReserved() (bool, error) { panic("CheckReserved") }
 func (c closerLocker) Close() error               { c.closed(); return nil }
 
+// TestRegisterLockerPanic checks what a panic of a LockOpener or of a Locker
+// leaves behind. The package does not recover it, and the database it
+// happened on is in no known state; but no mutex of the package stays locked,
+// so a program that recovers the panic can go on using the registration.
+func TestRegisterLockerPanic(t *testing.T) {
+	// panics runs f and reports whether it panicked.
+	panics := func(f func()) (panicked bool) {
+		defer func() { panicked = recover() != nil }()
+		f()
+		return false
+	}
+	// free fails the test if a mutex is still locked, and then uses the
+	// registration: another database is opened, locked and closed on it.
+	free := func(t *testing.T, b *bridge, ls *lockState) {
+		t.Helper()
+		e := getObject(b.fsys.fsHandle).(*rwEntry)
+		if !e.mu.TryLock() {
+			e.mu.Unlock() // or the clean-up of the test would wait for it
+			t.Fatal("the mutex of the registration is still locked")
+		}
+
+		e.mu.Unlock()
+		if ls != nil {
+			if !ls.mu.TryLock() {
+				ls.mu.Unlock() // as above
+				t.Fatal("the mutex of the database is still locked")
+			}
+
+			ls.mu.Unlock()
+			if !ls.io.TryLock() {
+				t.Fatal("reads and writes of the database are still kept out")
+			}
+
+			ls.io.Unlock()
+		}
+		o := b.mustOpen("other.db", mainDB)
+		if rc := rwLock(b.tls, o, lockShared); rc != lkOK {
+			t.Fatalf("xLock on another database: rc %d", rc)
+		}
+
+		if rc := rwClose(b.tls, o); rc != lkOK {
+			t.Fatalf("xClose of another database: rc %d", rc)
+		}
+	}
+
+	t.Run("OpenLock", func(t *testing.T) {
+		tab := newLockTable(t)
+		v := &lockVFS{VFS: &fakeVFS{}, tab: tab}
+		first := true
+		v.openLock = func(name string) (Locker, error) {
+			if first {
+				first = false
+				panic("OpenLock")
+			}
+
+			return tab.locker(name), nil
+		}
+		b := newBridge(t, v)
+		if !panics(func() { b.open("test.db", mainDB) }) {
+			t.Fatal("xOpen did not panic")
+		}
+
+		free(t, b, nil)
+		f := b.mustOpen("test.db", mainDB) // and the database itself, again
+		if rc := rwClose(b.tls, f); rc != lkOK {
+			t.Fatalf("xClose: rc %d", rc)
+		}
+	})
+
+	for _, call := range []string{"Lock(shared)", "Lock(reserved)", "Unlock(shared)", "Unlock(none)", "CheckReserved", "Close"} {
+		t.Run(call, func(t *testing.T) {
+			r := newLockRig(t, newLockTable(t), "A", "B")
+			l := r.v.last("test.db")
+			ls := getObject(r.b.fsys.fsHandle).(*rwEntry).locks["test.db"]
+			a := r.files["A"]
+			p, _ := r.b.buf(4, 0)
+			var before []int32 // levels A takes first
+			var step func()
+			switch call {
+			case "Lock(shared)":
+				step = func() { rwLock(r.b.tls, a, lockShared) }
+			case "Lock(reserved)":
+				before, step = []int32{lockShared}, func() { rwLock(r.b.tls, a, lockReserved) }
+			case "Unlock(shared)":
+				before, step = []int32{lockShared, lockReserved}, func() { rwUnlock(r.b.tls, a, lockShared) }
+			case "Unlock(none)":
+				before, step = []int32{lockShared}, func() { rwUnlock(r.b.tls, a, lockNone) }
+			case "CheckReserved":
+				step = func() { rwCheckReservedLock(r.b.tls, a, p) }
+			case "Close":
+				rwClose(r.b.tls, r.files["B"])
+				delete(r.files, "B")
+				delete(r.files, "A")
+				step = func() { rwClose(r.b.tls, a) }
+			}
+			for _, level := range before {
+				if rc := rwLock(r.b.tls, a, level); rc != lkOK {
+					t.Fatalf("xLock(A, %d): rc %d", level, rc)
+				}
+			}
+			l.enter = func(c string) {
+				if c == call {
+					l.enter = nil
+					panic(call)
+				}
+			}
+			if !panics(step) {
+				t.Fatalf("the step that calls %s did not panic", call)
+			}
+
+			free(t, r.b, ls)
+		})
+	}
+}
+
 // TestRegisterLockerConcurrent holds calls of a Locker open and checks what
 // goes on meanwhile. The calls for one database wait for each other, so they
 // never overlap; reads of the database wait for a call that can lose its
