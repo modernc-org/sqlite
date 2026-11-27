@@ -68,6 +68,14 @@ type conn struct {
 	// byte-for-byte so existing callers parsing error strings are
 	// unaffected. See #230.
 	errorRcMode bool
+
+	// stmts are the statements prepareV2 made and finalize has not
+	// finalized yet, for Close, the newest last. Only the driver's own: a
+	// virtual table such as FTS5 keeps statements of its own on the handle
+	// and finalizes them itself when sqlite3_close_v2 disconnects it. A
+	// connection has few statements open at a time and finalizes the newest
+	// most often, so finalize searches from the end.
+	stmts []uintptr
 }
 
 func newConn(dsn string) (*conn, error) {
@@ -833,6 +841,15 @@ func (c *conn) bindParameterCount(pstmt uintptr) (_ int, err error) {
 //
 //	int sqlite3_finalize(sqlite3_stmt *pStmt);
 func (c *conn) finalize(pstmt uintptr) error {
+	for i := len(c.stmts) - 1; i >= 0; i-- {
+		if c.stmts[i] == pstmt {
+			last := len(c.stmts) - 1
+			c.stmts[i] = c.stmts[last]
+			c.stmts = c.stmts[:last]
+			break
+		}
+	}
+
 	if rc := sqlite3.Xsqlite3_finalize(c.tls, pstmt); rc != sqlite3.SQLITE_OK {
 		return c.errstr(rc)
 	}
@@ -871,7 +888,11 @@ func (c *conn) prepareV2(zSQL *uintptr) (pstmt uintptr, err error) {
 		switch rc := sqlite3.Xsqlite3_prepare_v2(c.tls, c.db, *zSQL, -1, ppstmt, pptail); rc {
 		case sqlite3.SQLITE_OK:
 			*zSQL = *(*uintptr)(unsafe.Pointer(pptail))
-			return *(*uintptr)(unsafe.Pointer(ppstmt)), nil
+			pstmt = *(*uintptr)(unsafe.Pointer(ppstmt))
+			if pstmt != 0 {
+				c.stmts = append(c.stmts, pstmt)
+			}
+			return pstmt, nil
 		case sqliteLockedSharedcache:
 			if err := c.retry(0); err != nil {
 				return 0, err
@@ -1082,6 +1103,17 @@ func (c *conn) begin(ctx context.Context, opts driver.TxOptions) (t driver.Tx, e
 // Because the sql package maintains a free pool of connections and only calls
 // Close when there's a surplus of idle connections, it shouldn't be necessary
 // for drivers to do their own connection caching.
+//
+// The statements the driver prepared on the connection and that are still
+// open are finalized first. With one of them left, sqlite3_close_v2 would
+// keep the whole database, its file descriptors and its transaction alive
+// until that statement is finalized, which nothing can do once the connection
+// is gone. database/sql closes its statements before it closes a connection;
+// this is for the driver used directly. A stmt or rows of the connection
+// closed afterwards does nothing, and one used afterwards returns
+// driver.ErrBadConn. Statements on the handle that the driver did not prepare
+// are not touched: a virtual table such as FTS5 owns some and finalizes them
+// itself when close_v2 disconnects it.
 func (c *conn) Close() (err error) {
 	if dmesgs {
 		defer func() {
@@ -1093,6 +1125,11 @@ func (c *conn) Close() (err error) {
 	defer c.Unlock()
 
 	if c.db != 0 {
+		for _, pstmt := range c.stmts {
+			sqlite3.Xsqlite3_finalize(c.tls, pstmt)
+		}
+		c.stmts = nil
+
 		unregisterAuthorizer(c.db)
 		unregisterHooks(c.db)
 		cancellationFlags.Delete(c.db)
@@ -1111,6 +1148,11 @@ func (c *conn) Close() (err error) {
 	}
 	return nil
 }
+
+// closed reports whether Close has released the database handle. The
+// statements prepared on it were finalized then, so the pstmt of a stmt or rows
+// of this connection must not be touched any more.
+func (c *conn) closed() bool { return c.db == 0 }
 
 // C documentation
 //

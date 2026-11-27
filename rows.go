@@ -98,16 +98,24 @@ func (r *rows) Close() (err error) {
 	r.allocs = nil
 	r.c.freeAllocs(allocs)
 
+	// A second Close does nothing, and neither does one after the
+	// connection was closed, which finalized the statement already.
+	pstmt := r.pstmt
+	r.pstmt = 0
+	if pstmt == 0 || r.c.closed() {
+		return nil
+	}
+
 	return r.c.withWaitCtx(r.ctx, func() error {
 		if r.reuseStmt {
 			// Reset the statement for reuse instead of finalizing it
-			if e := r.c.reset(r.pstmt); e != nil {
+			if e := r.c.reset(pstmt); e != nil {
 				return e
 			}
-			return r.c.clearBindings(r.pstmt, allocs)
+			return r.c.clearBindings(pstmt, allocs)
 		}
 
-		return r.c.finalize(r.pstmt)
+		return r.c.finalize(pstmt)
 	})
 }
 
@@ -129,6 +137,10 @@ func (r *rows) Columns() (c []string) {
 func (r *rows) Next(dest []driver.Value) (err error) {
 	if r.empty {
 		return io.EOF
+	}
+
+	if r.c.closed() {
+		return driver.ErrBadConn
 	}
 
 	rc := sqlite3.SQLITE_ROW
@@ -296,6 +308,10 @@ func (r *rows) ColumnTypeDatabaseTypeName(index int) string {
 //	int           (0, false)
 //	bytea(30)     (30, true)
 func (r *rows) ColumnTypeLength(index int) (length int64, ok bool) {
+	if r.c.closed() {
+		return 0, false
+	}
+
 	t, err := r.c.columnType(r.pstmt, index)
 	if err != nil {
 		return 0, false
@@ -340,6 +356,10 @@ func (r *rows) ColumnTypePrecisionScale(index int) (precision, scale int64, ok b
 // value type that can be used to scan types into. For example, the database
 // column type "bigint" this should return "reflect.TypeOf(int64(0))".
 func (r *rows) ColumnTypeScanType(index int) reflect.Type {
+	if r.c.closed() {
+		return reflect.TypeOf("")
+	}
+
 	t, err := r.c.columnType(r.pstmt, index)
 	if err != nil {
 		return reflect.TypeOf("")

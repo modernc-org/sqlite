@@ -63,12 +63,18 @@ func newStmt(c *conn, sql string) (*stmt, error) {
 // As of Go 1.1, a Stmt will not be closed if it's in use by any queries.
 func (s *stmt) Close() (err error) {
 	if s.pstmt != 0 {
-		if e := s.c.finalize(s.pstmt); e != nil {
-			err = e
+		// After the connection is closed the statement is finalized
+		// already, see conn.Close.
+		if !s.c.closed() {
+			if e := s.c.finalize(s.pstmt); e != nil {
+				err = e
+			}
 		}
 		s.pstmt = 0
 	}
 	if s.psql != 0 {
+		// Also after conn.Close: free does not need the TLS of the
+		// connection.
 		s.c.free(s.psql)
 		s.psql = 0
 	}
@@ -93,6 +99,10 @@ func toNamedValues(vals []driver.Value) (r []driver.NamedValue) {
 }
 
 func (s *stmt) exec(ctx context.Context, args []driver.NamedValue) (r driver.Result, err error) {
+	if s.c.closed() {
+		return nil, driver.ErrBadConn
+	}
+
 	var pstmt uintptr
 	var done int32
 	if ctx != nil {
@@ -286,6 +296,10 @@ func (s *stmt) Query(args []driver.Value) (driver.Rows, error) { //TODO StmtQuer
 }
 
 func (s *stmt) query(ctx context.Context, args []driver.NamedValue) (r driver.Rows, err error) {
+	if s.c.closed() {
+		return nil, driver.ErrBadConn
+	}
+
 	var pstmt uintptr
 	var done int32
 	if ctx != nil {
