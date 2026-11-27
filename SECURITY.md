@@ -90,6 +90,18 @@ In scope, with a security consequence:
   page returned for the wrong key, or freed while SQLite still holds it -- is
   silent corruption, not a crash. Without `RegisterPageCache` SQLite uses its
   own page cache and none of this code runs.
+- The encrypting VFS in `vfs/xts`, when an application registers one with
+  `xts.Register`. What it promises: the content of the database, of its
+  rollback journal and of its temporary files cannot be read from the
+  storage without the key, and another key, or a program without the key,
+  changes no file of the database, with the two exceptions the package
+  documentation names. A way to read content without the key, content in
+  plain text on the storage, or a file such a program changes is in scope.
+  What it does not promise, and what is therefore not a vulnerability: a
+  changed or replayed file is not detected, and whoever has several copies
+  of a file learns which 16-byte blocks changed between them. The package
+  documentation says what is stored in plain text and which uses are
+  refused.
 
 Out of scope:
 

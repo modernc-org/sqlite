@@ -3,6 +3,7 @@
 Entries for v1.38.1 through v1.44.1 and for v1.49.1 were added on 2026-09-05, reconstructed from the git history and the merge requests they cite; they were missing at release time.
 
  - 2026-11-23 v1.64.0:
+     - Add `vfs/xts`: a VFS that keeps a database, its rollback journal and its temporary files encrypted on the storage, AES-256-XTS on the standard library, on top of SQLite's own VFS or any registered one. **Opt-in**: nothing changes for a database that is not opened through it. It has no write-ahead log yet and does not detect a changed file; the package documentation says what is promised and what is refused. Updates [GitLab issue #138](https://gitlab.com/cznic/sqlite/-/issues/138). See [GitLab merge request #152](https://gitlab.com/cznic/sqlite/-/merge_requests/152), thanks Ian Chechin!
      - Add `vfs.LockOpener` and `vfs.Locker`: a VFS made for `vfs.Register` can lock its databases against other processes and against other registrations of the same storage. **Opt-in**: a VFS that does not implement `LockOpener` works as before, and its databases are still safe inside one registration only. The documentation of `Locker` says what such a lock must guarantee. See [GitLab merge request #151](https://gitlab.com/cznic/sqlite/-/merge_requests/151), thanks Ian Chechin!
 
  - 2026-11-22 v1.63.0:
